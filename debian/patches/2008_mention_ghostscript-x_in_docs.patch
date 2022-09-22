@@ -1,0 +1,18 @@
+Description: Mention ghostscipt-x affect on default device in docs
+Author: Bastien ROUCARIÈS <roucaries.bastien@gmail.com>
+Last-Update: 2012-07-24
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/man/gs.1
++++ b/man/gs.1
+@@ -36,9 +36,8 @@
+ specify a particular device, Ghostscript normally opens the first one of
+ those and directs output to it.
+ .PP
+-If built with X11 support, often
++If you have installed the ghostscript-x Debian package and are under X,
+ the default device is an X11 window (previewer), else ghostscript will
+-typically
+ use the bbox device and print on stdout the dimension of the postscript file.
+ .PP
+ So if the first one in the list is the one

@@ -1,0 +1,20 @@
+#!/bin/sh
+# Copyright 2018  Jonas Smedegaard <dr@jones.dk>
+# Description: helper script to (re)create debian/patches/series
+#
+# This program is free software;
+# you can redistribute it and/or modify it
+# under the terms of the GNU General Public License
+# as published by the Free Software Foundation;
+# either version 3, or (at your option) any later version.
+
+# FIXME: handle commented out patches
+
+set -e
+
+(cd debian/patches && find * -maxdepth 0 -type f -name '0*.patch') \
+	| sort > debian/patches/series
+(cd debian/patches && find * -mindepth 1 -type f -name '*.patch') \
+	| sort >> debian/patches/series
+(cd debian/patches && find * -maxdepth 0 -type f -name '*.patch' -not -name '0*') \
+	| sort >> debian/patches/series

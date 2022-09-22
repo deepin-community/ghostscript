@@ -1,0 +1,51 @@
+Description: Check multiarch paths
+Author: Jonas Smedegaard <dr@jones.dk>
+Last-Update: 2011-09-19
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/base/unix-aux.mak
++++ b/base/unix-aux.mak
+@@ -109,37 +109,37 @@
+ 	$(ECHOGS_XE) -a $(gconfig__h)
+ 
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 ifndef HAVE_DIRENT_H
+-	if ( test -f $(INCLUDE)/dirent.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_DIRENT_H 1; \
++	if ( test -f $(INCLUDE)/dirent.h || test -f $(INCLUDE)/$(DEB_HOST_MULTIARCH)/dirent.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_DIRENT_H 1; \
+               else $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_DIRENT_H 0; fi
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 endif
+ 	$(ECHOGS_XE) -a $(gconfig__h)
+ 
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 ifndef HAVE_NDIR_H
+-	if ( test -f $(INCLUDE)/ndir.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_NDIR_H 1; \
++	if ( test -f $(INCLUDE)/ndir.h || test -f $(INCLUDE)/$(DEB_HOST_MULTIARCH)/ndir.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_NDIR_H 1; \
+               else $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_NDIR_H 0; fi
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 endif
+ 	$(ECHOGS_XE) -a $(gconfig__h)
+ 
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 ifndef HAVE_SYS_DIR_H
+-	if ( test -f $(INCLUDE)/sys/dir.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_DIR_H 1; \
++	if ( test -f $(INCLUDE)/sys/dir.h || test -f $(INCLUDE)/$(DEB_HOST_MULTIARCH)/sys/dir.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_DIR_H 1; \
+               else $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_DIR_H 0; fi
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 endif
+ 	$(ECHOGS_XE) -a $(gconfig__h)
+ 
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 ifndef HAVE_SYS_NDIR_H
+-	if ( test -f $(INCLUDE)/sys/ndir.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_NDIR_H 1; \
++	if ( test -f $(INCLUDE)/sys/ndir.h || test -f $(INCLUDE)/$(DEB_HOST_MULTIARCH)/sys/ndir.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_NDIR_H 1; \
+               else $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_NDIR_H 0; fi
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 endif
+ 	$(ECHOGS_XE) -a $(gconfig__h)
+ 
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 ifndef HAVE_SYS_TIME_H
+-	if ( test -f $(INCLUDE)/sys/time.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_TIME_H 1; \
++	if ( test -f $(INCLUDE)/sys/time.h || test -f $(INCLUDE)/$(DEB_HOST_MULTIARCH)/sys/time.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_TIME_H 1; \
+               else $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_TIME_H 0; fi
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 endif
+ 	$(ECHOGS_XE) -a $(gconfig__h)
+ 
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 ifndef HAVE_SYS_TIMES_H
+-	if ( test -f $(INCLUDE)/sys/times.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_TIMES_H 1; \
++	if ( test -f $(INCLUDE)/sys/times.h || test -f $(INCLUDE)/$(DEB_HOST_MULTIARCH)/sys/times.h ); then $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_TIMES_H 1; \
+               else $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_TIMES_H 0; fi
+ 	$(ECHOGS_XE) -a $(gconfig__h) -x 23 endif
+ 	$(ECHOGS_XE) -a $(gconfig__h)

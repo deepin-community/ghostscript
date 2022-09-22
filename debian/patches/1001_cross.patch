@@ -1,0 +1,24 @@
+Description: allow skipping configure during bootstrap to support cross build
+ ghostscript fails to cross build from source,
+ because it configures for the build architecture
+ when invoked from autogen.sh.
+ Cross building configures for the host architecture
+ as a separate call after initial bootstrapping.
+ .
+ This patch allows telling autogen.sh not to call configure.
+Author: Helmut Grohne <helmut@subdivi.de>
+Bug-Debian: https://bugs.debian.org/971092
+Last-Update: 2020-10-04
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/autogen.sh
++++ b/autogen.sh
+@@ -43,6 +43,8 @@
+   cp `automake --print-libdir`/install-sh . || exit 1
+ fi
+ 
++test -n "$NOCONFIGURE" && exit 0
++
+ if test -z "$*"; then
+         echo "I am going to run ./configure with no arguments - if you wish "
+         echo "to pass any to it, please specify them on the $0 command line."

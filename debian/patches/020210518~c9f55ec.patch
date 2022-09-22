@@ -1,0 +1,26 @@
+Description: do not lie about emitting Multiple Master fonts in psfwrite
+ The pdfwrite and ps2write devices do not write Multiple Master fonts;
+ instead we write a type 1 equivalent of the instance of the MM font.
+
+ However, we were setting the Subtype of the font to MMType1,
+ which is obviously wrong (though it doesn't seem to cause any problems).
+
+ Fix that here by always setting the Subtype to Type1
+ (for simple fonts which are not TrueType).
+Origin: upstream, https://git.ghostscript.com/?p=ghostpdl.git;h=c9f55ec
+Author: Ken Sharp <ken.sharp@artifex.com>
+Last-Update: 2021-18-07
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/devices/vector/gdevpdtw.c
++++ b/devices/vector/gdevpdtw.c
+@@ -239,8 +239,7 @@
+     if (code < 0)
+         return code;
+     pprints1(s, "/Subtype/%s>>\n",
+-             (pdfont->FontType == ft_TrueType ? "TrueType" :
+-              pdfont->u.simple.s.type1.is_MM_instance ? "MMType1" : "Type1"));
++             (pdfont->FontType == ft_TrueType ? "TrueType" : "Type1"));
+     pdf_end_separate(pdev, resourceFont);
+     if (diff_id) {
+         mark_font_descriptor_symbolic(pdfont);

@@ -1,0 +1,8 @@
+# we install ICC profiles in Debian-standard shared dir to ease reuse
+usr/share/color/icc/ghostscript usr/share/ghostscript/${env:GS_DOT_VERSION}/iccprofiles
+
+# reuse CMap files from separate package poppler-data
+var/lib/ghostscript/CMap usr/share/ghostscript/${env:GS_DOT_VERSION}/Resource/CMap
+
+# reuse font DroidSansFallback.ttf from separate package fonts-droid
+usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf usr/share/ghostscript/${env:GS_DOT_VERSION}/Resource/CIDFSubst/DroidSansFallback.ttf

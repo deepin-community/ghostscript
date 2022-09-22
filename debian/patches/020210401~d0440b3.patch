@@ -1,0 +1,19 @@
+Description: fix MacOS/tesseract build problems on Unix systems
+ Improve the configure test for valid C++ compiler options
+ by having the test include a header.
+Origin: upstream, https://git.ghostscript.com/?p=ghostpdl.git;h=d0440b3
+Author: Chris Liddell <chris.liddell@artifex.com>
+Last-Update: 2021-18-07
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/configure.ac
++++ b/configure.ac
+@@ -864,7 +864,7 @@
+       for flag in $cxxflags_to_try ; do
+         CXXFLAGS="$CXXFLAGS $flag"
+ 
+-        AC_TRY_COMPILE(, [return 0;], [
++        AC_TRY_COMPILE([#include <cstdlib>], [return 0;], [
+                 echo "   $flag"; CXXFLAGS_TO_USE="$CXXFLAGS_TO_USE $flag"
+         ])
+ 

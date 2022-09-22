@@ -1,0 +1,18 @@
+Description: fix magic number used in pam device
+ This produces lots of tiny rounding diffs.
+Origin: upstream, https://git.ghostscript.com/?p=ghostpdl.git;h=b923bba
+Author: Robin Watts <Robin.Watts@artifex.com>
+Last-Update: 2021-18-07
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/devices/gdevpbm.c
++++ b/devices/gdevpbm.c
+@@ -253,7 +253,7 @@
+         if (bdev->color_info.depth == 4) {
+             set_dev_proc(pdev, map_color_rgb, cmyk_1bit_map_color_rgb);
+             set_dev_proc(pdev, map_cmyk_color, cmyk_1bit_map_cmyk_color);
+-        } else if (bdev->magic == 7) {
++        } else if (bdev->magic == '7') {
+             set_dev_proc(pdev, map_color_rgb, cmyk_8bit_map_color_rgb);
+             set_dev_proc(pdev, map_cmyk_color, cmyk_8bit_map_cmyk_color);
+         } else {

@@ -1,0 +1,16 @@
+Description: enable DeviceN-related device xcfcmyk
+Author: Jonas Smedegaard <dr@jones.dk>
+Last-Update: 2021-07-18
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/configure.ac
++++ b/configure.ac
+@@ -2623,7 +2623,7 @@
+ AC_SUBST(EXTRACT_DIR)
+ 
+ # the "display" device isn't an ideal fit in the list below, but it saves adding a "list" for just that one entry
+-MISC_FDEVS='ccr cif inferno mgr4 mgr8 mgrgray2 mgrgray4 mgrgray8 mgrmono miff24 plan9bm bit bitrgb bitrgbtags bitcmyk devicen spotcmyk xcf plib plibg plibm plibc plibk display'
++MISC_FDEVS='ccr cif inferno mgr4 mgr8 mgrgray2 mgrgray4 mgrgray8 mgrmono miff24 plan9bm bit bitrgb bitrgbtags bitcmyk devicen spotcmyk xcf xcfcmyk plib plibg plibm plibc plibk display'
+ 
+ XPSDEV=$XPSWRITEDEVICE
+ 

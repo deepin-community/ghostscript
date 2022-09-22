@@ -1,0 +1,116 @@
+#!/usr/bin/make -f
+
+# get upstream ABI variable, and export it for use by debhelper snippets
+include base/version.mak
+export GS_DOT_VERSION
+
+include /usr/share/dpkg/pkg-info.mk
+
+# detect if build targets experimental suite (or is a draft)
+DEB_SUITE_EXP = $(filter experimental% UNRELEASED,$(DEB_DISTRIBUTION))
+
+pkg-x11 = ghostscript-x
+pkg-data = libgs$(GS_VERSION_MAJOR)-common
+
+binaries := $(shell dh_listpackages)
+
+# don't run configure during autogen.sh
+export NOCONFIGURE = 1
+
+fontdirs = /var/lib/ghostscript/fonts /usr/share/cups/fonts \
+ /usr/share/ghostscript/fonts /usr/local/lib/ghostscript/fonts \
+ /usr/share/fonts
+
+# Remove some of the scripts
+DEB_DH_INSTALL_ARGS_ALL += $(addprefix -Xbin/,\
+ unix-lpr.sh lprsetup.sh pv.sh fixmswrd.pl)
+
+# Do not include the Ghostscript loader executable with GTK support
+DEB_DH_INSTALL_ARGS_ALL += -Xbin/gsx
+
+# Strip CMap files (separately packaged in poppler-data)
+DEB_DH_INSTALL_ARGS_ALL += -X/Resource/CMap
+
+# Recommend fonts-droid (not ship DroidSansFallback.ttf)
+DEB_DH_INSTALL_ARGS_ALL += -XDroidSansFallback.ttf
+
+# relax symbols check when bootstrapping an arch or targeting experimental
+STAGE1 = $(findstring stage1,$(DEB_BUILD_PROFILES))
+export DPKG_GENSYMBOLS_CHECK_LEVEL=$(if $(DEB_SUITE_EXP)$(STAGE1),0,1)
+
+# # FIXME: Enable parallel when not causing spurious errors like this:
+# <https://buildd.debian.org/status/fetch.php?pkg=ghostscript&arch=amd64&ver=9.25~dfsg-6&stamp=1541195477&raw=0>
+%:
+	dh $@ --no-parallel --with pkgkde_symbolshelper
+
+# use upstream bootstrapping script
+override_dh_autoreconf:
+	dh_autoreconf ./autogen.sh
+
+#  * TODO: enable pcl when supporting system-shared libjpeg
+#    <https://bugs.ghostscript.com/show_bug.cgi?id=696654>
+#  * TODO: maybe enable openjpeg (requires fork for ICC and CMYK support)
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		--without-pcl \
+		--with-x --disable-gtk \
+		--enable-dynamic \
+		--disable-compile-inits \
+		--with-fontpath=$(subst $() ,:,$(strip $(fontdirs)))
+
+override_dh_auto_build:
+	dh_auto_build -- so $(gs_opts)
+
+# check that tracked issues are solved
+override_dh_auto_test:
+	GS="LD_LIBRARY_PATH=sobin GS_LIB=Resource/Init sobin/gsc" \
+		$(MAKE) --file debian/tests/smoke.mk
+	GS="LD_LIBRARY_PATH=sobin GS_LIB=Resource/Init sobin/gsc" \
+		$(MAKE) --file debian/tests/issues/bug_700317/check.mk
+
+override_dh_auto_install:
+	$(MAKE) soinstall DESTDIR=debian/tmp
+
+override_dh_install:
+# Rename /usr/bin/gsc, to not conflict with gambc
+	mv debian/tmp/usr/bin/gsc debian/tmp/usr/bin/gs
+	mkdir -p debian/tmp/usr/sbin/
+
+	install -m 755 debian/update-gsfontmap debian/tmp/usr/sbin
+
+# Move ICC profiles to shared dir, to allow reuse by others.
+	mkdir -p debian/tmp/usr/share/color/icc
+	mv debian/tmp/usr/share/ghostscript/$(GS_DOT_VERSION)/iccprofiles \
+		debian/tmp/usr/share/color/icc/ghostscript
+
+	dh_install $(DEB_DH_INSTALL_ARGS_ALL)
+
+	dh_link --package=$(pkg-data) -- $(DEB_DH_LINK_$(pkg-data))
+	dh_link --no-package=$(pkg-data)
+ifneq ($(filter $(pkg-data),$(binaries)),)
+	file='debian/$(pkg-data)/usr/share/ghostscript/$(GS_DOT_VERSION)/Resource/Init/cidfmap'; \
+	  ! egrep -v '^(%([^%].*)?)?$$' "$$file" && rm "$$file" || ( \
+		echo; \
+		echo 'ERROR: cidfmap not virtually empty as expected,'; \
+		echo '       so some alternative to just dropping that file is required.'; \
+		echo '       More info at bug#531182.'; \
+		exit 1 )
+	rename 's/$$/.t1/' \
+		debian/$(pkg-data)/usr/share/ghostscript/$(GS_DOT_VERSION)/Resource/Font/*
+	dh_linktree -p$(pkg-data) -- \
+		replace usr/share/fonts/type1/urw-base35 \
+		usr/share/ghostscript/$(GS_DOT_VERSION)/Resource/Font
+	rename 's/\.t1$$//' \
+		debian/$(pkg-data)/usr/share/ghostscript/$(GS_DOT_VERSION)/Resource/Font/*
+endif
+
+override_dh_compress:
+	dh_compress -X.pdf
+
+override_dh_strip:
+	dh_strip --dbgsym-migration='ghostscript-dbg (<< 9.53.3~dfsg-2~)'
+
+# suppress shlibs resolving for library shipped with its only executable
+override_dh_makeshlibs:
+	dh_makeshlibs --package=$(pkg-x11) -n
+	dh_makeshlibs --no-package=$(pkg-x11)

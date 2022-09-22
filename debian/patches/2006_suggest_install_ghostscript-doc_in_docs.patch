@@ -1,0 +1,18 @@
+Description: Suggest install of ghostscript-doc in documentation
+Author: Bastien ROUCARIÈS <roucaries.bastien@gmail.com>
+Last-Update: 2012-07-24
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/man/gs.1
++++ b/man/gs.1
+@@ -409,7 +409,9 @@
+ 	% xrdb \-merge ~/.Xresources
+ .fi
+ .SH SEE ALSO
+-The various Ghostscript document files (above), especially \fBUse.htm\fR.
++The various Ghostscript document files (above), especially \fBUse.htm\fR. 
++On Debian you may need to install ghostscript-doc before
++reading the documentation.
+ .SH BUGS
+ See http://bugs.ghostscript.com/ and the Usenet news group 
+ comp.lang.postscript.

@@ -1,0 +1,70 @@
+Description: Remove non-Debian paths from documentation
+Author: Bastien ROUCARIÈS <roucaries.bastien@gmail.com>
+Last-Update: 2012-07-24
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/man/gs.1
++++ b/man/gs.1
+@@ -2,20 +2,14 @@
+ .SH NAME
+ gs \- Ghostscript (PostScript and PDF language interpreter and previewer)
+ .SH SYNOPSIS
+-\fBgs\fR [ \fIoptions\fR ] [ \fIfiles\fR ] ... \fB(Unix, VMS)\fR
+-.br
+-\fBgswin32c\fR [ \fIoptions\fR ] [ \fIfiles\fR ] ... \fB(MS Windows)\fR
+-.br
+-\fBgswin32\fR [ \fIoptions\fR ] [ \fIfiles\fR ] ... \fB(MS Windows 3.1)\fR
+-.br
+-\fBgsos2\fR [ \fIoptions\fR ] [ \fIfiles\fR ] ... \fB(OS/2)\fR
++\fBgs\fR [ \fIoptions\fR ] [ \fIfiles\fR ] ...
+ .de TQ
+ .br
+ .ns
+ .TP \\$1
+ ..
+ .SH DESCRIPTION
+-The \fBgs\fR (\fBgswin32c\fR, \fBgswin32\fR, \fBgsos2\fR)
++The \fBgs\fR
+ command invokes \fBGhostscript\fR, an interpreter of Adobe Systems'
+ \fBPostScript\fR(tm) and \fBPortable Document Format\fR (PDF) languages.
+ \fBgs\fR reads "files" in sequence and executes them as Ghostscript
+@@ -124,7 +118,7 @@
+ in sequence.  "%d" is a printf format specification; you can also use a
+ variant like "%02d".
+ .PP
+-On Unix and MS Windows systems you can also send output to a pipe.  For example, to
++You can also send output to a pipe.  For example, to
+ pipe output to the "\fBlpr\fR" command (which, on many Unix systems,
+ directs it to a printer), use the option
+ .PP
+@@ -132,9 +126,6 @@
+ 	\-sOutputFile=%pipe%lpr
+ .fi
+ .PP
+-Note that the '%' characters need to be doubled on MS Windows to avoid 
+-mangling by the command interpreter.
+-.PP
+ You can also send output to standard output:
+ .PP
+ .nf
+@@ -317,9 +308,8 @@
+ .PP
+ The locations of many Ghostscript run-time files are compiled into the
+ executable when it is built.  On Unix these are typically based in
+-\fB/usr/local\fR, but this may be different on your system.  Under DOS they
+-are typically based in \fBC:\\GS\fR, but may be elsewhere, especially if
+-you install Ghostscript with \fBGSview\fR.  Run "\fBgs -h\fR" to find the
++\fB/usr/local\fR, but this may be different on your system.
++Run "\fBgs -h\fR" to find the
+ location of Ghostscript documentation on your system, from which you can
+ get more details. On a Debian system they are in \fB/usr\fR.
+ .TP
+@@ -340,7 +330,7 @@
+ the file with the name as given, using the current working directory if no
+ directory is specified.  If this fails, and the file name doesn't specify
+ an explicit directory or drive (for instance, doesn't contain "/" on Unix
+-systems or "\\" on MS Windows systems), Ghostscript tries directories in this
++systems), Ghostscript tries directories in this
+ order:
+ .TP 4
+ 1.

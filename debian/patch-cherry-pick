@@ -1,0 +1,31 @@
+#!/bin/sh
+# Copyright 2018  Jonas Smedegaard <dr@jones.dk>
+# Description: helper script to cherry-pick upstream patches
+#
+# This program is free software;
+# you can redistribute it and/or modify it
+# under the terms of the GNU General Public License
+# as published by the Free Software Foundation;
+# either version 3, or (at your option) any later version.
+
+set -eu
+
+TREEISH=$1
+FORK=${2:-}
+
+#DATEFORMAT='format:%Y%m%d'
+DATEFORMAT='iso-strict'
+
+if [ -n "$FORK" ]; then
+	PREFIX="debian/patches/$FORK/"
+	mkdir -p "debian/patches/$FORK"
+else
+	PREFIX="debian/patches/0"
+fi
+
+export PREFIX
+
+git log --right-only --no-merges \
+	--pretty='%h %ad' --date="$DATEFORMAT" \
+	"$TREEISH" \
+	| perl -ane '`git log -p $F[0]^..$F[0] > $ENV{PREFIX}$F[1]~$F[0].patch`'

@@ -1,0 +1,3 @@
+usr/bin/gs				usr/bin/ghostscript
+usr/bin/ps2ascii			usr/bin/ps2txt
+usr/share/man/man1/gs.1			usr/share/man/man1/ghostscript.1

@@ -1,0 +1,56 @@
+Description: Fix Debian paths in documentation
+Author: Bastien ROUCARIÈS <roucaries.bastien@gmail.com>
+Last-Update: 2012-07-24
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/man/gs.1
++++ b/man/gs.1
+@@ -307,23 +307,23 @@
+ .SH FILES
+ .PP
+ The locations of many Ghostscript run-time files are compiled into the
+-executable when it is built.  On Unix these are typically based in
+-\fB/usr/local\fR, but this may be different on your system.
++executable when it is built.
+ Run "\fBgs -h\fR" to find the
+ location of Ghostscript documentation on your system, from which you can
+ get more details. On a Debian system they are in \fB/usr\fR.
+ .TP
+-.B /usr/share/gs-gpl/#.##/*/*
+-Startup files, utilities, and basic font definitions
++.B /usr/share/ghostscript/[0-9]*.[0.9]*/*
++Startup files, utilities, and basic font definitions (where [0-9]*.[0.9]* is
++the ghostscript version)
+ .TP
+ .B /usr/share/fonts/type1/gsfonts/*
+ More font definitions from the gsfonts package
+ .TP
+-.B /usr/share/doc/gs-gpl/examples/*
+-Ghostscript demonstration files
++.B /usr/share/doc/ghostscript/examples/*
++Ghostscript demonstration files (if ghostscript-doc package is installed)
+ .TP
+-.B /usr/share/doc/gs-gpl/*
+-Diverse document files
++.B /usr/share/doc/ghostscript/*
++Diverse document files (may need to install ghostscript-doc package)
+ .SH "INITIALIZATION FILES"
+ When looking for the initialization files "gs_*.ps", the files related to
+ fonts, or the file for the "run" operator, Ghostscript first tries to open
+@@ -343,11 +343,11 @@
+ .TP
+ 3.
+ the directories specified by the \fBGS_LIB_DEFAULT\fR macro in the
+-Ghostscript makefile when the executable was built.  When \fBgs\fR is built
+-on Unix, \fBGS_LIB_DEFAULT\fR is usually
+-"/usr/local/share/ghostscript/#.##:/usr/local/share/ghostscript/fonts"
+-where "#.##" represents the Ghostscript version number. They are
+-"/usr/share/gs-gpl/#.## on a Debian system".
++Ghostscript makefile when the executable was built.
++\fBGS_LIB_DEFAULT\fR is 
++"/usr/share/ghostscript/[0-9]*.[0-9]*/lib"
++on a Debian system where 
++"[0-9]*.[0-9]*" represents the Ghostscript version number
+ .PP
+ Each of these (\fBGS_LIB_DEFAULT\fR, \fBGS_LIB\fR, and \fB\-I\fR parameter)
+ may be either a single directory or a list of directories separated by

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Copyright 2018  Jonas Smedegaard <dr@jones.dk>
+# Description: helper script to refresh patches
+#
+# This program is free software;
+# you can redistribute it and/or modify it
+# under the terms of the GNU General Public License
+# as published by the Free Software Foundation;
+# either version 3, or (at your option) any later version.
+
+set -e
+
+while [ 0 -eq $? ]; do
+	quilt push && quilt refresh
+done

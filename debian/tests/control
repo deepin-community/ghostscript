@@ -1,0 +1,3 @@
+Test-Command: make -f debian/tests/smoke.mk
+Depends:
+ ghostscript,

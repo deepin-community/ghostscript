@@ -1,0 +1,35 @@
+Description: add some relevant flags to the cups compilation
+ Specifically: HAVE_STRLCAT, HAVE_STRLCPY, HAVE_SNPRINTF, HAVE_VSNPRINTF
+
+ In the hope it might resolve
+ the strange and unpredictable compilation failures
+ on the 32 bit cluster auto tests.
+Origin: upstream, https://git.ghostscript.com/?p=ghostpdl.git;h=15f9f3f
+Author: Chris Liddell <chris.liddell@artifex.com>
+Last-Update: 2021-18-07
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/base/lcups.mak
++++ b/base/lcups.mak
+@@ -30,7 +30,7 @@
+ 
+ # NB: we can't use the normal $(CC_) here because msvccmd.mak
+ # adds /Za which conflicts with the cups source.
+-LCUPS_CC=$(CUPS_CC) $(I_)$(LIBCUPSSRC) $(I_)$(LIBCUPSGEN)$(D)cups $(I_)$(LCUPSSRCDIR)$(D)libs
++LCUPS_CC=$(CUPS_CC) $(CUPSCFLAGS) $(I_)$(LIBCUPSSRC) $(I_)$(LIBCUPSGEN)$(D)cups $(I_)$(LCUPSSRCDIR)$(D)libs
+ 
+ # Define the name of this makefile.
+ LCUPS_MAK=$(GLSRC)lcups.mak $(TOP_MAKEFILES)
+--- a/configure.ac
++++ b/configure.ac
+@@ -1882,6 +1882,10 @@
+             AC_MSG_WARN([USING LOCAL CUPS SOURCE])
+             SHARELCUPS=0
+             SHARELCUPSI=0
++            AC_CHECK_FUNCS([strlcat], [CUPSCFLAGS="$CUPSCFLAGS -DHAVE_STRLCAT=1"], [])
++            AC_CHECK_FUNCS([strlcpy], [CUPSCFLAGS="$CUPSCFLAGS -DHAVE_STRLCPY=1"], [])
++            AC_CHECK_FUNCS([snprintf], [CUPSCFLAGS="$CUPSCFLAGS -DHAVE_SNPRINTF=1"], [])
++            AC_CHECK_FUNCS([vsnprintf], [CUPSCFLAGS="$CUPSCFLAGS -DHAVE_VSNPRINTF=1"], [])
+             LCUPSBUILDTYPE=linux
+             LCUPSINCLUDE="include \$(GLSRCDIR)/lcups.mak"
+             LCUPSIINCLUDE="include \$(GLSRCDIR)/lcupsi.mak"

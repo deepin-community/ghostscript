@@ -1,0 +1,77 @@
+Description: work with latest Extract library
+Origin: upstream, https://git.ghostscript.com/?p=ghostpdl.git;h=d992855
+Author: Julian Smith <julian.smith@artifex.com>
+Last-Update: 2021-18-07
+---
+This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
+--- a/devices/extract.mak
++++ b/devices/extract.mak
+@@ -25,9 +25,21 @@
+ $(extract_out_prefix)mem.$(OBJ):            $(EXTRACT_DIR)/src/mem.c
+ 	$(extract_cc)$@ $(C_) $(EXTRACT_DIR)/src/mem.c
+ 
++$(extract_out_prefix)odt.$(OBJ):            $(EXTRACT_DIR)/src/odt.c
++	$(extract_cc)$@ $(C_) $(EXTRACT_DIR)/src/odt.c
++
++$(extract_out_prefix)odt_template.$(OBJ):   $(EXTRACT_DIR)/src/odt_template.c
++	$(extract_cc)$@ $(C_) $(EXTRACT_DIR)/src/odt_template.c
++
+ $(extract_out_prefix)outf.$(OBJ):           $(EXTRACT_DIR)/src/outf.c
+ 	$(extract_cc)$@ $(C_) $(EXTRACT_DIR)/src/outf.c
+ 
++$(extract_out_prefix)sys.$(OBJ):           $(EXTRACT_DIR)/src/sys.c
++	$(extract_cc)$@ $(C_) $(EXTRACT_DIR)/src/sys.c
++
++$(extract_out_prefix)text.$(OBJ):           $(EXTRACT_DIR)/src/text.c
++	$(extract_cc)$@ $(C_) $(EXTRACT_DIR)/src/text.c
++
+ $(extract_out_prefix)xml.$(OBJ):            $(EXTRACT_DIR)/src/xml.c
+ 	$(extract_cc)$@ $(C_) $(EXTRACT_DIR)/src/xml.c
+ 
+@@ -43,6 +55,10 @@
+ 	$(extract_out_prefix)extract.$(OBJ) \
+ 	$(extract_out_prefix)join.$(OBJ) \
+ 	$(extract_out_prefix)mem.$(OBJ) \
++	$(extract_out_prefix)odt.$(OBJ) \
++	$(extract_out_prefix)odt_template.$(OBJ) \
+ 	$(extract_out_prefix)outf.$(OBJ) \
++	$(extract_out_prefix)sys.$(OBJ) \
++	$(extract_out_prefix)text.$(OBJ) \
+ 	$(extract_out_prefix)xml.$(OBJ) \
+ 	$(extract_out_prefix)zip.$(OBJ) \
+--- a/devices/vector/gdevdocxw.c
++++ b/devices/vector/gdevdocxw.c
+@@ -314,7 +314,7 @@
+     }
+     extract_alloc_exp_min(tdev->alloc, 64);
+ 
+-    if (extract_begin(tdev->alloc, &tdev->extract)) {
++    if (extract_begin(tdev->alloc, extract_format_DOCX, &tdev->extract)) {
+         code = s_errno_to_gs();
+         goto end;
+     }
+@@ -423,7 +423,7 @@
+     if (tdev->file_per_page) {
+         /* Create a new extract_t for the next page. */
+         extract_end(&tdev->extract);
+-        if (extract_begin(tdev->alloc, &tdev->extract)) {
++        if (extract_begin(tdev->alloc, extract_format_DOCX, &tdev->extract)) {
+             code = s_errno_to_gs();
+             goto end;
+         }
+--- a/windows/ghostscript.vcxproj
++++ b/windows/ghostscript.vcxproj
+@@ -1626,9 +1626,13 @@
+     <ClCompile Include="..\extract\src\extract.c" />
+     <ClCompile Include="..\extract\src\join.c" />
+     <ClCompile Include="..\extract\src\mem.c" />
++    <ClCompile Include="..\extract\src\odt.c" />
++    <ClCompile Include="..\extract\src\odt_template.c" />
+     <ClCompile Include="..\extract\src\memento.c" />
+     <ClCompile Include="..\extract\src\misc-test.c" />
+     <ClCompile Include="..\extract\src\outf.c" />
++    <ClCompile Include="..\extract\src\sys.c" />
++    <ClCompile Include="..\extract\src\text.c" />
+     <ClCompile Include="..\extract\src\xml.c" />
+     <ClCompile Include="..\extract\src\zip-test.c" />
+     <ClCompile Include="..\extract\src\zip.c" />
