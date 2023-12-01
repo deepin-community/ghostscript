@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -126,6 +126,7 @@ gs_cspace_new_DeviceN(
     pcsdevn->num_process_names = 0;
     pcsdevn->process_names = NULL;
     pcsdevn->mem = pmem->non_gc_memory;
+    pcsdevn->all_none = false;
 
     /* Allocate space for color names list. */
     code = alloc_device_n_map(&pcsdevn->map, pmem, "gs_cspace_build_DeviceN");
@@ -201,6 +202,31 @@ gs_attachcolorant(char *sep_name, gs_gstate * pgs)
     /* Link our new attribute color space to the DeviceN color space */
     patt->next = pdevncs->params.device_n.colorants;
     pdevncs->params.device_n.colorants = patt;
+
+    return 0;
+}
+
+int
+gs_attach_colorant_to_space(char *sep_name, gs_color_space *pcs, gs_color_space *colorant_space, gs_memory_t *mem)
+{
+    gs_device_n_colorant * patt;
+
+    if (pcs->type != &gs_color_space_type_DeviceN)
+        return_error(gs_error_rangecheck);
+
+    /* Allocate an attribute list element for our linked list of colorants */
+    rc_alloc_struct_1(patt, gs_device_n_colorant, &st_device_n_colorant,
+                        mem, return_error(gs_error_VMerror),
+                        "gs_attachattributrescolorspace");
+
+    /* Point our attribute list entry to the attribute color space */
+    patt->colorant_name = sep_name;
+    patt->cspace = colorant_space;
+    rc_increment_cs(patt->cspace);
+
+    /* Link our new attribute color space to the DeviceN color space */
+    patt->next = pcs->params.device_n.colorants;
+    pcs->params.device_n.colorants = patt;
 
     return 0;
 }
@@ -552,11 +578,20 @@ check_DeviceN_component_names(const gs_color_space * pcs, gs_gstate * pgs)
         = &pgs->color_component_map;
     gx_device * dev = pgs->device;
     bool non_match = false;
+    int none_count = 0;
 
     pcolor_component_map->num_components = num_comp;
     pcolor_component_map->cspace_id = pcs->id;
     pcolor_component_map->num_colorants = dev->color_info.num_components;
     pcolor_component_map->sep_type = SEP_OTHER;
+
+    /* If the named color profile supports the components, don't use
+       the alternate tint transform. */
+    if (gsicc_support_named_color(pcs, pgs)) {
+        pcolor_component_map->use_alt_cspace = false;
+        return 0;
+    }
+
     /*
      * Always use the alternate color space if the current device is
      * using an additive color model. The exception is if we have a separation
@@ -577,7 +612,6 @@ check_DeviceN_component_names(const gs_color_space * pcs, gs_gstate * pgs)
      * additive color space then use the alternate tint transform.
      */
 
-    non_match = false;
     for(i = 0; i < num_comp; i++ ) {
         /*
          * Get the character string and length for the component name.
@@ -610,10 +644,15 @@ check_DeviceN_component_names(const gs_color_space * pcs, gs_gstate * pgs)
                    pcolor_component_map->color_map[i] = -1 and watching
                    for this case later during the remap operation. */
                 pcolor_component_map->color_map[i] = -1;
+                none_count++;
             }
         }
     }
     pcolor_component_map->use_alt_cspace = non_match;
+
+    if (none_count == num_comp)
+        return 1;
+
     return 0;
 }
 
@@ -674,6 +713,10 @@ gx_install_DeviceN(gs_color_space * pcs, gs_gstate * pgs)
     if (code < 0)
        return code;
 
+    /* Indicates all colorants are /None */
+    if (code > 0)
+        pcs->params.device_n.all_none = true;
+
     if (pgs->icc_manager->device_named != NULL) {
         pcs->params.device_n.named_color_supported =
             gsicc_support_named_color(pcs, pgs);
@@ -715,7 +758,7 @@ gx_install_DeviceN(gs_color_space * pcs, gs_gstate * pgs)
     if (code >= 0) {
         if (dev_proc(pgs->device, update_spot_equivalent_colors))
             code = dev_proc(pgs->device, update_spot_equivalent_colors)
-                                                        (pgs->device, pgs);
+                                                        (pgs->device, pgs, pcs);
     }
     return code;
 }
@@ -742,17 +785,16 @@ gx_set_overprint_DeviceN(const gs_color_space * pcs, gs_gstate * pgs)
         else
             return gx_set_no_overprint(pgs);
     } else {
-        gs_overprint_params_t   params;
-
+        gs_overprint_params_t   params = { 0 };
 
         params.retain_any_comps = (pgs->overprint && pgs->is_fill_color) ||
                                   (pgs->stroke_overprint && !pgs->is_fill_color);
 
+        params.drawn_comps = 0;
         if (params.retain_any_comps) {
             int     i, ncomps = pcs->params.device_n.num_components;
 
             params.is_fill_color = pgs->is_fill_color;	/* for fill_stroke */
-            params.drawn_comps = 0;
             for (i = 0; i < ncomps; i++) {
                 int mcomp = pcmap->color_map[i];
                 if (mcomp >= 0)
@@ -770,7 +812,7 @@ gx_set_overprint_DeviceN(const gs_color_space * pcs, gs_gstate * pgs)
 
 /* Finalize contents of a DeviceN color space. */
 static void
-gx_final_DeviceN(const gs_color_space * pcs)
+gx_final_DeviceN(gs_color_space * pcs)
 {
     gs_device_n_colorant * pnextatt, * patt = pcs->params.device_n.colorants;
     uint num_proc_names = pcs->params.device_n.num_process_names;
@@ -797,6 +839,10 @@ gx_final_DeviceN(const gs_color_space * pcs)
         rc_decrement(patt, "gx_adjust_DeviceN");
         patt = pnextatt;
     }
+    if (pcs->params.device_n.devn_process_space)
+        rc_decrement_only(pcs->params.device_n.devn_process_space, "gx_final_DeviceN");
+    /* Ensure idempotency */
+    memset(&pcs->params.device_n, 0, sizeof(pcs->params.device_n));
 }
 
 /* ---------------- Serialization. -------------------------------- */

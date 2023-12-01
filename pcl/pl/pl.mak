@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2022 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -278,7 +278,7 @@ $(PLOBJ)pllfont.$(OBJ): $(PLSRC)pllfont.c $(pllfont_h) $(AK)\
         $(gxfapi_h) $(plufstlp_h) $(plvocab_h) $(PL_MAK) $(MAKEDIRS)
 	$(PLCCC) $(PLSRC)pllfont.c $(PLO_)pllfont.$(OBJ)
 
-$(PLOBJ)plapi.$(OBJ): $(PLSRC)plapi.c $(plmain_h) $(plapi_h)\
+$(PLOBJ)plapi.$(OBJ): $(PLSRC)plapi.c $(plmain_h) $(plapi_h) $(stream_h)\
 	$(gsmchunk_h) $(gsmalloc_h) $(gserrors_h) $(gsexit_h)\
          $(PL_MAK) $(MAKEDIRS)
 	$(PLCCC) $(PLSRC)plapi.c $(PLO_)plapi.$(OBJ)
@@ -353,7 +353,7 @@ $(PLOBJ)plmain.$(OBJ): $(PLSRC)plmain.c $(AK) $(std_h) $(ctype__h) $(string__h)\
  $(plmain_h) $(pltop_h) $(stream_h) $(strmio_h) $(gsargs_h) $(dwtrace_h) $(vdtrace_h)\
  $(gxclpage_h) $(gdevprn_h) $(gxiodev_h) $(assert__h) $(gserrors_h)\
  $(PL_MAK) $(MAKEDIRS)
-	$(PLCCC) $(PLSRC)plmain.c $(PLO_)plmain.$(OBJ)
+	$(PLCCC) $(D_)PJLVERSION=$(PJLVERSION)$(_D) $(PLSRC)plmain.c $(PLO_)plmain.$(OBJ)
 
 # Real top level; provides main that just calls pl_main
 # On Windows this also sets up the display device so that we
@@ -375,7 +375,7 @@ $(PLOBJ)plwreg.$(OBJ): $(PLSRC)plwreg.c $(PL_MAK) $(MAKEDIRS)
 WINPLOBJS=$(PLOBJ)plwimg.$(OBJ) $(PLOBJ)plwreg.$(OBJ)
 WINMAINOBJ=$(PLOBJ)plwmainc.$(OBJ)
 WINMAINOBJS=$(WINMAINOBJ) $(WINPLOBJS)
-DWMAINOBJS=$(WINMAINOBJS) $(GLOBJ)gscdefs.obj $(GLOBJ)gp_wgetv.obj $(GLOBJ)gp_wutf8.obj
+DWMAINOBJS=$(WINMAINOBJS) $(GLOBJ)gscdefs.obj $(GLOBJ)gp_wgetv.obj $(GLOBJ)gp_utf8.obj
 
 $(PLOBJ)plimpl.$(OBJ):  $(PLSRC)plimpl.c            \
                         $(AK)                       \

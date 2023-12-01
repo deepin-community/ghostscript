@@ -1,9 +1,13 @@
 #! /usr/bin/env python3
 
 '''
-Python version of the C API in psi/iapi.h, using ctypes.
+Python version of the C API in psi/iapi.h.
+
+Copyright (C) 2001-2023 Artifex Software, Inc.
 
 Overview:
+
+    Implemented using Python's ctypes module.
 
     All functions have the same name as the C function that they wrap.
 
@@ -15,12 +19,38 @@ Overview:
 
     See examples.py for sample usage.
 
-Usage:
+Example usage:
 
-    make sodebug
-    LD_LIBRARY_PATH=sodebugbin ./demos/python/gsapi.py
+    On Linux/OpenBSD/MacOS:
+        Build the ghostscript shared library:
+            make sodebug
 
-    On Windows perform Release build (x64 or Win32).
+        Run gsapi.py as a test script:
+            GSAPI_LIBDIR=sodebugbin ./demos/python/gsapi.py
+
+    On Windows:
+        Build ghostscript dll, for example:
+            devenv.com windows/GhostPDL.sln /Build Debug /Project ghostscript
+
+        Run gsapi.py as a test script in a cmd.exe window:
+            set GSAPI_LIBDIR=debugbin&& python ./demos/python/gsapi.py
+
+        Run gsapi.py as a test script in a PowerShell window:
+            cmd /C "set GSAPI_LIBDIR=debugbin&& python ./demos/python/gsapi.py"
+
+Specifying the Ghostscript shared library:
+
+    Two environmental variables can be used to specify where to find the
+    Ghostscript shared library.
+
+    GSAPI_LIB sets the exact path of the ghostscript shared library, else
+    GSAPI_LIBDIR sets the directory containing the ghostscript shared
+    library. If neither is defined we will use the OS's default location(s) for
+    shared libraries.
+
+    If GSAPI_LIB is not defined, the leafname of the shared library is inferred
+    from the OS type - libgs.so on Unix, libgs.dylib on MacOS, gsdll64.dll on
+    Windows 64.
 
 Requirements:
 
@@ -43,23 +73,36 @@ Limitations as of 2020-07-21:
 '''
 
 import ctypes
+import os
 import platform
 import sys
 
 
-if platform.system() in ('Linux', 'OpenBSD'):
-    _libgs = ctypes.CDLL('libgs.so')
-
-elif platform.system() == 'Windows':
-    if sys.maxsize == 2**31 - 1:
-        _libgs = ctypes.CDLL('../../bin/gpdldll32.dll')
-    elif sys.maxsize == 2**63 - 1:
-        _libgs = ctypes.CDLL('../../bin/gpdldll64.dll')
+_lib = os.environ.get('GSAPI_LIB')
+if not _lib:
+    if platform.system() in ('Linux', 'OpenBSD'):
+        _lib = 'libgs.so'
+    elif platform.system() == 'Darwin':
+        _lib = 'libgs.dylib'
+    elif platform.system() == 'Windows':
+        if sys.maxsize == 2**31 - 1:
+            _lib = 'gsdll32.dll'
+        elif sys.maxsize == 2**63 - 1:
+            _lib = 'gsdll64.dll'
+        else:
+            raise Exception('Unrecognised sys.maxsize=0x%x' % sys.maxsize)
     else:
-        raise Exception('Unrecognised sys.maxsize=0x%x' % sys.maxsize)
+        raise Exception('Unrecognised platform.system()=%s' % platform.system())
 
-else:
-    raise Exception('Unrecognised platform.system()=%s' % platform.system())
+    _libdir = os.environ.get('GSAPI_LIBDIR')
+    if _libdir:
+        _lib = os.path.join(_libdir, _lib)
+
+try:
+    _libgs = ctypes.CDLL(_lib)
+except Exception as e:
+    print('gsapi.py: Failed to load Ghostscript library "%s".' % _lib)
+    raise
 
 
 class GSError(Exception):
@@ -90,7 +133,7 @@ class gsapi_revision_t:
 
 def gsapi_revision():
     '''
-    Returns (e, r) where <r> is a gsapi_revision_t.
+    Returns a gsapi_revision_t.
     '''
     # [unicode: we assume that underlying gsapi_revision() returns utf-8
     # strings.]
@@ -107,9 +150,14 @@ def gsapi_revision():
     return r
 
 
-def gsapi_new_instance(caller_handle):
+def gsapi_new_instance(caller_handle=None):
     '''
-    Returns (e, instance).
+    Returns an <instance> to be used with other gsapi_*() functions.
+
+    caller_handle:
+        Typically unused, but is passed to callbacks e.g. via
+        gsapi_set_stdio(). Must be convertible to a C void*, so None or an
+        integer is ok but other types such as strings will fail.
     '''
     instance = ctypes.c_void_p()
     e = _libgs.gsapi_new_instance(
@@ -130,8 +178,11 @@ def gsapi_delete_instance(instance):
 def gsapi_set_stdio(instance, stdin_fn, stdout_fn, stderr_fn):
     '''
     stdin_fn:
-        If not None, will be called with (caller_handle, text, len_)
-        where <text> is a ctypes.LP_c_char of length <len_>.
+        If not None, will be called with (caller_handle, text, len_):
+            caller_handle:
+                As passed originally to gsapi_new_instance().
+            text:
+                A ctypes.LP_c_char of length <len_>.
 
         [todo: wrap this to be easier to use from Python?]
 
@@ -173,6 +224,12 @@ def gsapi_set_stdio(instance, stdin_fn, stdout_fn, stderr_fn):
 
 
 def gsapi_set_poll(instance, poll_fn):
+    '''
+    poll_fn:
+        Will be called with (caller_handle) where <caller_handle> is as passed
+        to gsapi_new_instance().
+    Not tested.
+    '''
     poll_fn2 = _poll_fn(poll_fn)
     e = _libgs.gsapi_set_poll(instance, poll_fn2)
     if e < 0:
@@ -215,6 +272,10 @@ class display_callback:
 
 
 def gsapi_set_display_callback(instance, callback):
+    '''
+    callback:
+        Must be a <display_callback> instance.
+    '''
     assert isinstance(callback, display_callback)
     callback2 = _display_callback()
     callback2.size = ctypes.sizeof(callback2)
@@ -235,6 +296,10 @@ def gsapi_set_display_callback(instance, callback):
 
 
 def gsapi_set_default_device_list(instance, list_):
+    '''
+    list_:
+        Must be a string.
+    '''
     # [unicode: we assume that underlying gsapi_set_default_device_list() is
     # expecting list_ to be in utf-8 encoding.]
     assert isinstance(list_, str)
@@ -246,7 +311,7 @@ def gsapi_set_default_device_list(instance, list_):
 
 def gsapi_get_default_device_list(instance):
     '''
-    Returns (e, list) where <list> is a string.
+    Returns a string.
     '''
     # [unicode: we assume underlying gsapi_get_default_device_list() returns
     # strings encoded as latin-1.]
@@ -268,11 +333,19 @@ GS_ARG_ENCODING_UTF16LE = 2
 
 
 def gsapi_set_arg_encoding(instance, encoding):
+    '''
+    encoding:
+        Must be one of:
+            GS_ARG_ENCODING_LOCAL
+            GS_ARG_ENCODING_UTF8
+            GS_ARG_ENCODING_UTF16LE
+    '''
     assert encoding in (
             GS_ARG_ENCODING_LOCAL,
             GS_ARG_ENCODING_UTF8,
             GS_ARG_ENCODING_UTF16LE,
             )
+    global _encoding
     e = _libgs.gsapi_set_arg_encoding(instance, encoding)
     if e < 0:
         raise GSError(e)
@@ -286,6 +359,10 @@ def gsapi_set_arg_encoding(instance, encoding):
 
 
 def gsapi_init_with_args(instance, args):
+    '''
+    args:
+        A list/tuple of strings.
+    '''
     # [unicode: we assume that underlying gsapi_init_with_args()
     # expects strings in args[] to be encoded in encoding set by
     # gsapi_set_arg_encoding().]
@@ -303,9 +380,9 @@ def gsapi_init_with_args(instance, args):
         raise GSError(e)
 
 
-def gsapi_run_string_begin(instance, user_errors):
+def gsapi_run_string_begin(instance, user_errors=0):
     '''
-    Returns (e, exit_code).
+    Returns <exit_code>.
     '''
     pexit_code = ctypes.c_int()
     e = _libgs.gsapi_run_string_begin(instance, user_errors, ctypes.byref(pexit_code))
@@ -314,14 +391,14 @@ def gsapi_run_string_begin(instance, user_errors):
     return pexit_code.value
 
 
-def gsapi_run_string_continue(instance, str_, user_errors):
+def gsapi_run_string_continue(instance, str_, user_errors=0):
     '''
     <str_> should be either a python string or a bytes object. If the former,
     it is converted into a bytes object using utf-8 encoding.
 
     We don't raise exception for gs_error_NeedInput.
 
-    Returns exit_code.
+    Returns <exit_code>.
     '''
     if isinstance(str_, str):
         str_ = str_.encode('utf-8')
@@ -342,9 +419,9 @@ def gsapi_run_string_continue(instance, str_, user_errors):
     return pexit_code.value
 
 
-def gsapi_run_string_end(instance, user_errors):
+def gsapi_run_string_end(instance, user_errors=0):
     '''
-    Returns (e, exit_code).
+    Returns <exit_code>.
     '''
     pexit_code = ctypes.c_int()
     e = _libgs.gsapi_run_string_end(
@@ -357,24 +434,22 @@ def gsapi_run_string_end(instance, user_errors):
     return pexit_code.value
 
 
-def gsapi_run_string_with_length(instance, str_, length, user_errors):
+def gsapi_run_string_with_length(instance, str_, length, user_errors=0):
     '''
     <str_> should be either a python string or a bytes object. If the former,
     it is converted into a bytes object using utf-8 encoding.
 
-    Returns (e, exit_code).
+    Returns <exit_code>.
     '''
-    e = gsapi_run_string(instance, str_[:length], user_errors)
-    if e < 0:
-        raise GSError(e)
+    return gsapi_run_string(instance, str_[:length], user_errors=0)
 
 
-def gsapi_run_string(instance, str_, user_errors):
+def gsapi_run_string(instance, str_, user_errors=0):
     '''
     <str_> should be either a python string or a bytes object. If the former,
     it is converted into a bytes object using utf-8 encoding.
 
-    Returns (e, exit_code).
+    Returns <exit_code>.
     '''
     if isinstance(str_, str):
         str_ = str_.encode('utf-8')
@@ -393,9 +468,9 @@ def gsapi_run_string(instance, str_, user_errors):
     return pexit_code.value
 
 
-def gsapi_run_file(instance, filename, user_errors):
+def gsapi_run_file(instance, filename, user_errors=0):
     '''
-    Returns (e, exit_code).
+    Returns <exit_code>.
     '''
     # [unicode: we assume that underlying gsapi_run_file() expects <filename>
     # to be encoded in encoding set by gsapi_set_arg_encoding().]
@@ -486,8 +561,7 @@ def gsapi_set_param(instance, param, value, type_=None):
 
     if type_ is None:
         # Choose a gs_spt_* that matches the Python type of <value>.
-        if 0: pass
-        elif value is None:
+        if value is None:
             type_ = gs_spt_null
         elif isinstance(value, bool):
             type_ = gs_spt_bool
@@ -517,8 +591,7 @@ def gsapi_set_param(instance, param, value, type_=None):
     else:
         # Bool/int/float.
         type2 = None
-        if 0: pass
-        elif type_ == gs_spt_bool:
+        if type_ == gs_spt_bool:
             type2 = ctypes.c_int
         elif type_ == gs_spt_int:
             type2 = ctypes.c_int
@@ -905,7 +978,7 @@ if 0:
     #   gsapi_add_fs()
     #   gsapi_remove_fs()
     #
-    class gsapi_fs_t(ctypes.Structure):
+    class gsapi_fs_t(ctypes.Structure): # lgtm [py/unreachable-statement]
         _fields_ = [
                 ('open_file',
                         ctypes.CFUNCTYPE(ctypes.c_int,
@@ -930,7 +1003,7 @@ if __name__ == '__main__':
     revision  = gsapi_revision()
     print('libgs.gsapi_revision() ok: %s' % revision)
 
-    instance = gsapi_new_instance(1)
+    instance = gsapi_new_instance()
     print('gsapi_new_instance() ok: %s' % instance)
 
     gsapi_set_arg_encoding(instance, GS_ARG_ENCODING_UTF8)
@@ -1032,7 +1105,6 @@ if __name__ == '__main__':
         pass
     else:
         assert 0
-    if 0: assert gsapi_get_param(instance, "foo") is None
 
     # Enumerate all params and print name/value.
     print('gsapi_enumerate_params():')

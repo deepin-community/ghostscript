@@ -107,14 +107,15 @@ gx_color_index
 gx_device_black(gx_device *dev)
 {
     if (dev->cached_colors.black == gx_no_color_index) {
-        subclass_color_mappings scm;
         uchar i, ncomps = dev->color_info.num_components;
         frac cm_comps[GX_DEVICE_COLOR_MAX_COMPONENTS];
         gx_color_value cv[GX_DEVICE_COLOR_MAX_COMPONENTS];
+        const gx_device *cmdev;
+        const gx_cm_color_map_procs *cmprocs;
 
-        scm = get_color_mapping_procs_subclass(dev);
+        cmprocs = dev_proc(dev, get_color_mapping_procs)(dev, &cmdev);
         /* Get color components for black (gray = 0) */
-        map_gray_subclass(scm, frac_0, cm_comps);
+        cmprocs->map_gray(cmdev, frac_0, cm_comps);
 
         for (i = 0; i < ncomps; i++)
             cv[i] = frac2cv(cm_comps[i]);
@@ -127,14 +128,15 @@ gx_color_index
 gx_device_white(gx_device *dev)
 {
     if (dev->cached_colors.white == gx_no_color_index) {
-        subclass_color_mappings scm;
         uchar i, ncomps = dev->color_info.num_components;
         frac cm_comps[GX_DEVICE_COLOR_MAX_COMPONENTS];
         gx_color_value cv[GX_DEVICE_COLOR_MAX_COMPONENTS];
+        const gx_device *cmdev;
+        const gx_cm_color_map_procs *cmprocs;
 
-        scm = get_color_mapping_procs_subclass(dev);
+        cmprocs = dev_proc(dev, get_color_mapping_procs)(dev, &cmdev);
         /* Get color components for white (gray = 1) */
-        map_gray_subclass(scm, frac_1, cm_comps);
+        cmprocs->map_gray(cmdev, frac_1, cm_comps);
 
         for (i = 0; i < ncomps; i++)
             cv[i] = frac2cv(cm_comps[i]);
@@ -316,13 +318,15 @@ gx_dc_no_write(
 static int
 gx_dc_no_read(
     gx_device_color *       pdevc,
-    const gs_gstate        * pgs,                /* ignored */
+    const gs_gstate       * pgs,                /* ignored */
     const gx_device_color * prior_devc,         /* ignored */
     const gx_device *       dev,                /* ignored */
     int64_t		    offset,             /* ignored */
     const byte *            pdata,              /* ignored */
     uint                    size,               /* ignored */
-    gs_memory_t *           mem )               /* ignored */
+    gs_memory_t *           mem,                /* ignored */
+    int                     x0,                 /* ignored */
+    int                     y0)                 /* ignored */
 {
     pdevc->type = gx_dc_type_none;
     return 0;
@@ -343,13 +347,15 @@ gx_dc_cannot_write(
 int
 gx_dc_cannot_read(
     gx_device_color *       pdevc,
-    const gs_gstate  *       pgs,                /* ignored */
+    const gs_gstate *       pgs,                /* ignored */
     const gx_device_color * prior_devc,         /* ignored */
     const gx_device *       dev,                /* ignored */
     int64_t		    offset,             /* ignored */
     const byte *            pdata,              /* ignored */
     uint                    size,               /* ignored */
-    gs_memory_t *           mem )               /* ignored */
+    gs_memory_t *           mem,                /* ignored */
+    int                     x0,                 /* ignored */
+    int                     y0)                 /* ignored */
 {
     return_error(gs_error_unknownerror);
 }
@@ -399,13 +405,15 @@ gx_dc_null_equal(const gx_device_color * pdevc1, const gx_device_color * pdevc2)
 static int
 gx_dc_null_read(
     gx_device_color *       pdevc,
-    const gs_gstate  *       pgs,                /* ignored */
+    const gs_gstate *       pgs,                /* ignored */
     const gx_device_color * prior_devc,         /* ignored */
     const gx_device *       dev,                /* ignored */
     int64_t		    offset,             /* ignored */
     const byte *            pdata,              /* ignored */
     uint                    size,               /* ignored */
-    gs_memory_t *           mem )               /* ignored */
+    gs_memory_t *           mem,                /* ignored */
+    int                     x0,                 /* ignored */
+    int                     y0)                 /* ignored */
 {
     pdevc->type = gx_dc_type_null;
     return 0;
@@ -563,14 +571,20 @@ gx_devn_write_color(
     uchar ncomps = cdev->clist_color_info.num_components; /* Could be different than target if 1.4 device */
     gx_color_index  mask = 0x1, comp_bits = 0;
 
+    if_debug1m(gs_debug_flag_clist_color, dev->memory,
+        "[clist_color] Writing devn color, %d components [ ", ncomps);
+
     /* First find the number of non zero values */
     for (i = 0; i < ncomps; i++, mask <<= 1) {
+        if_debug1m(gs_debug_flag_clist_color, dev->memory,
+            "%d ", pdevc->colors.devn.values[i]);
         if (pdevc->colors.devn.values[i] != 0) {
             comp_bits |= mask;
             count++;
         }
     }
     mask = comp_bits;
+    if_debug0m(gs_debug_flag_clist_color, dev->memory, "]\n");
 
     num_bytes1 = sizeof(gx_color_index);
     num_bytes = num_bytes1 + count * 2 + 1; /* One for the tag byte */
@@ -706,6 +720,9 @@ gx_devn_read_color(
     pos++;
     num_bytes++;
 
+    if_debug1m(gs_debug_flag_clist_color, dev->memory,
+        "[clist_color] Reading devn color, %d components [ ", ncomps);
+
     /* Now the data */
     for (i = 0; i < ncomps; i++) {
         if (mask & 1) {
@@ -717,8 +734,11 @@ gx_devn_read_color(
         } else {
             values[i] = 0;
         }
+        if_debug1m(gs_debug_flag_clist_color, dev->memory,
+            "%d ", values[i]);
         mask >>= 1;
     }
+    if_debug0m(gs_debug_flag_clist_color, dev->memory, "]\n");
     return num_bytes;
 }
 
@@ -754,13 +774,15 @@ gx_devn_read_color(
 static int
 gx_dc_devn_read(
     gx_device_color *       pdevc,
-    const gs_gstate  *       pgs,                /* ignored */
+    const gs_gstate *       pgs,                /* ignored */
     const gx_device_color * prior_devc,         /* ignored */
     const gx_device *       dev,
     int64_t                 offset,             /* ignored */
     const byte *            pdata,
     uint                    size,
-    gs_memory_t *           mem )               /* ignored */
+    gs_memory_t *           mem,                /* ignored */
+    int                     x0,                 /* ignored */
+    int                     y0)                 /* ignored */
 {
     pdevc->type = gx_dc_type_devn;
     return gx_devn_read_color(&(pdevc->colors.devn.values[0]), &(pdevc->tag),
@@ -826,13 +848,7 @@ gx_dc_pure_fill_rectangle(const gx_device_color * pdevc, int x, int y,
         colors[0] = colors[1] = pdevc->colors.pure;
         if (source == NULL)
             set_rop_no_source(source, no_source, dev);
-        if (source->planar_height == 0)
-            return (*dev_proc(dev, strip_copy_rop))
-                (dev, source->sdata, source->sourcex, source->sraster,
-                 source->id, (source->use_scolors ? source->scolors : NULL),
-                 NULL /*arbitrary */ , colors, x, y, w, h, 0, 0, lop);
-        else
-            return (*dev_proc(dev, strip_copy_rop2))
+        return (*dev_proc(dev, strip_copy_rop2))
                 (dev, source->sdata, source->sourcex, source->sraster,
                  source->id, (source->use_scolors ? source->scolors : NULL),
                  NULL /*arbitrary */ , colors, x, y, w, h, 0, 0, lop, source->planar_height);
@@ -874,10 +890,10 @@ gx_dc_pure_fill_masked(const gx_device_color * pdevc, const byte * data,
         if (!rop3_uses_S(lop))
             lop |= rop3_S;
 
-        return (*dev_proc(dev, strip_copy_rop))
+        return (*dev_proc(dev, strip_copy_rop2))
             (dev, data, data_x, raster, id, scolors,
              NULL, tcolors, x, y, w, h, 0, 0,
-             lop_sanitize(lop | lop_S_transparent));
+             lop_sanitize(lop | lop_S_transparent), 0);
     }
 }
 
@@ -969,13 +985,15 @@ gx_dc_pure_write(
 static int
 gx_dc_pure_read(
     gx_device_color *       pdevc,
-    const gs_gstate        * pgs,                /* ignored */
+    const gs_gstate       * pgs,                /* ignored */
     const gx_device_color * prior_devc,         /* ignored */
     const gx_device *       dev,
     int64_t		    offset,             /* ignored */
     const byte *            pdata,
     uint                    size,
-    gs_memory_t *           mem )               /* ignored */
+    gs_memory_t *           mem,                /* ignored */
+    int                     x0,                 /* ignored */
+    int                     y0)                 /* ignored */
 {
     pdevc->type = gx_dc_type_pure;
     return gx_dc_read_color(&pdevc->colors.pure, dev, pdata, size);
@@ -1018,7 +1036,6 @@ gx_complete_halftone(gx_device_color *pdevc, int num_comps, gx_device_halftone *
     pdevc->type = gx_dc_type_ht_colored;
     pdevc->colors.colored.c_ht = pdht;
     pdevc->colors.colored.num_components = num_comps;
-    pdevc->colors.colored.alpha = max_ushort;
     for (i = 0; i < num_comps; i++)
         mask |= ((pdevc->colors.colored.c_level[i] != 0 ? 1 : 0) << i);
     pdevc->colors.colored.plane_mask = mask;
@@ -1146,8 +1163,11 @@ gx_dc_write_color(
 
     /* check for adequate space */
     if (*psize < num_bytes) {
+        uint x = *psize;
         *psize = num_bytes;
-        return_error(gs_error_rangecheck);
+        if (x != 0)
+            return_error(gs_error_rangecheck);
+        return gs_error_rangecheck;
     }
     *psize = num_bytes;
 

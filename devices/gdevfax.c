@@ -27,13 +27,19 @@ static dev_proc_print_page(faxg4_print_page);
 
 /* Define procedures that adjust the paper size. */
 /* Since the print_page doesn't alter the device, this device can print in the background */
-const gx_device_procs gdev_fax_std_procs =
-    prn_params_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                     gdev_fax_get_params, gdev_fax_put_params);
+static void
+fax_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono_bg(dev);
+
+    set_dev_proc(dev, open_device, gdev_prn_open);
+    set_dev_proc(dev, get_params, gdev_fax_get_params);
+    set_dev_proc(dev, put_params, gdev_fax_put_params);
+}
 
 #define FAX_DEVICE(dname, print_page)\
 {\
-    FAX_DEVICE_BODY(gx_device_fax, gdev_fax_std_procs, dname, print_page)\
+    FAX_DEVICE_BODY(gx_device_fax, fax_initialize_device_procs, dname, print_page)\
 }
 
 const gx_device_fax gs_faxg3_device =

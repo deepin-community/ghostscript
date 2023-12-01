@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -47,6 +47,9 @@
 #define ADJUST_SCALE_FOR_THIN_LINES 0   /* Old code = 0 */
 #define ADJUST_SCALE_BY_GS_TRADITION 0  /* Old code = 1 */
 #define ADJUST_AS_ADOBE 1               /* Old code = 0 *//* This one is closer to Adobe. */
+
+#define fastfloor(x) (((int)(x)) - (((x)<0) && ((x) != (float)(int)(x))))
+#define fastfloord(x) (((int)(x)) - (((x)<0) && ((x) != (double)(int)(x))))
 
 /* GC descriptors */
 private_st_pattern1_template();
@@ -130,6 +133,72 @@ gs_makepattern(gs_client_color * pcc, const gs_pattern1_template_t * pcp,
     return gs_pattern1_make_pattern(pcc, (const gs_pattern_template_t *)pcp,
                                     pmat, pgs, mem);
 }
+
+/* Limited accuracy due to Floating point implementation limits can
+ * cause us headaches due to values not being representable.
+ * This is particular bad when we start using matrix maths (and
+ * inverse matrixes in particular) to map bboxes into device space.
+ * We therefore have a set of functions to 'sanely' round stuff.
+ * Essentially, any device space location that is sufficiently
+ * close to an exact pixel boundary will be clamped to that boundary.
+ */
+#define SANE_THRESHOLD 0.001f
+
+static int
+sane_ceil(float f)
+{
+    int i = (int)f;
+
+    if (f - i < SANE_THRESHOLD)
+        return i;
+    return i+1;
+}
+static float
+sane_clamp_float(float f)
+{
+    int i = (int)fastfloor(f);
+
+    if (f - i < SANE_THRESHOLD)
+        return (float)i;
+    else if (f - i > (1-SANE_THRESHOLD))
+        return (float)(i+1);
+    return f;
+}
+static double
+sane_clamp_double(double d)
+{
+    int i = (int)fastfloord(d);
+
+    if (d - i < SANE_THRESHOLD)
+        return (double)i;
+    else if (d - i > (1-SANE_THRESHOLD))
+        return (double)(i+1);
+    return d;
+}
+static void
+sane_clamp_rect(gs_rect *r)
+{
+    double x0 = sane_clamp_double(r->p.x);
+    double y0 = sane_clamp_double(r->p.y);
+    double x1 = sane_clamp_double(r->q.x);
+    double y1 = sane_clamp_double(r->q.y);
+
+    /* Be careful not to round stuff to zero, because this breaks fts_15_1529.pdf */
+    if (x0 != x1)
+        r->p.x = x0, r->q.x = x1;
+    if (y0 != y1)
+        r->p.y = y0, r->q.y = y1;
+}
+static void
+sane_clamp_matrix(gs_matrix *m)
+{
+    m->xx = sane_clamp_float(m->xx);
+    m->xy = sane_clamp_float(m->xy);
+    m->yx = sane_clamp_float(m->yx);
+    m->yy = sane_clamp_float(m->yy);
+    m->tx = sane_clamp_float(m->tx);
+    m->ty = sane_clamp_float(m->ty);
+}
 static int
 gs_pattern1_make_pattern(gs_client_color * pcc,
                          const gs_pattern_template_t * ptemp,
@@ -184,7 +253,11 @@ gs_pattern1_make_pattern(gs_client_color * pcc,
             code = gs_note_error(gs_error_rangecheck);
             goto fsaved;
     }
+
     inst.templat = *pcp;
+    /* Even if the pattern wants to use transparency, don't permit it if there is no device which will support it */
+    inst.templat.uses_transparency &= dev_proc( gs_currentdevice_inline(pgs), dev_spec_op)( gs_currentdevice_inline(pgs), gxdso_supports_pattern_transparency, NULL, 0);;
+
     code = compute_inst_matrix(&inst, &bbox, dev_width, dev_height, &bbw, &bbh);
     if (code < 0)
         goto fsaved;
@@ -215,20 +288,21 @@ gs_pattern1_make_pattern(gs_client_color * pcc,
     } else if (inst.templat.TilingType == 2) {
         /* Always round up for TilingType 2, as we don't want any
          * content to be lost. */
-        inst.size.x = (int)ceil(bbw);
-        inst.size.y = (int)ceil(bbh);
+        inst.size.x = sane_ceil(bbw);
+        inst.size.y = sane_ceil(bbh);
     } else {
         /* For TilingType's other than 2 allow us to round up or down
          * to whatever is nearer. The scale we do later prevents us
          * losing content. */
         inst.size.x = (int)floor(bbw+0.5);
         inst.size.y = (int)floor(bbh+0.5);
-        /* Ensure we never round down to 0. */
-        if (bbw > 0 && inst.size.x == 0)
-            inst.size.x = 1;
-        if (bbh > 0 && inst.size.y == 0)
-            inst.size.y = 1;
     }
+
+    /* Ensure we never round down to 0. Or below zero (bug 705768). */
+    if (inst.size.x <= 0)
+        inst.size.x = bbw > 0 ? 1 : 0;
+    if (inst.size.y <= 0)
+        inst.size.y = bbh > 0 ? 1 : 0;
 
     /* After compute_inst_matrix above, we are guaranteed that
      * inst.step_matrix.xx > 0 and inst.step_matrix.yy > 0.
@@ -411,6 +485,7 @@ gs_pattern1_make_pattern(gs_client_color * pcc,
     return 0;
   fsaved:gs_gstate_free(saved);
     gs_free_object(mem, pinst, "gs_makepattern");
+    pcc->pattern = NULL; /* We've just freed the memory this points to */
     return code;
 }
 
@@ -465,6 +540,9 @@ clamp_pattern_bbox(gs_pattern1_instance_t * pinst, gs_rect * pbbox,
     code = gs_bbox_transform_inverse(&dev_page, pmat, &pat_page);
     if (code < 0)
         return code;
+    /* So pat_page is the bbox for the region in pattern space that will
+     * be mapped forwards to cover the page. We want to find which tiles
+     * are required to cover this area. */
     /*
      * Determine the location of the pattern origin in device coordinates.
      */
@@ -473,6 +551,15 @@ clamp_pattern_bbox(gs_pattern1_instance_t * pinst, gs_rect * pbbox,
      * Determine our starting point.  We start with a postion that puts the
      * pattern below and to the left of the page (in pattern space) and scan
      * until the pattern is above and right of the page.
+     *
+     * So the right hand edge of each tile is:
+     *
+     *  xstep * n + pinst->templat.BBox.q.x
+     *
+     * and we want the largest n s.t. that is <= pat_page.p.x. i.e.
+     *
+     *  xstep * n <= pat_page.p.x - pinst->templat.BBox.q.x < xstep *n+1
+     *  n <= (pat_page.p.x - pinst->templat.BBox.q.x) / xstep < n+1
      */
     ixpat = (int) floor((pat_page.p.x - pinst->templat.BBox.q.x) / xstep);
     iystart = (int) floor((pat_page.p.y - pinst->templat.BBox.q.y) / ystep);
@@ -599,6 +686,8 @@ compute_inst_matrix(gs_pattern1_instance_t * pinst,
     if (code < 0)
         return code;
 
+    sane_clamp_rect(pbbox);
+
     *pbbw = pbbox->q.x - pbbox->p.x;
     *pbbh = pbbox->q.y - pbbox->p.y;
 
@@ -612,10 +701,34 @@ compute_inst_matrix(gs_pattern1_instance_t * pinst,
         return code;
 
     /* The stepping matrix : */
-    xx = pinst->templat.XStep * saved->ctm.xx;
-    xy = pinst->templat.XStep * saved->ctm.xy;
-    yx = pinst->templat.YStep * saved->ctm.yx;
-    yy = pinst->templat.YStep * saved->ctm.yy;
+    /* We do not want to overflow the maths here. Since xx etc are all floats
+     * then the multiplication will definitely fit into a double, and we can
+     * check to ensure that the result still fits into a float without
+     * overflowing at any point.
+     */
+    {
+        double double_mult = 0.0;
+
+        double_mult = (double)pinst->templat.XStep * (double)saved->ctm.xx;
+        if (double_mult < -MAX_FLOAT || double_mult > MAX_FLOAT)
+            return_error(gs_error_rangecheck);
+        xx = (float)double_mult;
+
+        double_mult = (double)pinst->templat.XStep * (double)saved->ctm.xy;
+        if (double_mult < -MAX_FLOAT || double_mult > MAX_FLOAT)
+            return_error(gs_error_rangecheck);
+        xy = double_mult;
+
+        double_mult = (double)pinst->templat.YStep * (double)saved->ctm.yx;
+        if (double_mult < -MAX_FLOAT || double_mult > MAX_FLOAT)
+            return_error(gs_error_rangecheck);
+        yx = double_mult;
+
+        double_mult = (double)pinst->templat.YStep * (double)saved->ctm.yy;
+        if (double_mult < -MAX_FLOAT || double_mult > MAX_FLOAT)
+            return_error(gs_error_rangecheck);
+        yy = double_mult;
+    }
 
     /* Adjust the stepping matrix so all coefficients are >= 0. */
     if (xx == 0 || yy == 0) { /* We know that both xy and yx are non-zero. */
@@ -631,6 +744,8 @@ compute_inst_matrix(gs_pattern1_instance_t * pinst,
     pinst->step_matrix.xy = xy;
     pinst->step_matrix.yx = yx;
     pinst->step_matrix.yy = yy;
+
+    sane_clamp_matrix(&pinst->step_matrix);
 
     /*
      * Some applications produce patterns that are larger than the page.
@@ -775,7 +890,7 @@ gs_pattern1_set_color(const gs_client_color * pcc, gs_gstate * pgs)
         params.retain_any_comps = false;
         params.effective_opm = pgs->color[0].effective_opm = 0;
         params.op_state = OP_STATE_NONE;
-        params.is_fill_color = false;
+        params.is_fill_color = pgs->is_fill_color;
         params.idle = false;
 
         return gs_gstate_update_overprint(pgs, &params);
@@ -1470,13 +1585,13 @@ gx_dc_pattern_save_dc(
     psdc->type = pdevc->type;
     if (pdevc->ccolor_valid) {
         psdc->colors.pattern.id = pdevc->ccolor.pattern->pattern_id;
-        psdc->colors.pattern.phase = pdevc->phase;
+        psdc->phase = pdevc->phase;
     } else {
         /* The client color has been changed to a non-pattern color,
            but device color has not been created yet.
          */
         psdc->colors.pattern.id = gs_no_id;
-        psdc->colors.pattern.phase.x = psdc->colors.pattern.phase.y = 0;
+        psdc->phase.x = psdc->phase.y = 0;
     }
 }
 
@@ -1586,10 +1701,10 @@ gx_pattern_cache_lookup(gx_device_color * pdevc, const gs_gstate * pgs,
         return true;
     }
     if (pcache != 0) {
-        gx_color_tile *ctile = &pcache->tiles[id % pcache->num_tiles];
+        gx_color_tile *ctile = gx_pattern_cache_find_tile_for_id(pcache, id);
         bool internal_accum = true;
         if (pgs->have_pattern_streams) {
-            int code = dev_proc(dev, dev_spec_op)(dev, gxdso_pattern_load, NULL, id);
+            int code = dev_proc(dev, dev_spec_op)(dev, gxdso_pattern_load, &id, sizeof(gx_bitmap_id));
             internal_accum = (code == 0);
             if (code < 0)
                 return false;
@@ -1691,15 +1806,29 @@ typedef struct tile_trans_clist_info_s {
     int height;
 } tile_trans_clist_info_t;
 
+#define serialized_tile_common \
+    gs_id id;\
+    int size_b, size_c;\
+    gs_matrix step_matrix;\
+    gs_rect bbox;\
+    int flags
+
 typedef struct gx_dc_serialized_tile_s {
-    gs_id id;
-    int size_b, size_c;
-    gs_int_point size;
-    gs_matrix step_matrix;
-    gs_rect bbox;
-    int flags;
-    gs_blend_mode_t blending_mode;	/* in case tile has transparency */
+    serialized_tile_common;
 } gx_dc_serialized_tile_t;
+
+#define serialized_tile_trans \
+    serialized_tile_common;\
+    gs_blend_mode_t blending_mode
+
+typedef struct gx_dc_serialized_trans_tile_s {
+    serialized_tile_trans;
+} gx_dc_serialized_trans_tile_t;
+
+typedef struct gx_dc_serialized_pattern_tile_s {
+    serialized_tile_trans;
+    gs_int_point size;
+} gx_dc_serialized_pattern_tile_t;
 
 enum {
     TILE_IS_LOCKED   = (int)0x80000000,
@@ -1738,8 +1867,6 @@ gx_dc_pattern_write_raster(gx_color_tile *ptile, int64_t offset, byte *data,
 #endif
 
         buf.id = ptile->id;
-        buf.size.x = 0; /* fixme: don't write with raster patterns. */
-        buf.size.y = 0; /* fixme: don't write with raster patterns. */
         buf.size_b = size_b;
         buf.size_c = size_c;
         buf.step_matrix = ptile->step_matrix;
@@ -1769,7 +1896,7 @@ gx_dc_pattern_write_raster(gx_color_tile *ptile, int64_t offset, byte *data,
         dp += sizeof(buf1);
         offset1 += sizeof(buf1);
     }
-    if (offset1 <= sizeof(gx_dc_serialized_tile_t) + size_b) {
+    if (offset1 < sizeof(gx_dc_serialized_tile_t) + size_b) {
         int l = min((size_b - sizeof(gx_strip_bitmap)) - (offset1 - sizeof(gx_dc_serialized_tile_t) -  sizeof(gx_strip_bitmap)), left);
 
         memcpy(dp, ptile->tbits.data + (offset1 - sizeof(gx_dc_serialized_tile_t) -  sizeof(gx_strip_bitmap)), l);
@@ -1781,7 +1908,7 @@ gx_dc_pattern_write_raster(gx_color_tile *ptile, int64_t offset, byte *data,
         return 0;
     if (size_c == 0)
         return 0;
-    if (offset1 <= sizeof(gx_dc_serialized_tile_t) + size_b + sizeof(gx_strip_bitmap)) {
+    if (offset1 < sizeof(gx_dc_serialized_tile_t) + size_b + sizeof(gx_strip_bitmap)) {
         gx_strip_bitmap buf;
 
         if (left < sizeof(buf))
@@ -1793,7 +1920,7 @@ gx_dc_pattern_write_raster(gx_color_tile *ptile, int64_t offset, byte *data,
         dp += sizeof(buf);
         offset1 += sizeof(buf);
     }
-    if (offset1 <= sizeof(gx_dc_serialized_tile_t) + size_b + size_c) {
+    if (offset1 < sizeof(gx_dc_serialized_tile_t) + size_b + size_c) {
         int l = min(size_c - sizeof(gx_strip_bitmap), left);
 
         memcpy(dp, ptile->tmask.data + (offset1 - sizeof(gx_dc_serialized_tile_t) - size_b - sizeof(gx_strip_bitmap)), l);
@@ -1814,7 +1941,7 @@ gx_dc_pattern_trans_write_raster(gx_color_tile *ptile, int64_t offset, byte *dat
     int64_t offset1 = offset;
     unsigned char *ptr;
 
-    size_h = sizeof(gx_dc_serialized_tile_t) + sizeof(tile_trans_clist_info_t);
+    size_h = sizeof(gx_dc_serialized_trans_tile_t) + sizeof(tile_trans_clist_info_t);
 
     /* Everything that we need to handle the transparent tile */
 
@@ -1828,12 +1955,10 @@ gx_dc_pattern_trans_write_raster(gx_color_tile *ptile, int64_t offset, byte *dat
         return 0;
     }
     if (offset1 == 0) { /* Serialize tile parameters: */
-        gx_dc_serialized_tile_t buf;
+        gx_dc_serialized_trans_tile_t buf;
         tile_trans_clist_info_t trans_info;
 
         buf.id = ptile->id;
-        buf.size.x = 0; /* fixme: don't write with raster patterns. */
-        buf.size.y = 0; /* fixme: don't write with raster patterns. */
         buf.size_b = size - size_h;
         buf.size_c = 0;
         buf.flags = ptile->depth
@@ -1880,9 +2005,9 @@ gx_dc_pattern_trans_write_raster(gx_color_tile *ptile, int64_t offset, byte *dat
      * plane if this buffer has_tags. */
 
     /* check if we have written it all */
-    if (offset1 <= size) {
+    if (offset1 < size) {
         /* Get the most that we can write */
-        int u = min(size, left);
+        int u = min(size - offset1, left);
 
         /* copy that amount */
         ptr = ptile->ttrans->transbytes;
@@ -1948,11 +2073,11 @@ gx_dc_pattern_write(
     if (size_c < 0)
         return_error(gs_error_unregistered);
     if (data == NULL) {
-        *psize = sizeof(gx_dc_serialized_tile_t) + size_b + size_c;
+        *psize = sizeof(gx_dc_serialized_pattern_tile_t) + size_b + size_c;
         return 0;
     }
     if (offset1 == 0) { /* Serialize tile parameters: */
-        gx_dc_serialized_tile_t buf;
+        gx_dc_serialized_pattern_tile_t buf;
 
         buf.id = ptile->id;
         buf.size.x = ptile->cdev->common.width;
@@ -1973,14 +2098,14 @@ gx_dc_pattern_write(
             /* For a while we require the client to provide enough buffer size. */
             return_error(gs_error_unregistered); /* Must not happen. */
         }
-        memcpy(dp, &buf, sizeof(gx_dc_serialized_tile_t));
+        memcpy(dp, &buf, sizeof(gx_dc_serialized_pattern_tile_t));
         left -= sizeof(buf);
         dp += sizeof(buf);
         offset1 += sizeof(buf);
     }
-    if (offset1 <= sizeof(gx_dc_serialized_tile_t) + size_b) {
-        l = min(left, size_b - (offset1 - sizeof(gx_dc_serialized_tile_t)));
-        code = clist_get_data(ptile->cdev, 0, offset1 - sizeof(gx_dc_serialized_tile_t), dp, l);
+    if (offset1 < sizeof(gx_dc_serialized_pattern_tile_t) + size_b) {
+        l = min(left, size_b - (offset1 - sizeof(gx_dc_serialized_pattern_tile_t)));
+        code = clist_get_data(ptile->cdev, 0, offset1 - sizeof(gx_dc_serialized_pattern_tile_t), dp, l);
         if (code < 0)
             return code;
         left -= l;
@@ -1988,8 +2113,8 @@ gx_dc_pattern_write(
         dp += l;
     }
     if (left > 0) {
-        l = min(left, size_c - (offset1 - sizeof(gx_dc_serialized_tile_t) - size_b));
-        code = clist_get_data(ptile->cdev, 1, offset1 - sizeof(gx_dc_serialized_tile_t) - size_b, dp, l);
+        l = min(left, size_c - (offset1 - sizeof(gx_dc_serialized_pattern_tile_t) - size_b));
+        code = clist_get_data(ptile->cdev, 1, offset1 - sizeof(gx_dc_serialized_pattern_tile_t) - size_b, dp, l);
         if (code < 0)
             return code;
     }
@@ -2023,7 +2148,7 @@ gx_dc_pattern_read_raster(gx_color_tile *ptile, const gx_dc_serialized_tile_t *b
         size_c = ptile->tmask.data != NULL ? gs_object_size(mem, ptile->tmask.data) + sizeof(gx_strip_bitmap) : 0;
     }
     /* Read tbits : */
-    if (offset1 <= sizeof(gx_dc_serialized_tile_t) + sizeof(gx_strip_bitmap)) {
+    if (offset1 < sizeof(gx_dc_serialized_tile_t) + sizeof(gx_strip_bitmap)) {
         int l = min(sizeof(gx_strip_bitmap), left);
         byte *save = ptile->tbits.data;
 
@@ -2035,7 +2160,7 @@ gx_dc_pattern_read_raster(gx_color_tile *ptile, const gx_dc_serialized_tile_t *b
     }
     if (left == 0)
         return size;    /* we've consumed it all */
-    if (offset1 <= sizeof(gx_dc_serialized_tile_t) + size_b) {
+    if (offset1 < sizeof(gx_dc_serialized_tile_t) + size_b) {
         int l = min(sizeof(gx_dc_serialized_tile_t) + size_b - offset1, left);
 
         memcpy(ptile->tbits.data +
@@ -2047,7 +2172,7 @@ gx_dc_pattern_read_raster(gx_color_tile *ptile, const gx_dc_serialized_tile_t *b
     if (left == 0 || size_c == 0)
         return size - left;
     /* Read tmask : */
-    if (offset1 <= sizeof(gx_dc_serialized_tile_t) + size_b + sizeof(gx_strip_bitmap)) {
+    if (offset1 < sizeof(gx_dc_serialized_tile_t) + size_b + sizeof(gx_strip_bitmap)) {
         int l = min(sizeof(gx_dc_serialized_tile_t) + size_b + sizeof(gx_strip_bitmap) - offset1, left);
         byte *save = ptile->tmask.data;
 
@@ -2059,7 +2184,7 @@ gx_dc_pattern_read_raster(gx_color_tile *ptile, const gx_dc_serialized_tile_t *b
     }
     if (left == 0)
         return size;
-    if (offset1 <= sizeof(gx_dc_serialized_tile_t) + size_b + size_c) {
+    if (offset1 < sizeof(gx_dc_serialized_tile_t) + size_b + size_c) {
         int l = min(sizeof(gx_dc_serialized_tile_t) + size_b + size_c - offset1, left);
 
         memcpy(ptile->tmask.data +
@@ -2092,12 +2217,12 @@ gx_dc_pattern_read_trans_buff(gx_color_tile *ptile, int64_t offset,
                 return_error(gs_error_VMerror);
     }
     /* Read transparency buffer */
-    if (offset1 <= sizeof(gx_dc_serialized_tile_t) + sizeof(tile_trans_clist_info_t) + data_size ) {
+    if (offset1 < sizeof(gx_dc_serialized_trans_tile_t) + sizeof(tile_trans_clist_info_t) + data_size ) {
 
-        int u = min(data_size, left);
+        int u = min(data_size - (offset1 - sizeof(gx_dc_serialized_trans_tile_t) - sizeof(tile_trans_clist_info_t)), left);
         byte *save = trans_pat->transbytes;
 
-        memcpy( trans_pat->transbytes + offset1 - sizeof(gx_dc_serialized_tile_t) -
+        memcpy( trans_pat->transbytes + offset1 - sizeof(gx_dc_serialized_trans_tile_t) -
                                     sizeof(tile_trans_clist_info_t), dp, u);
         trans_pat->transbytes = save;
         left -= u;
@@ -2114,9 +2239,11 @@ gx_dc_pattern_read(
     int64_t                    offset,
     const byte *            data,
     uint                    size,
-    gs_memory_t *           mem )
+    gs_memory_t *           mem,
+    int                     x0,
+    int                     y0)
 {
-    gx_dc_serialized_tile_t buf;
+    gx_dc_serialized_pattern_tile_t buf;
     int size_b, size_c = -1;
     const byte *dp = data;
     int left = size;
@@ -2126,6 +2253,7 @@ gx_dc_pattern_read(
     tile_trans_clist_info_t trans_info = { { { 0 } } };
     int cache_space_needed;
     bool deep = device_is_deep(dev);
+    size_t buf_read;
 
     if (offset == 0) {
         pdevc->mask.id = gx_no_bitmap_id;
@@ -2151,14 +2279,25 @@ gx_dc_pattern_read(
             /* For a while we require the client to provide enough buffer size. */
             return_error(gs_error_unregistered); /* Must not happen. */
         }
-        memcpy(&buf, dp, sizeof(buf));
-        dp += sizeof(buf);
-        left -= sizeof(buf);
-        offset1 += sizeof(buf);
+        memcpy(&buf, dp, sizeof(gx_dc_serialized_tile_t));
+        dp += sizeof(gx_dc_serialized_tile_t);
+        buf_read = sizeof(gx_dc_serialized_tile_t);
+        if (buf.flags & TILE_USES_TRANSP) {
+            memcpy(((char *)&buf)+sizeof(gx_dc_serialized_tile_t), dp, sizeof(gx_dc_serialized_trans_tile_t) - sizeof(gx_dc_serialized_tile_t));
+            dp += sizeof(gx_dc_serialized_trans_tile_t) - sizeof(gx_dc_serialized_tile_t);
+            buf_read = sizeof(gx_dc_serialized_trans_tile_t);
+        }
+        if (buf.flags & TILE_IS_CLIST) {
+            memcpy(((char *)&buf) + sizeof(gx_dc_serialized_trans_tile_t), dp, sizeof(gx_dc_serialized_pattern_tile_t) - sizeof(gx_dc_serialized_trans_tile_t));
+            dp += sizeof(gx_dc_serialized_pattern_tile_t) - sizeof(gx_dc_serialized_trans_tile_t);
+            buf_read = sizeof(gx_dc_serialized_pattern_tile_t);
+        }
+        left -= buf_read;
+        offset1 += buf_read;
 
         if ((buf.flags & TILE_USES_TRANSP) && !(buf.flags & TILE_IS_CLIST)){
 
-            if (sizeof(buf) + sizeof(tile_trans_clist_info_t) > size) {
+            if (buf_read + sizeof(tile_trans_clist_info_t) > size) {
                 return_error(gs_error_unregistered); /* Must not happen. */
             }
 
@@ -2239,13 +2378,13 @@ gx_dc_pattern_read(
                 code = gx_dc_pattern_read_trans_buff(ptile, offset1, dp, left, mem);
                 if (code < 0)
                     return code;
-                return code + sizeof(buf)+sizeof(trans_info);
+                return code + buf_read + sizeof(trans_info);
 
             } else {
-                code = gx_dc_pattern_read_raster(ptile, &buf, offset1, dp, left, mem);
+                code = gx_dc_pattern_read_raster(ptile, (gx_dc_serialized_tile_t *)&buf, offset1, dp, left, mem);
                 if (code < 0)
                     return code;
-                return code + sizeof(buf);
+                return code + buf_read;
             }
 
         }
@@ -2288,7 +2427,7 @@ gx_dc_pattern_read(
 
         size_b = ptile->tbits.size.x;
     }
-    if (offset1 <= sizeof(buf) + size_b) {
+    if (offset1 < sizeof(buf) + size_b) {
         l = min(left, size_b - (offset1 - sizeof(buf)));
         code = clist_put_data(ptile->cdev, 0, offset1 - sizeof(buf), dp, l);
         if (code < 0)

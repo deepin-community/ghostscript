@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -50,6 +50,7 @@ static dev_proc_put_params(jpeg_put_params);
 static dev_proc_print_page(jpeg_print_page);
 static dev_proc_map_color_rgb(jpegcmyk_map_color_rgb);
 static dev_proc_map_cmyk_color(jpegcmyk_map_cmyk_color);
+static dev_proc_decode_color(jpegcmyk_decode_color);
 
 /* ------ The device descriptors ------ */
 
@@ -63,33 +64,18 @@ static dev_proc_map_cmyk_color(jpegcmyk_map_cmyk_color);
 
 /* 24-bit color */
 
-static const gx_device_procs jpeg_procs =
+static void
+jpeg_initialize_device_procs(gx_device *dev)
 {
-    gdev_prn_open,
-    jpeg_get_initial_matrix,	/* get_initial_matrix */
-    NULL,			/* sync_output */
-/* Since the print_page doesn't alter the device, this device can print in the background */
-    gdev_prn_bg_output_page,
-    gdev_prn_close,
-    gx_default_rgb_map_rgb_color,/* map_rgb_color */
-    gx_default_rgb_map_color_rgb,
-    NULL,			/* fill_rectangle */
-    NULL,			/* tile_rectangle */
-    NULL,			/* copy_mono */
-    NULL,			/* copy_color */
-    NULL,			/* draw_line */
-    NULL,			/* get_bits */
-    jpeg_get_params,
-    jpeg_put_params,
-    NULL,
-    NULL,			/* get_xfont_procs */
-    NULL,			/* get_xfont_device */
-    NULL,			/* map_rgb_alpha_color */
-    gx_page_device_get_page_device
-};
+    gdev_prn_initialize_device_procs_rgb_bg(dev);
+
+    set_dev_proc(dev, get_initial_matrix, jpeg_get_initial_matrix);
+    set_dev_proc(dev, get_params, jpeg_get_params);
+    set_dev_proc(dev, put_params, jpeg_put_params);
+}
 
 const gx_device_jpeg gs_jpeg_device =
-{prn_device_std_body(gx_device_jpeg, jpeg_procs, "jpeg",
+{prn_device_std_body(gx_device_jpeg, jpeg_initialize_device_procs, "jpeg",
                      DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                      X_DPI, Y_DPI, 0, 0, 0, 0, 24, jpeg_print_page),
  0,				/* JPEGQ: 0 indicates not specified */
@@ -101,33 +87,20 @@ const gx_device_jpeg gs_jpeg_device =
 
 /* 8-bit gray */
 
-static const gx_device_procs jpeggray_procs =
+static void
+jpeggray_initialize_device_procs(gx_device *dev)
 {
-    gdev_prn_open,
-    jpeg_get_initial_matrix,	/* get_initial_matrix */
-    NULL,			/* sync_output */
-/* Since the print_page doesn't alter the device, this device can print in the background */
-    gdev_prn_bg_output_page,
-    gdev_prn_close,
-    gx_default_gray_map_rgb_color,/* map_rgb_color */
-    gx_default_gray_map_color_rgb,
-    NULL,			/* fill_rectangle */
-    NULL,			/* tile_rectangle */
-    NULL,			/* copy_mono */
-    NULL,			/* copy_color */
-    NULL,			/* draw_line */
-    NULL,			/* get_bits */
-    jpeg_get_params,
-    jpeg_put_params,
-    NULL,
-    NULL,			/* get_xfont_procs */
-    NULL,			/* get_xfont_device */
-    NULL,			/* map_rgb_alpha_color */
-    gx_page_device_get_page_device
-};
+    gdev_prn_initialize_device_procs_gray_bg(dev);
+
+    set_dev_proc(dev, get_initial_matrix, jpeg_get_initial_matrix);
+    set_dev_proc(dev, get_params, jpeg_get_params);
+    set_dev_proc(dev, put_params, jpeg_put_params);
+    set_dev_proc(dev, encode_color, gx_default_8bit_map_gray_color);
+    set_dev_proc(dev, decode_color, gx_default_8bit_map_color_gray);
+}
 
 const gx_device_jpeg gs_jpeggray_device =
-{prn_device_body(gx_device_jpeg, jpeggray_procs, "jpeggray",
+{prn_device_body(gx_device_jpeg, jpeggray_initialize_device_procs, "jpeggray",
                  DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                  X_DPI, Y_DPI, 0, 0, 0, 0,
                  1, 8, 255, 0, 256, 0,
@@ -138,34 +111,26 @@ const gx_device_jpeg gs_jpeggray_device =
  { 0.0, 0.0 },                   /* translation 0 */
  GX_DOWNSCALER_PARAMS_DEFAULTS
 };
+
 /* 32-bit CMYK */
 
-static const gx_device_procs jpegcmyk_procs =
-{	gdev_prn_open,
-        gx_default_get_initial_matrix,
-/* Since the print_page doesn't alter the device, this device can print in the background */
-        NULL,	/* sync_output */
-        gdev_prn_bg_output_page,
-        gdev_prn_close,
-        NULL,
-        jpegcmyk_map_color_rgb,
-        NULL,	/* fill_rectangle */
-        NULL,	/* tile_rectangle */
-        NULL,	/* copy_mono */
-        NULL,	/* copy_color */
-        NULL,	/* draw_line */
-        NULL,	/* get_bits */
-        jpeg_get_params,
-        jpeg_put_params,
-        jpegcmyk_map_cmyk_color,
-        NULL,	/* get_xfont_procs */
-        NULL,	/* get_xfont_device */
-        NULL,	/* map_rgb_alpha_color */
-        gx_page_device_get_page_device	/* get_page_device */
-};
+static void
+jpegcmyk_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, get_initial_matrix, jpeg_get_initial_matrix);
+    set_dev_proc(dev, map_color_rgb, jpegcmyk_map_color_rgb);
+    set_dev_proc(dev, get_params, jpeg_get_params);
+    set_dev_proc(dev, put_params, jpeg_put_params);
+    set_dev_proc(dev, map_cmyk_color, jpegcmyk_map_cmyk_color);
+
+    set_dev_proc(dev, encode_color, jpegcmyk_map_cmyk_color);
+    set_dev_proc(dev, decode_color, jpegcmyk_decode_color);
+}
 
 const gx_device_jpeg gs_jpegcmyk_device =
-{prn_device_std_body(gx_device_jpeg, jpegcmyk_procs, "jpegcmyk",
+{prn_device_std_body(gx_device_jpeg, jpegcmyk_initialize_device_procs, "jpegcmyk",
                      DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                      X_DPI, Y_DPI, 0, 0, 0, 0, 32, jpeg_print_page),
  0,				/* JPEGQ: 0 indicates not specified */
@@ -203,6 +168,19 @@ jpegcmyk_map_cmyk_color(gx_device * dev, const gx_color_value cv[])
         ((uint)gx_color_value_to_byte(cv[0]) << 24));
 
     return (color == gx_no_color_index ? color ^ 1 : color);
+}
+
+static int
+jpegcmyk_decode_color(gx_device * dev, gx_color_index color,
+                      gx_color_value cv[])
+{
+    color = ~color;
+    cv[0] = gx_color_value_from_byte(0xff & (color>>24));
+    cv[1] = gx_color_value_from_byte(0xff & (color>>16));
+    cv[2] = gx_color_value_from_byte(0xff & (color>>8));
+    cv[3] = gx_color_value_from_byte(0xff & color);
+
+    return 0;
 }
 
 /* Get parameters. */
@@ -578,4 +556,3 @@ jpeg_print_page(gx_device_printer * pdev, gp_file * prn_stream)
     gs_free_object(mem, in, "jpeg_print_page(in)");
     return code;
 }
-

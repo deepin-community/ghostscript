@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -90,7 +90,8 @@ static dev_proc_close_device(gsijs_close);
 static dev_proc_output_page(gsijs_output_page);
 static dev_proc_get_params(gsijs_get_params);
 static dev_proc_put_params(gsijs_put_params);
-static dev_proc_finish_copydevice(gsijs_finish_copydevice);
+static dev_proc_initialize_device_procs(gsijs_initialize_device_procs);
+static dev_proc_initialize_device(gsijs_initialize_device);
 
 /* Following definitions are for krgb support. */
 static dev_proc_create_buf_device(gsijs_create_buf_device);
@@ -99,53 +100,6 @@ static dev_proc_copy_mono(gsijs_copy_mono);
 static dev_proc_fill_mask(gsijs_fill_mask);
 static dev_proc_fill_path(gsijs_fill_path);
 static dev_proc_stroke_path(gsijs_stroke_path);
-
-static const gx_device_procs gsijs_procs = {
-        gsijs_open,
-        NULL,	/* get_initial_matrix */
-        NULL,	/* sync_output */
-        gsijs_output_page,
-        gsijs_close,
-        gx_default_rgb_map_rgb_color,
-        gx_default_rgb_map_color_rgb,
-        NULL,	/* fill_rectangle */
-        NULL,	/* tile_rectangle */
-        NULL,	/* copy_mono */
-        NULL,	/* copy_color */
-        NULL,	/* draw_line */
-        NULL,	/* get_bits */
-        gsijs_get_params,
-        gsijs_put_params,
-        NULL,	/* map_cmyk_color */
-        NULL,	/* get_xfont_procs */
-        NULL,	/* get_xfont_device */
-        NULL,	/* map_rgb_alpha_color */
-        gx_page_device_get_page_device,
-        NULL,	/* get_alpha_bits */
-        NULL,	/* copy_alpha */
-        NULL,	/* get_band */
-        NULL,	/* copy_rop */
-        NULL,	/* fill_path */
-        NULL,	/* stroke_path */
-        NULL,	/* fill_mask */
-        NULL,	/* fill_trapezoid */
-        NULL,	/* fill_parallelogram */
-        NULL,	/* fill_triangle */
-        NULL,	/* draw_thin_line */
-        NULL,	/* begin_image */
-        NULL,	/* image_data */
-        NULL,	/* end_image */
-        NULL,	/* strip_tile_rectangle */
-        NULL,	/* strip_copy_rop, */
-        NULL,	/* get_clipping_box */
-        NULL,	/* begin_typed_image */
-        NULL,	/* get_bits_rectangle */
-        NULL,	/* map_color_rgb_alpha */
-        NULL,	/* create_compositor */
-        NULL,	/* get_hardware_params */
-        NULL,	/* text_begin */
-        gsijs_finish_copydevice
-};
 
 typedef struct gx_device_ijs_s gx_device_ijs;
 
@@ -189,7 +143,9 @@ struct gx_device_ijs_s {
 
 gx_device_ijs gs_ijs_device =
 {
-    prn_device_std_body(gx_device_ijs, gsijs_procs, "ijs",
+    prn_device_std_body(gx_device_ijs,
+                        gsijs_initialize_device_procs,
+                        "ijs",
                         DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                         DEFAULT_DPI, DEFAULT_DPI,
                         0, 0, 0, 0,
@@ -481,7 +437,6 @@ static int gsijs_k_get_bits(gx_device_printer * pdev, int y, byte ** actual_data
    int y1=raster*(y-(band_height*band_number));
 
    *actual_data = ijsdev->k_band+y1;
-
    return 0;
 }
 
@@ -678,7 +633,7 @@ gsijs_set_margin_params(gx_device_ijs *ijsdev)
     }
 
     if (code == 0) {
-        gs_sprintf (buf, "%gx%g", ijsdev->MediaSize[0] * (1.0 / 72),
+        gs_snprintf (buf, sizeof(buf), "%gx%g", ijsdev->MediaSize[0] * (1.0 / 72),
                  ijsdev->MediaSize[1] * (1.0 / 72));
         code = ijs_client_set_param(ijsdev->ctx, 0, "PaperSize",
                                     buf, strlen(buf));
@@ -723,7 +678,7 @@ gsijs_set_margin_params(gx_device_ijs *ijsdev)
             m[1] = ijsdev->MediaSize[1] * (1.0 / 72) -
                 printable_top - printable_height;
             gx_device_set_margins((gx_device *)ijsdev, m, true);
-            gs_sprintf (buf, "%gx%g", printable_left, printable_top);
+            gs_snprintf (buf, sizeof(buf), "%gx%g", printable_left, printable_top);
             code = ijs_client_set_param(ijsdev->ctx, 0, "TopLeft",
                                         buf, strlen(buf));
         }
@@ -893,7 +848,7 @@ gsijs_open(gx_device *dev)
         /* Note: dup() may not be portable to all interesting IJS
            platforms. In that case, this branch should be #ifdef'ed out.
         */
-        gs_sprintf(buf, "%d", fd);
+        gs_snprintf(buf, sizeof(buf), "%d", fd);
         ijs_client_set_param(ijsdev->ctx, 0, "OutputFD", buf, strlen(buf));
         close(fd);
     } else {
@@ -928,25 +883,33 @@ gsijs_open(gx_device *dev)
 
 /* Finish device initialization. */
 static int
-gsijs_finish_copydevice(gx_device *dev, const gx_device *from_dev)
+gsijs_initialize_device(gx_device *dev)
 {
-    int code;
     static const char rgb[] = "DeviceRGB";
     gx_device_ijs *ijsdev = (gx_device_ijs *)dev;
 
-    code = gx_default_finish_copydevice(dev, from_dev);
-    if(code < 0)
-        return code;
-
     if (!ijsdev->ColorSpace) {
         ijsdev->ColorSpace = gs_malloc(ijsdev->memory, sizeof(rgb), 1,
-                "gsijs_finish_copydevice");
+                                       "gsijs_initialize");
         if (!ijsdev->ColorSpace)
             return gs_note_error(gs_error_VMerror);
         ijsdev->ColorSpace_size = sizeof(rgb);
         memcpy(ijsdev->ColorSpace, rgb, sizeof(rgb));
     }
-    return code;
+    return 0;
+}
+
+static void
+gsijs_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, initialize_device, gsijs_initialize_device);
+    set_dev_proc(dev, open_device, gsijs_open);
+    set_dev_proc(dev, output_page, gsijs_output_page);
+    set_dev_proc(dev, close_device, gsijs_close);
+    set_dev_proc(dev, map_rgb_color, gx_default_rgb_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gx_default_rgb_map_color_rgb);
+    set_dev_proc(dev, get_params, gsijs_get_params);
+    set_dev_proc(dev, put_params, gsijs_put_params);
 }
 
 /* Close the gsijs driver */
@@ -1050,9 +1013,9 @@ gsijs_output_page(gx_device *dev, int num_copies, int flush)
     }
 
     /* Required page parameters */
-    gs_sprintf(buf, "%d", n_chan);
+    gs_snprintf(buf, sizeof(buf), "%d", n_chan);
     gsijs_client_set_param(ijsdev, "NumChan", buf);
-    gs_sprintf(buf, "%d", ijsdev->BitsPerSample);
+    gs_snprintf(buf, sizeof(buf), "%d", ijsdev->BitsPerSample);
     gsijs_client_set_param(ijsdev, "BitsPerSample", buf);
 
     /* This needs to become more sophisticated for DeviceN. */
@@ -1060,12 +1023,12 @@ gsijs_output_page(gx_device *dev, int num_copies, int flush)
         ((n_chan == 3) ? (krgb_mode ? ((k_bits == 1) ? "KRGB" : "KxRGB") : "DeviceRGB") : "DeviceGray"));
     gsijs_client_set_param(ijsdev, "ColorSpace", buf);
 
-    gs_sprintf(buf, "%d", ijs_width);
+    gs_snprintf(buf, sizeof(buf), "%d", ijs_width);
     gsijs_client_set_param(ijsdev, "Width", buf);
-    gs_sprintf(buf, "%d", ijs_height);
+    gs_snprintf(buf, sizeof(buf), "%d", ijs_height);
     gsijs_client_set_param(ijsdev, "Height", buf);
 
-    gs_sprintf(buf, "%gx%g", xres, yres);
+    gs_snprintf(buf, sizeof(buf), "%gx%g", xres, yres);
     gsijs_client_set_param(ijsdev, "Dpi", buf);
 
 #ifdef KRGB_DEBUG

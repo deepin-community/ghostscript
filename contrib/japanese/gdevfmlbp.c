@@ -41,15 +41,16 @@ copies.  */
 /* The device descriptors */
 static dev_proc_print_page(fmlbp_print_page);
 
-#ifdef	FMLBP_NOADJUST_MARGIN
-#define	PRNFMLBP	prn_std_procs
+static void fmlbp_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
+}
+
+#ifdef FMLBP_NOADJUST_MARGIN
+#define PRNFML_INIT fmlbp_initialize_device_procs
 #else
 /* Adjust margin for ghostscript 2.6.1 */
-#define	PRNFMLBP	prn_fmlbp_procs
-static dev_proc_get_initial_matrix(fmlbp_get_initial_matrix);
-gx_device_procs prn_fmlbp_procs =
-  prn_matrix_procs(gdev_prn_open, fmlbp_get_initial_matrix,
-    gdev_prn_output_page, gdev_prn_close);
+#define PRNFML_INIT fmlbp_initialize_device_procs_with_matrix
 
 /* Shift the origin from the top left corner of the pysical page to the
    first printable pixel, as defined by the top and left margins. */
@@ -60,10 +61,17 @@ fmlbp_get_initial_matrix(gx_device *dev, gs_matrix *pmat)
   pmat->tx -= (dev->l_margin * dev->x_pixels_per_inch);
   pmat->ty -= (dev->t_margin * dev->y_pixels_per_inch);
 }
+
+static void fmlbp_initialize_device_procs_with_matrix(gx_device *dev)
+{
+    fmlbp_initialize_device_procs(dev);
+
+    set_dev_proc(dev, get_initial_matrix, fmlbp_get_initial_matrix);
+}
 #endif/*FMLBP_NOADJUST_MARGIN*/
 
 gx_device_printer gs_fmlbp_device =
-  prn_device(PRNFMLBP, "fmlbp",
+  prn_device(PRNFML_INIT, "fmlbp",
         DEFAULT_WIDTH_10THS_A4,		/* width_10ths, 8.3" */
         DEFAULT_HEIGHT_10THS_A4,	/* height_10ths, 11.7" */
         X_DPI, Y_DPI,
@@ -100,7 +108,7 @@ static char can_inits[] ={ ESC, 'c',              /* Software reset */
 /* Get the paper size code, based on width and height. */
 /* modified from gdevpcl.c, gdevmjc.c and gdevnpdl.c. */
 static char *
-gdev_fmlbp_paper_size(gx_device_printer *dev, char *paper)
+gdev_fmlbp_paper_size(gx_device_printer *dev, char paper[16])
 {
   int    landscape = 0;	/* portrait */
   float height_inches = dev->height / dev->y_pixels_per_inch;
@@ -112,7 +120,7 @@ gdev_fmlbp_paper_size(gx_device_printer *dev, char *paper)
     height_inches = t;
     landscape = 1;
   }
-  gs_sprintf(paper, "%s;%d",
+  gs_snprintf(paper, 16, "%s;%d",
     (height_inches >= 15.9 ? PAPER_SIZE_A3 :
      height_inches >= 11.8 ?
      (width_inches >=  9.2 ? PAPER_SIZE_B4 : PAPER_SIZE_LEGAL) :
@@ -136,7 +144,7 @@ static void goto_xy(gp_file *prn_stream,int x,int y)
 
     gp_fputc(CEX,prn_stream);
     gp_fputc('"',prn_stream);
-    gs_sprintf((char *)buff,"%d",x);
+    gs_snprintf((char *)buff,sizeof(buff),"%d",x);
     while (*p)
       {
         if (!*(p+1)) gp_fputc((*p)+0x30,prn_stream);
@@ -146,7 +154,7 @@ static void goto_xy(gp_file *prn_stream,int x,int y)
       }
 
     p=buff;
-    gs_sprintf((char *)buff,"%d",y);
+    gs_snprintf((char *)buff,sizeof(buff),"%d",y);
     while (*p)
       {
         if (!*(p+1)) gp_fputc((*p)+0x40,prn_stream);

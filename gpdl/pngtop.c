@@ -1,4 +1,4 @@
-/* Copyright (C) 2019-2021 Artifex Software, Inc.
+/* Copyright (C) 2019-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -110,9 +110,6 @@ png_detect_language(const char *s, int len)
 static const pl_interp_characteristics_t png_characteristics = {
     "PNG",
     png_detect_language,
-    "Artifex",
-    "0.01",
-    "11 Nov 2019"
 };
 
 /* Get implementation's characteristics */
@@ -296,7 +293,7 @@ bytes_until_uel(const stream_cursor_read *pr)
             p++;
         if (p == q)
             break;
-        avail = pr->limit - pr->ptr;
+        avail = q - p;
         if (memcmp(p, "\033%-12345X", min(avail, 9)) == 0) {
             /* At least a partial match to a UEL. Everything up to
              * the start of the match is up for grabs. */
@@ -593,6 +590,13 @@ do_impl_process(png_interp_instance_t *png, stream_cursor_read * pr, bool eof)
                 break;
             }
 
+            if (SIZE_MAX / png->byte_width < (png->interlaced ? png->height : 1))
+            {
+                code = gs_note_error(gs_error_VMerror);
+                png->state = ii_state_flush;
+                break;
+            }
+
             png->samples = gs_alloc_bytes(png->memory,
                                           (size_t)png->byte_width * (png->interlaced ? png->height : 1),
                                           "png_impl_process(samples)");
@@ -681,11 +685,20 @@ do_impl_process(png_interp_instance_t *png, stream_cursor_read * pr, bool eof)
         }
         default:
         case ii_state_flush:
+            if (png->png)
+            {
+                png_destroy_read_struct(&png->png, &png->png_info, NULL);
+                png->png = NULL;
+                png->png_info = NULL;
+            }
+
             if (png->penum) {
                 (void)gs_image_cleanup_and_free_enum(png->penum, png->pgs);
                 png->penum = NULL;
             }
 
+            gs_free_object(png->memory, png->buffer, "png_impl_process(buffer)");
+            png->buffer = NULL;
             gs_free_object(png->memory, png->samples, "png_impl_process(samples)");
             png->samples = NULL;
             /* We want to bin any data we get up to, but not including
@@ -795,5 +808,6 @@ const pl_interp_implementation_t png_implementation = {
   png_impl_report_errors,
   png_impl_dnit_job,
   png_impl_deallocate_interp_instance,
-  NULL
+  NULL, /* png_impl_reset */
+  NULL  /* interp_client_data */
 };

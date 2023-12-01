@@ -81,14 +81,22 @@ gs_private_st_suffix_add1_final(st_inferno_device, inferno_device,
         "inferno_device", inferno_device_enum_ptrs, inferno_device_reloc_ptrs,
                           gx_device_finalize, st_device_printer, p9color);
 
-static const gx_device_procs inferno_procs =
-        prn_color_params_procs(inferno_open, gdev_prn_output_page, inferno_close,
-                inferno_rgb2cmap, inferno_cmap2rgb,
-                gdev_prn_get_params, gdev_prn_put_params);
+static void
+inferno_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, open_device, inferno_open);
+    set_dev_proc(dev, close_device, inferno_close);
+    set_dev_proc(dev, map_rgb_color, inferno_rgb2cmap);
+    set_dev_proc(dev, map_color_rgb, inferno_cmap2rgb);
+    set_dev_proc(dev, encode_color, inferno_rgb2cmap);
+    set_dev_proc(dev, decode_color, inferno_cmap2rgb);
+}
 
 inferno_device far_data gs_inferno_device =
-{ prn_device_stype_body(inferno_device, inferno_procs, "inferno",
-        &st_inferno_device,
+{ prn_device_stype_body(inferno_device, inferno_initialize_device_procs,
+        "inferno", &st_inferno_device,
         DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
         X_DPI, Y_DPI,
         0,0,0,0,	/* margins */

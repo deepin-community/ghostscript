@@ -42,19 +42,34 @@ static dev_proc_image_out(escpage_image_out);
 static void escpage_printer_initialize(gx_device_printer * pdev, gp_file * fp, int);
 static void escpage_paper_set(gx_device_printer * pdev, gp_file * fp);
 
-static gx_device_procs lp2000_prn_procs =
-lprn_procs(lp2000_open, gdev_prn_output_page, gdev_prn_close);
+static void
+lp2000_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
 
-static gx_device_procs escpage_prn_procs =
-lprn_procs(escpage_open, gdev_prn_output_page, escpage_close);
+    set_dev_proc(dev, open_device, lp2000_open);
+    set_dev_proc(dev, get_params, lprn_get_params);
+    set_dev_proc(dev, put_params, lprn_put_params);
+}
+
+static void
+escpage_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
+
+    set_dev_proc(dev, open_device, escpage_open);
+    set_dev_proc(dev, close_device, escpage_close);
+    set_dev_proc(dev, get_params, lprn_get_params);
+    set_dev_proc(dev, put_params, lprn_put_params);
+}
 
 gx_device_lprn far_data gs_lp2000_device =
-lprn_device(gx_device_lprn, lp2000_prn_procs, "lp2000",
+lprn_device(gx_device_lprn, lp2000_initialize_device_procs, "lp2000",
             DPI, DPI, 0.0, 0.0, 0.0, 0.0, 1,
             lp2000_print_page_copies, escpage_image_out);
 
 gx_device_lprn far_data gs_escpage_device =
-lprn_duplex_device(gx_device_lprn, escpage_prn_procs, "escpage",
+lprn_duplex_device(gx_device_lprn, escpage_initialize_device_procs, "escpage",
                    DPI, DPI, 0.0, 0.0, 0.0, 0.0, 1,
                    escpage_print_page_copies, escpage_image_out);
 
@@ -290,9 +305,11 @@ escpage_paper_set(gx_device_printer * pdev, gp_file * fp)
         hp = (int)(width / 72.0 * pdev->x_pixels_per_inch);
     }
 
-    for (pt = epagPaperTable; pt->escpage > 0; pt++)
-        if (pt->width == w && pt->height == h)
+    for (pt = epagPaperTable; pt->escpage > 0; pt++) {
+        if (w >= pt->width - 5 && w <= pt->width + 5 &&
+            h >= pt->height - 5 && h <= pt->height + 5)
             break;
+    }
 
     gp_fprintf(fp, "%c%d", GS, pt->escpage);
     if (pt->escpage < 0)

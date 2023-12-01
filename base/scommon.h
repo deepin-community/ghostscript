@@ -34,15 +34,6 @@
  */
 typedef struct stream_s stream;
 
-/* We really want our offset type to be 64 bit for large file support
- * but this allows a particular port to specficy a prefered data type
- */
-#ifdef GS_OFFSET_T
-typedef GS_OFFSET_T gs_offset_t;
-#else
-typedef int64_t gs_offset_t;
-#endif
-
 /*
  * A stream_state records the state specific to a given variety of stream.
  * The buffer processing function of a stream maintains this state.
@@ -115,35 +106,28 @@ typedef union stream_cursor_s {
  * This allows localized disabling of the "array bounds" compiler
  * warning for this one specific case.
  */
-static inline void
-stream_cursor_read_init(stream_cursor_read *r, const byte *buf, size_t length)
-{
 #ifdef __GNUC__
 #  pragma GCC diagnostic push
 #  pragma GCC diagnostic ignored "-Warray-bounds"
 #endif
+static inline void
+stream_cursor_read_init(stream_cursor_read *r, const byte *buf, size_t length)
+{
     /* starting pos for pointer is always one position back */
     r->ptr = buf - 1;
     r->limit = r->ptr + length;
-#ifdef __GNUC__
-#  pragma GCC diagnostic pop
-#endif
 }
 
 static inline void
 stream_cursor_write_init(stream_cursor_write *w, const byte *buf, size_t length)
 {
-#ifdef __GNUC__
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Warray-bounds"
-#endif
     /* starting pos for pointer is always one position back */
     w->ptr = (byte *)buf - 1;
     w->limit = (byte *)w->ptr + length;
+}
 #ifdef __GNUC__
 #  pragma GCC diagnostic pop
 #endif
-}
 
 /*
  * Define the prototype for the procedures known to both the generic

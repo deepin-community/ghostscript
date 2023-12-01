@@ -82,6 +82,7 @@ typedef struct {
     configured,         /* Has the output file been configured? */
     configure_every_page;  /* Repeat the configuration for every page? */
   pcl_FileData file_data;
+  pcl3_sizetable table;
 } pcl3_Device;
 
 /*****************************************************************************/
@@ -92,10 +93,21 @@ static dev_proc_close_device(pcl3_close_device);
 static dev_proc_get_params(pcl3_get_params);
 static dev_proc_put_params(pcl3_put_params);
 
-/* Device procedure table */
-static gx_device_procs pcl3_procs = {
-  eprn_procs_initdata(pcl3_open_device, pcl3_close_device, pcl3_get_params,
-    pcl3_put_params)
+/* Device procedures */
+static void
+eprn_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, open_device, pcl3_open_device);
+    set_dev_proc(dev, get_initial_matrix, eprn_get_initial_matrix);
+    set_dev_proc(dev, close_device, pcl3_close_device);
+    set_dev_proc(dev, map_rgb_color, eprn_map_rgb_color_for_CMY_or_K);
+    set_dev_proc(dev, map_color_rgb, eprn_map_color_rgb);
+    set_dev_proc(dev, map_cmyk_color, eprn_map_cmyk_color_glob);
+    set_dev_proc(dev, get_params, pcl3_get_params);
+    set_dev_proc(dev, put_params, pcl3_put_params);
+    set_dev_proc(dev, fillpage, eprn_fillpage);
 };
 
 /* prn procedure implementations */
@@ -129,7 +141,7 @@ static void pcl3_flag_mismatch_reporter(
   pcl3_Device gs_##dname##_device = {                           \
     eprn_device_initdata(                                       \
       pcl3_Device,      /* device type */                       \
-      pcl3_procs,       /* static device procedure table */     \
+      eprn_initialize_device_procs, /* initialize dev_procs */  \
       #dname,           /* device name */                       \
       300.0, 300.0,     /* horizontal and vertical resolution */\
       pcl3_print_page,  /* print page routine */                \
@@ -294,9 +306,9 @@ static void get_string_for_int(int in_value, const eprn_StringAndInt *table,
     out_value->persistent = true;
   }
   else {
-    static char buffer[22];     /* Must be sufficient for an 'int' */
+    char buffer[22];     /* Must be sufficient for an 'int' */
 
-    gs_sprintf(buffer, "%d", in_value);
+    gs_snprintf(buffer, sizeof(buffer), "%d", in_value);
     assert(strlen(buffer) < sizeof(buffer));
     out_value->data = (const byte *)buffer;
     out_value->size = strlen(buffer);
@@ -1315,7 +1327,7 @@ static int pcl3_open_device(gx_device *device)
     unsigned int j;
 
     /* Media handling */
-    data->size = pcl3_page_size(dev->eprn.code);
+    data->size = pcl3_page_size(&dev->table, dev->eprn.code);
     if (data->size == pcl_ps_default) {
       /*  This is due to a media description using a media size code for which
           there is no PCL Page Size code. This is either an error in a builtin

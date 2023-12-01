@@ -5,7 +5,7 @@ Last-Update: 2012-07-24
 This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
 --- a/psi/imainarg.c
 +++ b/psi/imainarg.c
-@@ -1260,6 +1260,7 @@
+@@ -1263,6 +1263,7 @@
  #endif
  static const char help_trailer[] = "\
  For more information, see %s.\n\

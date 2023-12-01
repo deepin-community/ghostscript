@@ -1,3 +1,233 @@
+ghostscript (10.01.2~dfsg-1) unstable; urgency=medium
+
+  * QA upload
+
+  [ upstream ]
+  * new release(s)
+
+  [ Jonas Smedegaard ]
+  * fix source helper tool copyright-check to avoid insecure shell expansion
+  * fix source helper tool copyright-check to work with Path::Tiny 0.144
+  * declare compliance with Debian Policy 4.6.2
+  * update copyright info: extend repackaging to exclude images containing non-DFSG ICC profile
+  * drop patches obsoleted by upstream changes
+  * unfuzz patches
+
+ -- Jonas Smedegaard <dr@jones.dk>  Thu, 22 Jun 2023 08:15:42 +0200
+
+ghostscript (10.0.0~dfsg-11) unstable; urgency=medium
+
+  * QA upload.
+  * Prevent buffer overrun in (T)BCP encoding (CVE-2023-28879)
+    (Closes: #1033757)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 01 Apr 2023 09:48:32 +0200
+
+ghostscript (10.0.0~dfsg-10) unstable; urgency=medium
+
+  * QA upload.
+  * Add patch from upstream to fix cross build. Closes: #717825
+
+ -- Håvard F. Aasen <havard.f.aasen@pfft.no>  Mon, 20 Mar 2023 09:12:00 +0100
+
+ghostscript (10.0.0~dfsg-9) unstable; urgency=medium
+
+  * QA upload.
+  * Build docs with sphinx. Closes: #1024896, #1024964
+
+ -- Håvard F. Aasen <havard.f.aasen@pfft.no>  Mon, 12 Dec 2022 07:45:09 +0100
+
+ghostscript (10.0.0~dfsg-8) unstable; urgency=medium
+
+  * QA upload
+  * debian/: No longer build with dynamic modules (Closes: #1023330)
+    - X11 support is now part of ghostscript and ghostcript-x is a
+      transitional package.
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Sun, 04 Dec 2022 16:00:05 +0100
+
+ghostscript (10.0.0~dfsg-7) unstable; urgency=medium
+
+  * QA upload.
+
+  [ Debian Janitor ]
+  * Apply multi-arch hints. + ghostscript-x: Add Multi-Arch: same.
+
+ -- Jelmer Vernooĳ <jelmer@debian.org>  Sun, 27 Nov 2022 04:28:59 +0000
+
+ghostscript (10.0.0~dfsg-6) unstable; urgency=medium
+
+  * QA upload
+  * Upload to unstable
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Fri, 28 Oct 2022 12:31:22 +0200
+
+ghostscript (10.0.0~dfsg-5) experimental; urgency=medium
+
+  * QA upload
+  * debian/: Partially revert the changes from 10.0.0~dfsg-2
+    - Move version-specific files back to libgs10-common
+    - Keep non-version-specific ICC profiles in libgs-common
+    - Add libgs9-common transitional package for packages requiring the ICC
+      profiles
+  * debian/rules: Use no longer necessary dh_strip override
+  * debian/control: Remove unnecessary ${shlibs:Depends}
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Fri, 28 Oct 2022 01:19:27 +0200
+
+ghostscript (10.0.0~dfsg-4) unstable; urgency=medium
+
+  * orphan package: set maintainer to Debian QA Group
+
+ -- Jonas Smedegaard <dr@jones.dk>  Mon, 24 Oct 2022 13:54:55 +0200
+
+ghostscript (10.0.0~dfsg-3) unstable; urgency=medium
+
+  * build-depend on dh-sequence-pkgkde-symbolshelper
+    (not pkg-kde-tools)
+
+ -- Jonas Smedegaard <dr@jones.dk>  Tue, 18 Oct 2022 20:21:55 +0200
+
+ghostscript (10.0.0~dfsg-2) experimental; urgency=medium
+
+  * provide binary package libgs-common (not libgs10-common),
+    and have it break and replace libgs9-common;
+    closes: bug#1020846, thanks to Andreas Beckmann
+
+ -- Jonas Smedegaard <dr@jones.dk>  Tue, 27 Sep 2022 15:53:11 +0200
+
+ghostscript (10.0.0~dfsg-1) experimental; urgency=medium
+
+  * update copyright-check:
+    + declare metadata extensions separately from use
+    + update coverage
+  * drop patch 1001 to support cross build, adopted upstream
+  * unfuzz patches
+  * declare compliance with Debian Policy 4.6.1
+  * unfuzz patches
+  * bump library packages for new SONAME
+
+ -- Jonas Smedegaard <dr@jones.dk>  Thu, 22 Sep 2022 14:40:36 +0200
+
+ghostscript (9.56.1~dfsg-1) unstable; urgency=medium
+
+  [ upstream ]
+  * new release
+    + fix text rendering mode 3 and pdfwrite;
+      closes: bug#1009680, thanks to Paul Gevers and others
+
+  [ Jonas Smedegaard ]
+  * fix watch file
+  * update symbols: 1 private symbol added
+
+ -- Jonas Smedegaard <dr@jones.dk>  Wed, 20 Apr 2022 22:47:35 +0200
+
+ghostscript (9.56.0~dfsg-1) unstable; urgency=medium
+
+  [ upstream ]
+  * new release
+
+  [ Jonas Smedegaard ]
+  * drop superfluous lintian overrides
+  * New upstream version 9.56.0~dfsg
+  * update symbols:
+    + 56 private symbols added
+    + 23 private symbols dropped
+  * use semantic newlines in long descriptions
+
+ -- Jonas Smedegaard <dr@jones.dk>  Wed, 30 Mar 2022 11:51:53 +0200
+
+ghostscript (9.56.0~~rc2~dfsg-1) experimental; urgency=medium
+
+  [ upstream ]
+  * new pre-release
+
+ -- Jonas Smedegaard <dr@jones.dk>  Mon, 21 Mar 2022 09:09:26 +0100
+
+ghostscript (9.56.0~~rc1~dfsg-1) experimental; urgency=medium
+
+  [ upstream ]
+  * new pre-release
+
+  [ Jonas Smedegaard ]
+  * update copyright info:
+    + add Reference and improve Comment
+      for files covered by project-wide terms
+    + fix interpret unversioned GPL/LGPL to mean any version
+    + use multiple separate License-Grant fields
+      (not multiple texts in one field, delimited by [...]
+      which is hard to distinguish when parsing by a machine)
+    + sort License sections alphabetically
+    + fix drop bogus Files section
+      (likely due to a false positive in older licensecheck
+      flagging the word Adobe as a license grant)
+    + fix avoid complex shell globbing in file listings
+      (leftover from pre-1.0 file format)
+    + update coverage
+  * update lintian overrides regarding license shortnames
+  * tighten lintian overrides
+  * drop patches cherry-picked upstream now applied
+  * drop patch 1003 adopted upstream
+  * drop patch 2009 obsoleted by upstream changes;
+    stop have ghostscript-doc depend on libjs-jquery
+  * update and unfuzz patches
+  * update Maintainer and Vcs-* fields, and drop Uploaders:
+    package now maintained in collaborative debian area of Salsa
+
+ -- Jonas Smedegaard <dr@jones.dk>  Mon, 07 Mar 2022 21:47:41 +0100
+
+ghostscript (9.55.0~dfsg-3) unstable; urgency=medium
+
+  * add patch cherry-picked upstream
+    to fix the logic for freeing X pixmap;
+    really closes: bug#998888, thanks again to Florian Lindemann
+
+ -- Jonas Smedegaard <dr@jones.dk>  Tue, 30 Nov 2021 15:46:45 +0100
+
+ghostscript (9.55.0~dfsg-2) unstable; urgency=medium
+
+  * add patch cherry-picked upstream
+    to fix gx_default_copy_alpha calling get_bits_rectangle;
+    closes: bug#1000710, thanks to Hilmar Preuße
+
+ -- Jonas Smedegaard <dr@jones.dk>  Mon, 29 Nov 2021 11:07:05 +0100
+
+ghostscript (9.55.0~dfsg-1) unstable; urgency=medium
+
+  [ upstream ]
+  * new release
+
+  [ Jonas Smedegaard ]
+  * drop patch cherry-picked upstream now applied;
+    unfuzz patch 2009
+  * update copyright info:
+    + update coverage
+    + tighten lintian overrides
+  * update symbols:
+    + 466 private symbols added
+    + 76 private symbols dropped
+  * add patches cherry-picked upstream:
+    + avoid freeing the background pixmap created by gv;
+      closes: bug#704709, thanks to Florian Lindemann
+    + fix pdfwrite encoding bugs;
+      closes: bug#998458, #998461, thanks to Vincent Lefevre
+
+ -- Jonas Smedegaard <dr@jones.dk>  Fri, 19 Nov 2021 17:58:29 +0100
+
+ghostscript (9.55.0~~rc1~dfsg-1) experimental; urgency=medium
+
+  [ upstream ]
+  * new pre-release
+
+  [ Jonas Smedegaard ]
+  * drop patches cherry-picked upstream now applied
+  * unfuzz patches
+  * update copyright info: update coverage
+  * add patch 1002 proposed upstream to fix build with gpdf
+  * add patch 1003 to fix failure to link against lcms2
+
+ -- Jonas Smedegaard <dr@jones.dk>  Sat, 18 Sep 2021 14:31:04 +0200
+
 ghostscript (9.54.0~dfsg-5) unstable; urgency=medium
 
   * Revert to not mark /usr/share/ghostscript/* as not-installed:
@@ -49,6 +279,7 @@ ghostscript (9.54.0~dfsg-1) experimental; urgency=medium
   [ upstream ]
   * new release
 
+  [ Jonas Smedegaard ]
   * update copyright info:
     + exclude comvenience copies
       of projects libextract, leptonica, and tesseract

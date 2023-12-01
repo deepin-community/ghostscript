@@ -41,6 +41,7 @@
 #include "gdevsclass.h"
 #include "gdevmplt.h"
 #include "gxdcconv.h"       /* for color_rgb_to_gray and color_cmyk_to_gray */
+#include "gxdevsop.h"
 
 /* Device procedures, we only need one */
 static dev_proc_get_color_mapping_procs(pcl_mono_palette_get_color_mapping_procs);
@@ -69,92 +70,58 @@ RELOC_PTRS_END
 
 public_st_pcl_mono_palette_device();
 
+static int
+pcl_mono_dev_spec_op(gx_device *dev, int dev_spec_op, void *data, int size)
+{
+    if (dev_spec_op == gxdso_supports_hlcolor)
+        return 0;
+    if (dev->child)
+        return dev_proc(dev->child, dev_spec_op)(dev->child, dev_spec_op, data, size);
+    return_error(gs_error_rangecheck);
+}
+
+static int
+pcl_mono_text_begin(gx_device *dev, gs_gstate *pgs, const gs_text_params_t *text,
+    gs_font *font, const gx_clip_path *pcpath, gs_text_enum_t **ppte)
+{
+    /* The 'high level' version of the color has not been 'monochromized' by this
+     * device, so ensure that routines that we call (notably pdfwrite) don't
+     * think it's valid and use it. */
+    pgs->color[0].dev_color->ccolor_valid = 0;
+
+    if (dev->child)
+        return dev_proc(dev->child, text_begin)(dev->child, pgs, text, font, pcpath, ppte);
+    else
+        return gx_default_text_begin(dev, pgs, text, font, pcpath, ppte);
+}
+
+static void
+pcl_mono_palette_initialize(gx_device *dev)
+{
+    default_subclass_initialize_device_procs(dev);
+
+    set_dev_proc(dev, get_color_mapping_procs, pcl_mono_palette_get_color_mapping_procs);
+    /* We must override begin_typed_image here with the default. If
+     * we don't, then we forward down to the underlying devices own
+     * begin_typed_image, and the color calls done during that bypass
+     * the monochroming behaviour. See: page 32 of 75dpi png rendering of
+     * tests_private/pcl/pcl5ccet/15-01.BIN for an example. */
+    set_dev_proc(dev, begin_typed_image, gx_default_begin_typed_image);
+    set_dev_proc(dev, dev_spec_op, pcl_mono_dev_spec_op);
+    set_dev_proc(dev, text_begin, pcl_mono_text_begin);
+}
+
 const
 gx_device_mplt gs_pcl_mono_palette_device =
 {
     /*
      * Define the device as 8-bit gray scale to avoid computing halftones.
      */
-    std_device_dci_type_body(gx_device_mplt, 0, "PCL_Mono_Palette", &st_pcl_mono_palette_device,
+    std_device_dci_type_body_sc(gx_device_mplt, pcl_mono_palette_initialize,
+                        "PCL_Mono_Palette", &st_pcl_mono_palette_device,
                         MAX_COORD, MAX_COORD,
                         MAX_RESOLUTION, MAX_RESOLUTION,
-                        1, 8, 255, 0, 256, 1),
-    {default_subclass_open_device,
-     default_subclass_get_initial_matrix,
-     default_subclass_sync_output,			/* sync_output */
-     default_subclass_output_page,
-     default_subclass_close_device,
-     default_subclass_map_rgb_color,
-     default_subclass_map_color_rgb,
-     default_subclass_fill_rectangle,
-     default_subclass_tile_rectangle,			/* tile_rectangle */
-     default_subclass_copy_mono,
-     default_subclass_copy_color,
-     default_subclass_draw_line,			/* draw_line */
-     default_subclass_get_bits,			/* get_bits */
-     default_subclass_get_params,
-     default_subclass_put_params,
-     default_subclass_map_cmyk_color,
-     default_subclass_get_xfont_procs,			/* get_xfont_procs */
-     default_subclass_get_xfont_device,			/* get_xfont_device */
-     default_subclass_map_rgb_alpha_color,
-     default_subclass_get_page_device,
-     default_subclass_get_alpha_bits,			/* get_alpha_bits */
-     default_subclass_copy_alpha,
-     default_subclass_get_band,			/* get_band */
-     default_subclass_copy_rop,			/* copy_rop */
-     default_subclass_fill_path,
-     default_subclass_stroke_path,
-     default_subclass_fill_mask,
-     default_subclass_fill_trapezoid,
-     default_subclass_fill_parallelogram,
-     default_subclass_fill_triangle,
-     default_subclass_draw_thin_line,
-     default_subclass_begin_image,
-     default_subclass_image_data,			/* image_data */
-     default_subclass_end_image,			/* end_image */
-     default_subclass_strip_tile_rectangle,
-     default_subclass_strip_copy_rop,
-     default_subclass_get_clipping_box,			/* get_clipping_box */
-     default_subclass_begin_typed_image,
-     default_subclass_get_bits_rectangle,			/* get_bits_rectangle */
-     default_subclass_map_color_rgb_alpha,
-     default_subclass_create_compositor,
-     default_subclass_get_hardware_params,			/* get_hardware_params */
-     default_subclass_text_begin,
-     default_subclass_finish_copydevice,			/* finish_copydevice */
-     default_subclass_begin_transparency_group,			/* begin_transparency_group */
-     default_subclass_end_transparency_group,			/* end_transparency_group */
-     default_subclass_begin_transparency_mask,			/* begin_transparency_mask */
-     default_subclass_end_transparency_mask,			/* end_transparency_mask */
-     default_subclass_discard_transparency_layer,			/* discard_transparency_layer */
-     pcl_mono_palette_get_color_mapping_procs,			/* get_color_mapping_procs */
-     default_subclass_get_color_comp_index,			/* get_color_comp_index */
-     default_subclass_encode_color,			/* encode_color */
-     default_subclass_decode_color,			/* decode_color */
-     default_subclass_pattern_manage,			/* pattern_manage */
-     default_subclass_fill_rectangle_hl_color,			/* fill_rectangle_hl_color */
-     default_subclass_include_color_space,			/* include_color_space */
-     default_subclass_fill_linear_color_scanline,			/* fill_linear_color_scanline */
-     default_subclass_fill_linear_color_trapezoid,			/* fill_linear_color_trapezoid */
-     default_subclass_fill_linear_color_triangle,			/* fill_linear_color_triangle */
-     default_subclass_update_spot_equivalent_colors,			/* update_spot_equivalent_colors */
-     default_subclass_ret_devn_params,			/* ret_devn_params */
-     default_subclass_fillpage,		/* fillpage */
-     default_subclass_push_transparency_state,                      /* push_transparency_state */
-     default_subclass_pop_transparency_state,                      /* pop_transparency_state */
-     default_subclass_put_image,                      /* put_image */
-     default_subclass_dev_spec_op,                      /* dev_spec_op */
-     default_subclass_copy_planes,                      /* copy_planes */
-     default_subclass_get_profile,                      /* get_profile */
-     default_subclass_set_graphics_type_tag,                      /* set_graphics_type_tag */
-     default_subclass_strip_copy_rop2,
-     default_subclass_strip_tile_rect_devn,
-     default_subclass_copy_alpha_hl_color,
-     default_subclass_process_page,
-     default_subclass_transform_pixel_region,
-     default_subclass_fill_stroke_path,
-    }
+                        1, 8, 255, 0, 256, 1, NULL, NULL, NULL)
 };
 
 #undef MAX_COORD
@@ -164,76 +131,70 @@ gx_device_mplt gs_pcl_mono_palette_device =
  * to gray values
  */
 static void
-pcl_gray_cs_to_cm(gx_device * dev, frac gray, frac out[])
-{
-    pcl_mono_palette_subclass_data *psubclass_data;
-
-    while(dev && dev->child) {
-        if (strncmp(dev->dname, "PCL_Mono_Palette", 16) == 0)
-            break;
-        dev = dev->child;
-    };
-
-    if (dev && dev->child) {
-        psubclass_data = dev->subclass_data;
-        /* just pass it along */
-        psubclass_data->device_cm_procs->map_gray(dev, gray, out);
-    } else
-        return;
-}
-
-static void
-pcl_rgb_cs_to_cm(gx_device * dev, const gs_gstate * pgs, frac r, frac g,
-                 frac b, frac out[])
-{
-    pcl_mono_palette_subclass_data *psubclass_data;
-    frac gray;
-
-    while(dev && dev->child) {
-        if (strncmp(dev->dname, "PCL_Mono_Palette", 16) == 0)
-            break;
-        dev = dev->child;
-    };
-
-    if (dev && dev->child) {
-        psubclass_data = dev->subclass_data;
-        gray = color_rgb_to_gray(r, g, b, NULL);
-
-        psubclass_data->device_cm_procs->map_rgb(dev, pgs, gray, gray, gray, out);
-    } else
-        return;
-}
-
-static void
-pcl_cmyk_cs_to_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
-{
-    pcl_mono_palette_subclass_data *psubclass_data;
-    frac gray;
-
-    while(dev && dev->child) {
-        if (strncmp(dev->dname, "PCL_Mono_Palette", 16) == 0)
-            break;
-        dev = dev->child;
-    };
-
-    if (dev && dev->child) {
-        psubclass_data = dev->subclass_data;
-        gray = color_cmyk_to_gray(c, m, y, k, NULL);
-
-        psubclass_data->device_cm_procs->map_cmyk(dev, gray, gray, gray, gray, out);
-    } else
-        return;
-}
-
-const gx_cm_color_map_procs *pcl_mono_palette_get_color_mapping_procs(const gx_device *dev)
+pcl_gray_cs_to_cm(const gx_device * dev, frac gray, frac out[])
 {
     pcl_mono_palette_subclass_data *psubclass_data = dev->subclass_data;
 
-    if (psubclass_data->device_cm_procs == 0L) {
-        psubclass_data->pcl_mono_procs.map_gray = pcl_gray_cs_to_cm;
-        psubclass_data->pcl_mono_procs.map_rgb = pcl_rgb_cs_to_cm;
-        psubclass_data->pcl_mono_procs.map_cmyk = pcl_cmyk_cs_to_cm;
-        psubclass_data->device_cm_procs = (gx_cm_color_map_procs *)dev_proc(dev->child, get_color_mapping_procs) (dev->child);
+    /* assert(strncmp(dev->dname, "PCL_Mono_Palette", 16) == 0) - otherwise we are being
+     * called with the wrong dev! */
+
+    if (psubclass_data->device_cm) {
+        /* just pass it along */
+        psubclass_data->device_cm_procs->map_gray(psubclass_data->device_cm, gray, out);
     }
-    return &psubclass_data->pcl_mono_procs;
+}
+
+static void
+pcl_rgb_cs_to_cm(const gx_device * dev, const gs_gstate * pgs, frac r, frac g,
+                 frac b, frac out[])
+{
+    pcl_mono_palette_subclass_data *psubclass_data = dev->subclass_data;
+    frac gray;
+
+    /* assert(strncmp(dev->dname, "PCL_Mono_Palette", 16) == 0) - otherwise we are being
+     * called with the wrong dev! */
+
+    if (psubclass_data->device_cm) {
+        gray = color_rgb_to_gray(r, g, b, NULL);
+
+        psubclass_data->device_cm_procs->map_rgb(psubclass_data->device_cm, pgs, gray, gray, gray, out);
+    }
+}
+
+static void
+pcl_cmyk_cs_to_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
+{
+    pcl_mono_palette_subclass_data *psubclass_data = dev->subclass_data;
+    frac gray;
+
+    /* assert(strncmp(dev->dname, "PCL_Mono_Palette", 16) == 0) - otherwise we are being
+     * called with the wrong dev! */
+
+    if (psubclass_data->device_cm) {
+        gray = color_cmyk_to_gray(c, m, y, k, NULL);
+
+        psubclass_data->device_cm_procs->map_cmyk(psubclass_data->device_cm, gray, gray, gray, gray, out);
+    }
+}
+
+static gx_cm_color_map_procs pcl_mono_procs =
+{
+    pcl_gray_cs_to_cm,
+    pcl_rgb_cs_to_cm,
+    pcl_cmyk_cs_to_cm
+};
+
+const gx_cm_color_map_procs *pcl_mono_palette_get_color_mapping_procs(const gx_device  *dev,
+                                                                      const gx_device **tdev)
+{
+    pcl_mono_palette_subclass_data *psubclass_data = dev->subclass_data;
+
+    /* assert(strncmp(dev->dname, "PCL_Mono_Palette", 16) == 0) - otherwise we are being
+     * called with the wrong dev! */
+
+    *tdev = dev;
+    if (psubclass_data->device_cm_procs == NULL) {
+        psubclass_data->device_cm_procs = (gx_cm_color_map_procs *)dev_proc(dev->child, get_color_mapping_procs)(dev->child, &psubclass_data->device_cm);
+    }
+    return &pcl_mono_procs;
 }

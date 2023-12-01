@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -47,8 +47,6 @@ typedef struct gx_cached_bits_head_s {
         ushort width, height, shift;\
         ushort raster;\
         gx_bitmap_id id
-/* Define aliases for head members. */
-#define cb_depth head.depth
 /* Define aliases for common members formerly in the head. */
 #define cb_raster raster
 typedef struct gx_cached_bits_s {
@@ -117,5 +115,10 @@ void gx_bits_cache_shorten(gx_bits_cache *, gx_cached_bits_head *,
 /* from any other structures (like a hash table). */
 void gx_bits_cache_free(gx_bits_cache *, gx_cached_bits_head *,
                         gx_bits_cache_chunk *);
+
+#ifdef DEBUG
+/* Debug only function to print the contents of the cache. */
+void gx_bits_cache_dump(gx_bits_cache * bc);
+#endif
 
 #endif /* gxbcache_INCLUDED */

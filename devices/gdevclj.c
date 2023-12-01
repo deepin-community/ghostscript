@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -380,7 +380,7 @@ pack_and_compress_scanline(
     }
 
     /* clear to up a longword boundary */
-    while ((((ulong)p_c) & (sizeof(ulong) - 1)) != 0) {
+    while ((((intptr_t)p_c) & (sizeof(ulong) - 1)) != 0) {
         *p_c++ = 0;
         *p_m++ = 0;
         *p_y++ = 0;
@@ -515,38 +515,32 @@ xit:
 }
 
 /* CLJ device methods */
-#define CLJ_PROCS(get_params, put_params)\
-    gdev_prn_open,                  /* open_device */\
-    clj_get_initial_matrix,         /* get_initial matrix */\
-    NULL,	                    /* sync_output */\
-/* Since the print_page doesn't alter the device, this device can print in the background */\
-    gdev_prn_bg_output_page,        /* output_page */\
-    gdev_prn_close,                 /* close_device */\
-    gdev_pcl_3bit_map_rgb_color,    /* map_rgb_color */\
-    gdev_pcl_3bit_map_color_rgb,    /* map_color_rgb */\
-    NULL,	                    /* fill_rectangle */\
-    NULL,	                    /* tile_rectangle */\
-    NULL,	                    /* copy_mono */\
-    NULL,	                    /* copy_color */\
-    NULL,	                    /* obsolete draw_line */\
-    NULL,	                    /* get_bits */\
-    get_params, 	            /* get_params */\
-    put_params,                     /* put_params */\
-    NULL,	                    /* map_cmyk_color */\
-    NULL,	                    /* get_xfont_procs */\
-    NULL,	                    /* get_xfont_device */\
-    NULL,	                    /* map_rgb_alpha_color */\
-    gx_page_device_get_page_device  /* get_page_device */
+static void
+clj_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
 
-static gx_device_procs cljet5_procs = {
-    CLJ_PROCS(clj_get_params, clj_put_params)
-};
+    set_dev_proc(dev, get_initial_matrix, clj_get_initial_matrix);
+    set_dev_proc(dev, map_rgb_color, gdev_pcl_3bit_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gdev_pcl_3bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, gdev_pcl_3bit_map_rgb_color);
+    set_dev_proc(dev, decode_color, gdev_pcl_3bit_map_color_rgb);
+}
+
+static void
+cljet5_initialize_device_procs(gx_device *dev)
+{
+    clj_initialize_device_procs(dev);
+
+    set_dev_proc(dev, get_params, clj_get_params);
+    set_dev_proc(dev, put_params, clj_put_params);
+}
 
 /* CLJ device structure */
-#define CLJ_DEVICE_BODY(procs, dname, rotated)\
+#define CLJ_DEVICE_BODY(init, dname, rotated)\
   prn_device_body(\
     gx_device_clj,\
-    procs,                  /* procedures */\
+    init,                   /* initialize */\
     dname,                  /* device name */\
     110,                    /* width - will be overridden subsequently */\
     85,                     /* height - will be overridden subsequently */\
@@ -562,7 +556,7 @@ static gx_device_procs cljet5_procs = {
     rotated		    /* rotated - may be overridden subsequently */
 
 gx_device_clj gs_cljet5_device = {
-    CLJ_DEVICE_BODY(cljet5_procs, "cljet5", 0 /*false*/)
+    CLJ_DEVICE_BODY(cljet5_initialize_device_procs, "cljet5", 0 /*false*/)
 };
 
 /* ---------------- Driver with page rotation ---------------- */
@@ -677,11 +671,16 @@ clj_pr_put_params(
 }
 
 /* CLJ device methods -- se above for CLJ_PROCS */
-static gx_device_procs cljet5pr_procs = {
-    CLJ_PROCS(clj_pr_get_params, clj_pr_put_params)
-};
+static void
+cljet5pr_initialize_device_procs(gx_device *dev)
+{
+    clj_initialize_device_procs(dev);
+
+    set_dev_proc(dev, get_params, clj_pr_get_params);
+    set_dev_proc(dev, put_params, clj_pr_put_params);
+}
 
 /* CLJ device structure -- see above for CLJ_DEVICE_BODY */
 gx_device_clj gs_cljet5pr_device = {
-    CLJ_DEVICE_BODY(cljet5pr_procs, "cljet5pr", 1 /*true*/)
+    CLJ_DEVICE_BODY(cljet5pr_initialize_device_procs, "cljet5pr", 1 /*true*/)
 };

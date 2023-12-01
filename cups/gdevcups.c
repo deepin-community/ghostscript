@@ -76,6 +76,21 @@
 
 #include <stdlib.h>
 #include <ctype.h>
+
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
+/* Recent cups releases on OSX pull in printf in a header file
+   so we need to allow it. This may well end up being required
+   on other platforms, too.
+ */
+#ifdef __APPLE__
+#undef printf
+#define printf printf
+#endif
+
 #include <cups/raster.h>
 #include <cups/ppd.h>
 #include <math.h>
@@ -307,99 +322,40 @@ typedef struct gx_device_cups_s
   int			Matrix[3][3][CUPS_MAX_VALUE + 1];/* Color transform matrix LUT */
   int                   user_icc;
   int                   cupsRasterVersion;
+  char                  cupsBackSideOrientation[64];
+  int                   cupsBackSideFlipMargins;
+  int                   cupsManualCopies;
   char                  pageSizeRequested[64];
 
   /* Used by cups_put_params(): */
 } gx_device_cups;
 
-private gx_device_procs	cups_procs =
+static void
+cups_initialize_device_procs(gx_device *dev)
 {
-   cups_open,
-   cups_get_matrix,
-   cups_sync_output,
-   cups_output_page,
-   cups_close,
+    set_dev_proc(dev, open_device, cups_open);
+    set_dev_proc(dev, get_initial_matrix, cups_get_matrix);
+    set_dev_proc(dev, sync_output, cups_sync_output);
+    set_dev_proc(dev, output_page, cups_output_page);
+    set_dev_proc(dev, close_device, cups_close);
 #ifdef dev_t_proc_encode_color
-   NULL,				/* map_rgb_color */
-   NULL,				/* map_color_rgb */
+    set_dev_proc(dev, get_color_mapping_procs, cups_get_color_mapping_procs);
+    set_dev_proc(dev, get_color_comp_index, cups_get_color_comp_index);
+    set_dev_proc(dev, encode_color, cups_encode_color);
+    set_dev_proc(dev, decode_color, cups_decode_color);
 #else
-   cups_map_rgb_color,
-   cups_map_color_rgb,
-#endif /* dev_t_proc_encode_color */
-   NULL,				/* fill_rectangle */
-   NULL,				/* tile_rectangle */
-   NULL,				/* copy_mono */
-   NULL,				/* copy_color */
-   NULL,				/* draw_line */
-   gx_default_get_bits,
-   cups_get_params,
-   cups_put_params,
-#ifdef dev_t_proc_encode_color
-   NULL,				/* map_cmyk_color */
-#else
-   cups_map_cmyk_color,
-#endif /* dev_t_proc_encode_color */
-   NULL,				/* get_xfont_procs */
-   NULL,				/* get_xfont_device */
-   NULL,				/* map_rgb_alpha_color */
-   gx_page_device_get_page_device,
-   NULL,				/* get_alpha_bits */
-   NULL,				/* copy_alpha */
-   NULL,				/* get_band */
-   NULL,				/* copy_rop */
-   NULL,				/* fill_path */
-   NULL,				/* stroke_path */
-   NULL,				/* fill_mask */
-   NULL,				/* fill_trapezoid */
-   NULL,				/* fill_parallelogram */
-   NULL,				/* fill_triangle */
-   NULL,				/* draw_thin_line */
-   NULL,				/* begin_image */
-   NULL,				/* image_data */
-   NULL,				/* end_image */
-   NULL,				/* strip_tile_rectangle */
-   NULL,				/* strip_copy_rop */
-   NULL,				/* get_clipping_box */
-   NULL,				/* begin_typed_image */
-   NULL,				/* get_bits_rectangle */
-   NULL,				/* map_color_rgb_alpha */
-   NULL,				/* create_compositor */
-   NULL,				/* get_hardware_params */
-   NULL,				/* text_begin */
-   NULL,				/* finish_copydevice */
-   NULL,				/* begin_transparency_group */
-   NULL,				/* end_transparency_group */
-   NULL,				/* begin_transparency_mask */
-   NULL,				/* end_transparency_mask */
-   NULL,				/* discard_transparency_layer */
-#ifdef dev_t_proc_encode_color
-   cups_get_color_mapping_procs,
-   cups_get_color_comp_index,
-   cups_encode_color,
-   cups_decode_color,
-#else
-   NULL,                                /* get_color_mapping_procs */
-   NULL,                                /* get_color_comp_index */
-   NULL,                                /* encode_color */
-   NULL,                                /* decode_color */
-#endif /* dev_t_proc_encode_color */
-   NULL,				/* pattern_manage */
-   NULL,				/* fill_rectangle_hl_color */
-   NULL,				/* include_color_space */
-   NULL,				/* fill_linear_color_scanline */
-   NULL,				/* fill_linear_color_trapezoid */
-   NULL,				/* fill_linear_color_triangle */
-   NULL,				/* update_spot_equivalent_colors */
-   NULL,				/* ret_devn_params */
-   NULL,				/* fillpage */
-   NULL,				/* push_transparency_state */
-   NULL,				/* pop_transparency_state */
-   NULL,                                /* put_image */
-   cups_spec_op
-};
+    set_dev_proc(dev, map_rgb_color, cups_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, cups_map_color_rgb);
+    set_dev_proc(dev, map_cmyk_color, cups_map_cmyk_color);
+#endif
+    set_dev_proc(dev, get_params, cups_get_params);
+    set_dev_proc(dev, put_params, cups_put_params);
+    set_dev_proc(dev, get_page_device, gx_page_device_get_page_device);
+    set_dev_proc(dev, dev_spec_op, cups_spec_op);
+}
 
-#define prn_device_body_copies(dtype, procs, dname, w10, h10, xdpi, ydpi, lo, to, lm, bm, rm, tm, ncomp, depth, mg, mc, dg, dc, print_pages)\
-	std_device_full_body_type(dtype, &procs, dname, &st_device_printer,\
+#define prn_device_body_copies(dtype, init, dname, w10, h10, xdpi, ydpi, lo, to, lm, bm, rm, tm, ncomp, depth, mg, mc, dg, dc, print_pages)\
+	std_device_full_body_type(dtype, init, dname, &st_device_printer,\
 	  (int)((long)(w10) * (xdpi) / 10),\
 	  (int)((long)(h10) * (ydpi) / 10),\
 	  xdpi, ydpi,\
@@ -433,7 +389,7 @@ private gx_device_procs	cups_procs =
 
 #define gs_xxx_device(dname, mediaclass)\
   prn_device_body_copies(gx_device_cups,/* type */\
-                         cups_procs,	/* procedures */\
+                         cups_initialize_device_procs,/* init */\
 			 dname,		/* device name */\
 			 85,		/* initial width */\
 			 110,		/* initial height */\
@@ -518,11 +474,20 @@ private gx_device_procs	cups_procs =
    {{0x00},{0x00},{0x00}}},                /* Matrix */\
   0,                                       /* user_icc */\
   3,                                     /* cupsRasterVersion */\
+  "Normal",                                /* cupsBackSideOrientation */\
+  0,                                       /* cupsBackSideFlipMargins */\
+  0,                                       /* cupsManualCopies */\
   ""                                     /* pageSizeRequested */
 
 gx_device_cups	gs_cups_device = { gs_xxx_device("cups", "") };
 gx_device_cups	gs_pwgraster_device = { gs_xxx_device("pwgraster",
 						      "PwgRaster") };
+#if defined(CUPS_RASTER_HAVE_APPLERASTER)
+gx_device_cups	gs_appleraster_device = { gs_xxx_device("appleraster",
+							"PwgRaster") };
+gx_device_cups	gs_urf_device = { gs_xxx_device("urf",
+						"PwgRaster") };
+#endif
 
 /*
  * Local functions...
@@ -859,9 +824,10 @@ cups_get_color_comp_index(gx_device * pdev, const char * pname,
  */
 
 private const gx_cm_color_map_procs *	/* O - List of device procedures */
-cups_get_color_mapping_procs(const gx_device *pdev)
+cups_get_color_mapping_procs(const gx_device *pdev, const gx_device **tdev)
 					/* I - Device info */
 {
+  *tdev = pdev;
   return (&cups_color_mapping_procs);
 }
 #endif /* dev_t_proc_encode_color */
@@ -1163,6 +1129,27 @@ cups_get_params(gx_device     *pdev,	/* I - Device info */
     goto done;
 #endif /* CUPS_RASTER_SYNCv1 */
 
+ /*
+  * Variables for PPD-less use only. If these settings are defined in the
+  * PPD file, the PPD file's definitions get priority.
+  */
+
+  if ((code = param_write_int(plist, "cupsRasterVersion",
+			      (int *)&(cups->cupsRasterVersion))) < 0)
+    goto done;
+
+  param_string_from_transient_string(s, cups->cupsBackSideOrientation);
+  if ((code = param_write_string(plist, "cupsBackSideOrientation", &s)) < 0)
+    goto done;
+
+  b = cups->cupsBackSideFlipMargins;
+  if ((code = param_write_bool(plist, "cupsBackSideFlipMargins", &b)) < 0)
+    goto done;
+
+  b = cups->cupsManualCopies;
+  if ((code = param_write_bool(plist, "cupsManualCopies", &b)) < 0)
+    goto done;
+
 done:
 
 #ifdef CUPS_DEBUG2
@@ -1254,7 +1241,7 @@ cups_map_cielab(double x,		/* I - Raw color value */
  */
 
 private void
-cups_map_cmyk(gx_device *pdev,		/* I - Device info */
+cups_map_cmyk(const gx_device *pdev,		/* I - Device info */
               frac      c,		/* I - Cyan value */
 	      frac      m,		/* I - Magenta value */
 	      frac      y,		/* I - Yellow value */
@@ -1723,7 +1710,7 @@ cups_map_cmyk(gx_device *pdev,		/* I - Device info */
  */
 
 private void
-cups_map_gray(gx_device *pdev,		/* I - Device info */
+cups_map_gray(const gx_device *pdev,		/* I - Device info */
               frac      g,		/* I - Grayscale value */
 	      frac      *out)		/* O - Device colors */
 {
@@ -1745,7 +1732,7 @@ cups_map_gray(gx_device *pdev,		/* I - Device info */
  */
 
 private void
-cups_map_rgb(gx_device             *pdev,
+cups_map_rgb(const gx_device             *pdev,
 					/* I - Device info */
              const gs_gstate        *pgs,/* I - Device state */
              frac                  r,	/* I - Red value */
@@ -3008,7 +2995,14 @@ cups_print_pages(gx_device_printer *pdev,
 #if defined(CUPS_RASTER_HAVE_PWGRASTER)
                                        (strcasecmp(cups->header.MediaClass,
 						   "PwgRaster") == 0 ?
+#if defined(CUPS_RASTER_HAVE_APPLERASTER)
+					(!strcmp(cups->dname, "appleraster") ||
+					 !strcmp(cups->dname, "urf") ?
+					 CUPS_RASTER_WRITE_APPLE :
+					 CUPS_RASTER_WRITE_PWG) :
+#else
 					CUPS_RASTER_WRITE_PWG :
+#endif
 					(cups->cupsRasterVersion == 3 ?
 					 CUPS_RASTER_WRITE :
 					 CUPS_RASTER_WRITE_COMPRESSED)))) ==
@@ -3031,7 +3025,8 @@ cups_print_pages(gx_device_printer *pdev,
   if (num_copies < 1)
     num_copies = 1;
 
-  if (cups->PPD != NULL && !cups->PPD->manual_copies)
+  if ((cups->PPD == NULL && !cups->cupsManualCopies) ||
+      (cups->PPD != NULL && !cups->PPD->manual_copies))
   {
     cups->header.NumCopies = num_copies;
     num_copies = 1;
@@ -3321,6 +3316,69 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
       goto done;
   }
 
+ /*
+  * Variables for PPD-less use only. If these settings are defined in the
+  * PPD file, the PPD file's definitions get priority.
+  */
+
+  if ((code = param_read_int(plist, "cupsRasterVersion", &intval)) < 0)
+  {
+    dmprintf1(pdev->memory, "ERROR: Error setting %s ...\n",
+	      "cupsRasterVersion");
+    param_signal_error(plist, "cupsRasterVersion", code); \
+    goto done;
+  }
+  else if (code == 0)
+    cups->cupsRasterVersion = (int)intval;
+
+  if ((code = param_read_string(plist, "cupsBackSideOrientation",
+				&stringval)) < 0)
+  {
+    dmprintf1(pdev->memory, "ERROR: Error setting %s...\n",
+	      "cupsBackSideOrientation");
+    param_signal_error(plist, "cupsBackSideOrientation", code);
+    goto done;
+  }
+  else if (code == 0)
+  {
+    intval = min(sizeof(cups->cupsBackSideOrientation) - 1, stringval.size);
+    strncpy(cups->cupsBackSideOrientation, (const char *)(stringval.data),
+	    intval);
+    cups->cupsBackSideOrientation[intval] = '\0';
+  }
+
+  if ((code = param_read_bool(plist, "cupsBackSideFlipMargins",
+			      &boolval)) < 0)
+  {
+    if ((code = param_read_null(plist, "cupsBackSideFlipMargins")) < 0)
+    {
+      dmprintf1(pdev->memory, "ERROR: Error setting %s ...\n",
+		"cupsBackSideFlipMargins");
+      param_signal_error(plist, "cupsBackSideFlipMargins", code);
+      goto done;
+    }
+    if (code == 0)
+      cups->cupsBackSideFlipMargins = CUPS_FALSE;
+  }
+  else if (code == 0)
+    cups->cupsBackSideFlipMargins = (cups_bool_t)boolval;
+
+  if ((code = param_read_bool(plist, "cupsManualCopies",
+			      &boolval)) < 0)
+  {
+    if ((code = param_read_null(plist, "cupsManualCopies")) < 0)
+    {
+      dmprintf1(pdev->memory, "ERROR: Error setting %s ...\n",
+		"cupsManualCopies");
+      param_signal_error(plist, "cupsManualCopies", code);
+      goto done;
+    }
+    if (code == 0)
+      cups->cupsManualCopies = CUPS_FALSE;
+  }
+  else if (code == 0)
+    cups->cupsManualCopies = (cups_bool_t)boolval;
+
   /*
   * Then process standard page device options...
   */
@@ -3460,28 +3518,6 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 	yflip = 0;
       }
 
-#ifdef CUPS_RASTER_SYNCv1
-     /*
-      * Chack whether cupsPageSizeName has a valid value
-      */
-
-      if (strlen(cups->header.cupsPageSizeName) != 0) {
-	found = 0;
-	for (i = cups->PPD->num_sizes, size = cups->PPD->sizes;
-	     i > 0;
-	     i --, size ++)
-	  if (strcasecmp(cups->header.cupsPageSizeName, size->name) == 0) {
-	    found = 1;
-	    break;
-	  }
-	if (found == 0) cups->header.cupsPageSizeName[0] = '\0';
-      }
-#ifdef CUPS_DEBUG
-      dmprintf1(pdev->memory, "DEBUG2: cups->header.cupsPageSizeName = %s\n",
-                cups->header.cupsPageSizeName);
-#endif /* CUPS_DEBUG */
-#endif /* CUPS_RASTER_SYNCv1 */
-
      /*
       * Find the matching page size...
       */
@@ -3493,189 +3529,38 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 
       best_score = -1;
       best_size = NULL;
-      for (i = cups->PPD->num_sizes, size = cups->PPD->sizes;
-	   i > 0;
-	   i --, size ++)
+      /* Match against the PPD's page size only if the page size name does
+	 not suggest that we use a custom page size */
+      if (strncasecmp(cups->header.cupsPageSizeName, "Custom", 6) != 0 ||
+	  (cups->header.cupsPageSizeName[6] != '\0' &&
+	   cups->header.cupsPageSizeName[6] != '.'))
       {
-	if (size->length == 0 || size->width == 0) continue;
-
-	score = 0;
-	size_matched = 0;
-	margins_matched = 0;
-	imageable_area_matched = 0;
-#ifdef CUPS_DEBUG
-	name_requested_matched = 0;
-#endif
-
-	long_edge_mismatch =
-	  fabs(cups->MediaSize[1] - size->length)/size->length +
-	  LONG_EDGE_LENGTH_MATCH_LIMIT / 100;
-	short_edge_mismatch =
-	  fabs(cups->MediaSize[0] - size->width)/size->width +
-	  SHORT_EDGE_LENGTH_MATCH_LIMIT / 100;
-	if (size->length < size->width)
-	{
-	  swap = long_edge_mismatch;
-	  long_edge_mismatch = short_edge_mismatch;
-	  short_edge_mismatch = swap;
-	}
-
-	if (long_edge_mismatch < LONG_EDGE_LENGTH_MATCH_LIMIT &&
-	    short_edge_mismatch < SHORT_EDGE_LENGTH_MATCH_LIMIT)
-	{
-	  size_matched = 1;
-	  /* If two sizes match within the limits, take the one with less
-	     mismatch */
-	  score = (long)(9999.0 -
-			 long_edge_mismatch * short_edge_mismatch * 9999.0 /
-			 LONG_EDGE_LENGTH_MATCH_LIMIT /
-			 SHORT_EDGE_LENGTH_MATCH_LIMIT);
-	  if (score < 0) score = 0;
-	  /* We check whether all 4 margins match with the margin info
-	     of the page size in the PPD. Here we check also for swapped
-	     left/right and top/bottom margins as the cups->HWMargins
-	     info can be from the previous page and there the margins
-	     can be swapped due to duplex printing requirements */
-	  if (!margins_set ||
-	      (((fabs(cups->HWMargins[0] - size->left) < 1.0 &&
-		 fabs(cups->HWMargins[2] - size->width + size->right) < 1.0) ||
-		(fabs(cups->HWMargins[0] - size->width + size->right) < 1.0 &&
-		 fabs(cups->HWMargins[2] - size->left) < 1.0)) &&
-	       ((fabs(cups->HWMargins[1] - size->bottom) < 1.0 &&
-		 fabs(cups->HWMargins[3] - size->length + size->top) < 1.0) ||
-		(fabs(cups->HWMargins[1] - size->length + size->top) < 1.0 &&
-		 fabs(cups->HWMargins[3] - size->bottom) < 1.0))))
-	    margins_matched = 1;
-	} else {
-	  /* Compare the dimensions of the imageable area against the
-	     the input page size */
-	  long_edge_mismatch =
-	    fabs(cups->MediaSize[1] - size->top + size->bottom)/size->length +
-	    LONG_EDGE_LENGTH_MATCH_LIMIT / 100;
-	  short_edge_mismatch =
-	    fabs(cups->MediaSize[0] - size->right + size->left)/size->width +
-	    SHORT_EDGE_LENGTH_MATCH_LIMIT / 100;
-	  if (size->length < size->width)
-	  {
-	    swap = long_edge_mismatch;
-	    long_edge_mismatch = short_edge_mismatch;
-	    short_edge_mismatch = swap;
-	  }
-
-	  if (long_edge_mismatch < LONG_EDGE_LENGTH_MATCH_LIMIT &&
-	      short_edge_mismatch < SHORT_EDGE_LENGTH_MATCH_LIMIT)
-	  {
-	    imageable_area_matched = 1;
-	    /* If two sizes match within the limits, take the one with less
-	       mismatch */
-	    score = (long)(4999.0 -
-			   long_edge_mismatch * short_edge_mismatch * 4999.0 /
-			   LONG_EDGE_LENGTH_MATCH_LIMIT /
-			   SHORT_EDGE_LENGTH_MATCH_LIMIT);
-	    if (score < 0) score = 0;
-	  }
-	}
-
-        if (margins_matched)
-	  score += PAGESIZE_SCORE_SIZE_MARGINS * 10000;
-	else if (size_matched)
-	  score += PAGESIZE_SCORE_SIZE * 10000;
-
-	if (size_matched || imageable_area_matched) {
-	  if (!strcasecmp(cups->pageSizeRequested, size->name))
-          {
-#ifdef CUPS_DEBUG
-	    name_requested_matched = 1;
-#endif
-          }
-	  else
-	    score -= 1000;
-	}
-
-	if (score > best_score)
-	{
-	  best_score = score;
-	  if (score > 0)
-	    best_size = size;
-	}
-#ifdef CUPS_DEBUG
-	dmprintf1(pdev->memory, "DEBUG2: Checking against PPD page size (portrait): %s\n",
-		  size->name);
-	dmprintf2(pdev->memory, "DEBUG2:    Width: %.2f; Height: %.2f\n",
-		  size->width, size->length);
-	dmprintf4(pdev->memory, "DEBUG2:    Margins: Left: %.2f; Right: %.2f; Top: %.2f; Bottom: %.2f\n",
-		  size->left, size->right, size->top, size->bottom);
-	dmprintf4(pdev->memory, "DEBUG2:    Size mismatch: Long Edge (%.3f): %.5f; Short Edge (%.3f): %.5f\n",
-		  LONG_EDGE_LENGTH_MATCH_LIMIT, long_edge_mismatch,
-		  SHORT_EDGE_LENGTH_MATCH_LIMIT, short_edge_mismatch);
-	dmprintf4(pdev->memory, "DEBUG2:    Match: Size: %d; Margins: %d; Imageable Area: %d; Name requested: %d\n",
-		  size_matched, margins_matched, imageable_area_matched,
-		  name_requested_matched);
-	dmprintf2(pdev->memory, "DEBUG2:    Score: %ld; Best Score: %ld\n",
-		  score, best_score);
-#endif /* CUPS_DEBUG */
-      }
-
-      if (best_size)
-      {
+#ifdef CUPS_RASTER_SYNCv1
        /*
-	* Standard size...
+	* Chack whether cupsPageSizeName has a valid value
 	*/
 
+	if (strlen(cups->header.cupsPageSizeName) != 0) {
+	  found = 0;
+	  for (i = cups->PPD->num_sizes, size = cups->PPD->sizes;
+	       i > 0;
+	       i --, size ++)
+	    if (strcasecmp(cups->header.cupsPageSizeName, size->name) == 0) {
+	      found = 1;
+	      break;
+	    }
+	  if (found == 0) cups->header.cupsPageSizeName[0] = '\0';
+	}
 #ifdef CUPS_DEBUG
-	dmprintf1(pdev->memory, "DEBUG: size = %s\n", best_size->name);
+	dmprintf1(pdev->memory, "DEBUG2: cups->header.cupsPageSizeName = %s\n",
+		  cups->header.cupsPageSizeName);
 #endif /* CUPS_DEBUG */
+#endif /* CUPS_RASTER_SYNCv1 */
 
-	mediasize[0] = best_size->width;
-	mediasize[1] = best_size->length;
-
-	cups->landscape = 0;
-
-#ifdef CUPS_RASTER_SYNCv1
-	strncpy(cups->header.cupsPageSizeName, best_size->name,
-		sizeof(cups->header.cupsPageSizeName));
-	cups->header.cupsPageSizeName[sizeof(cups->header.cupsPageSizeName) - 1] =
-	  '\0';
-
-	if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
-	{
-#endif
-	  margins[0] = best_size->left / 72.0;
-	  margins[1] = best_size->bottom / 72.0;
-	  margins[2] = (best_size->width - best_size->right) / 72.0;
-	  margins[3] = (best_size->length - best_size->top) / 72.0;
-	  if (xflip == 1)
-	  {
-	    swap = margins[0]; margins[0] = margins[2]; margins[2] = swap;
-	  }
-	  if (yflip == 1)
-	  {
-	    swap = margins[1]; margins[1] = margins[3]; margins[3] = swap;
-	  }
-#ifdef CUPS_RASTER_SYNCv1
-	}
-	else
-	{
-	  margins[0] = 0.0;
-	  margins[1] = 0.0;
-	  margins[2] = 0.0;
-	  margins[3] = 0.0;
-	}
-#endif
-      }
-      else
-      {
-       /*
-	* No matching portrait size; look for a matching size in
-	* landscape orientation...
-	*/
-
-	best_score = -1;
-	best_size = NULL;
 	for (i = cups->PPD->num_sizes, size = cups->PPD->sizes;
 	     i > 0;
 	     i --, size ++)
-	{
+        {
 	  if (size->length == 0 || size->width == 0) continue;
 
 	  score = 0;
@@ -3687,10 +3572,10 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 #endif
 
 	  long_edge_mismatch =
-	    fabs(cups->MediaSize[0] - size->length)/size->length +
+	    fabs(cups->MediaSize[1] - size->length)/size->length +
 	    LONG_EDGE_LENGTH_MATCH_LIMIT / 100;
 	  short_edge_mismatch =
-	    fabs(cups->MediaSize[1] - size->width)/size->width +
+	    fabs(cups->MediaSize[0] - size->width)/size->width +
 	    SHORT_EDGE_LENGTH_MATCH_LIMIT / 100;
 	  if (size->length < size->width)
 	  {
@@ -3716,23 +3601,23 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 	       info can be from the previous page and there the margins
 	       can be swapped due to duplex printing requirements */
 	    if (!margins_set ||
-		(((fabs(cups->HWMargins[1] - size->left) < 1.0 &&
-		   fabs(cups->HWMargins[3] - size->width + size->right) < 1.0)||
-		  (fabs(cups->HWMargins[1] - size->width + size->right) < 1.0 &&
-		   fabs(cups->HWMargins[3] - size->left) < 1.0)) &&
-		 ((fabs(cups->HWMargins[0] - size->bottom) < 1.0 &&
-		   fabs(cups->HWMargins[2] - size->length + size->top) < 1.0) ||
-		  (fabs(cups->HWMargins[0] - size->length + size->top) < 1.0 &&
-		   fabs(cups->HWMargins[2] - size->bottom) < 1.0))))
+		(((fabs(cups->HWMargins[0] - size->left) < 1.0 &&
+		   fabs(cups->HWMargins[2] - size->width + size->right) < 1.0) ||
+		  (fabs(cups->HWMargins[0] - size->width + size->right) < 1.0 &&
+		   fabs(cups->HWMargins[2] - size->left) < 1.0)) &&
+		 ((fabs(cups->HWMargins[1] - size->bottom) < 1.0 &&
+		   fabs(cups->HWMargins[3] - size->length + size->top) < 1.0) ||
+		  (fabs(cups->HWMargins[1] - size->length + size->top) < 1.0 &&
+		   fabs(cups->HWMargins[3] - size->bottom) < 1.0))))
 	      margins_matched = 1;
 	  } else {
 	    /* Compare the dimensions of the imageable area against the
 	       the input page size */
 	    long_edge_mismatch =
-	      fabs(cups->MediaSize[0] - size->top + size->bottom)/size->length +
+	      fabs(cups->MediaSize[1] - size->top + size->bottom)/size->length +
 	      LONG_EDGE_LENGTH_MATCH_LIMIT / 100;
 	    short_edge_mismatch =
-	      fabs(cups->MediaSize[1] - size->right + size->left)/size->width +
+	      fabs(cups->MediaSize[0] - size->right + size->left)/size->width +
 	      SHORT_EDGE_LENGTH_MATCH_LIMIT / 100;
 	    if (size->length < size->width)
 	    {
@@ -3762,11 +3647,11 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 
 	  if (size_matched || imageable_area_matched) {
 	    if (!strcasecmp(cups->pageSizeRequested, size->name))
-            {
+	    {
 #ifdef CUPS_DEBUG
 	      name_requested_matched = 1;
 #endif
-            }
+	    }
 	    else
 	      score -= 1000;
 	  }
@@ -3778,7 +3663,7 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 	      best_size = size;
 	  }
 #ifdef CUPS_DEBUG
-	  dmprintf1(pdev->memory, "DEBUG2: Checking against PPD page size (landscape): %s\n",
+	  dmprintf1(pdev->memory, "DEBUG2: Checking against PPD page size (portrait): %s\n",
 		    size->name);
 	  dmprintf2(pdev->memory, "DEBUG2:    Width: %.2f; Height: %.2f\n",
 		    size->width, size->length);
@@ -3798,17 +3683,17 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 	if (best_size)
 	{
 	 /*
-	  * Standard size in landscape orientation...
+	  * Standard size...
 	  */
 
 #ifdef CUPS_DEBUG
-	  dmprintf1(pdev->memory, "DEBUG: landscape size = %s\n", best_size->name);
+	  dmprintf1(pdev->memory, "DEBUG: size = %s\n", best_size->name);
 #endif /* CUPS_DEBUG */
 
-	  mediasize[0] = best_size->length;
-	  mediasize[1] = best_size->width;
+	  mediasize[0] = best_size->width;
+	  mediasize[1] = best_size->length;
 
-          cups->landscape = 1;
+	  cups->landscape = 0;
 
 #ifdef CUPS_RASTER_SYNCv1
 	  strncpy(cups->header.cupsPageSizeName, best_size->name,
@@ -3819,10 +3704,248 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 	  if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
 	  {
 #endif
-	    margins[0] = (best_size->length - best_size->top) / 72.0;
-	    margins[1] = best_size->left / 72.0;
-	    margins[2] = best_size->bottom / 72.0;
-	    margins[3] = (best_size->width - best_size->right) / 72.0;
+	    margins[0] = best_size->left / 72.0;
+	    margins[1] = best_size->bottom / 72.0;
+	    margins[2] = (best_size->width - best_size->right) / 72.0;
+	    margins[3] = (best_size->length - best_size->top) / 72.0;
+	    if (xflip == 1)
+	    {
+	      swap = margins[0]; margins[0] = margins[2]; margins[2] = swap;
+	    }
+	    if (yflip == 1)
+	    {
+	      swap = margins[1]; margins[1] = margins[3]; margins[3] = swap;
+	    }
+#ifdef CUPS_RASTER_SYNCv1
+	  }
+	  else
+	  {
+	    margins[0] = 0.0;
+	    margins[1] = 0.0;
+	    margins[2] = 0.0;
+	    margins[3] = 0.0;
+	  }
+#endif
+	}
+	else
+	{
+	 /*
+	  * No matching portrait size; look for a matching size in
+	  * landscape orientation...
+	  */
+
+	  best_score = -1;
+	  best_size = NULL;
+	  for (i = cups->PPD->num_sizes, size = cups->PPD->sizes;
+	       i > 0;
+	       i --, size ++)
+	  {
+	    if (size->length == 0 || size->width == 0) continue;
+
+	    score = 0;
+	    size_matched = 0;
+	    margins_matched = 0;
+	    imageable_area_matched = 0;
+#ifdef CUPS_DEBUG
+	    name_requested_matched = 0;
+#endif
+
+	    long_edge_mismatch =
+	      fabs(cups->MediaSize[0] - size->length)/size->length +
+	      LONG_EDGE_LENGTH_MATCH_LIMIT / 100;
+	    short_edge_mismatch =
+	      fabs(cups->MediaSize[1] - size->width)/size->width +
+	      SHORT_EDGE_LENGTH_MATCH_LIMIT / 100;
+	    if (size->length < size->width)
+	    {
+	      swap = long_edge_mismatch;
+	      long_edge_mismatch = short_edge_mismatch;
+	      short_edge_mismatch = swap;
+	    }
+
+	    if (long_edge_mismatch < LONG_EDGE_LENGTH_MATCH_LIMIT &&
+		short_edge_mismatch < SHORT_EDGE_LENGTH_MATCH_LIMIT)
+	    {
+	      size_matched = 1;
+	      /* If two sizes match within the limits, take the one with less
+		 mismatch */
+	      score = (long)(9999.0 -
+			     long_edge_mismatch * short_edge_mismatch * 9999.0 /
+			     LONG_EDGE_LENGTH_MATCH_LIMIT /
+			     SHORT_EDGE_LENGTH_MATCH_LIMIT);
+	      if (score < 0) score = 0;
+	      /* We check whether all 4 margins match with the margin info
+		 of the page size in the PPD. Here we check also for swapped
+		 left/right and top/bottom margins as the cups->HWMargins
+		 info can be from the previous page and there the margins
+		 can be swapped due to duplex printing requirements */
+	      if (!margins_set ||
+		  (((fabs(cups->HWMargins[1] - size->left) < 1.0 &&
+		     fabs(cups->HWMargins[3] - size->width + size->right) < 1.0)||
+		    (fabs(cups->HWMargins[1] - size->width + size->right) < 1.0 &&
+		     fabs(cups->HWMargins[3] - size->left) < 1.0)) &&
+		   ((fabs(cups->HWMargins[0] - size->bottom) < 1.0 &&
+		     fabs(cups->HWMargins[2] - size->length + size->top) < 1.0) ||
+		    (fabs(cups->HWMargins[0] - size->length + size->top) < 1.0 &&
+		     fabs(cups->HWMargins[2] - size->bottom) < 1.0))))
+		margins_matched = 1;
+	    } else {
+	      /* Compare the dimensions of the imageable area against the
+		 the input page size */
+	      long_edge_mismatch =
+		fabs(cups->MediaSize[0] - size->top + size->bottom)/size->length +
+		LONG_EDGE_LENGTH_MATCH_LIMIT / 100;
+	      short_edge_mismatch =
+		fabs(cups->MediaSize[1] - size->right + size->left)/size->width +
+		SHORT_EDGE_LENGTH_MATCH_LIMIT / 100;
+	      if (size->length < size->width)
+	      {
+		swap = long_edge_mismatch;
+		long_edge_mismatch = short_edge_mismatch;
+		short_edge_mismatch = swap;
+	      }
+
+	      if (long_edge_mismatch < LONG_EDGE_LENGTH_MATCH_LIMIT &&
+		  short_edge_mismatch < SHORT_EDGE_LENGTH_MATCH_LIMIT)
+	      {
+		imageable_area_matched = 1;
+		/* If two sizes match within the limits, take the one with less
+		   mismatch */
+		score = (long)(4999.0 -
+			       long_edge_mismatch * short_edge_mismatch * 4999.0 /
+			       LONG_EDGE_LENGTH_MATCH_LIMIT /
+			       SHORT_EDGE_LENGTH_MATCH_LIMIT);
+		if (score < 0) score = 0;
+	      }
+	    }
+
+	    if (margins_matched)
+	      score += PAGESIZE_SCORE_SIZE_MARGINS * 10000;
+	    else if (size_matched)
+	      score += PAGESIZE_SCORE_SIZE * 10000;
+
+	    if (size_matched || imageable_area_matched) {
+	      if (!strcasecmp(cups->pageSizeRequested, size->name))
+	      {
+#ifdef CUPS_DEBUG
+		name_requested_matched = 1;
+#endif
+	      }
+	      else
+		score -= 1000;
+	    }
+
+	    if (score > best_score)
+	    {
+	      best_score = score;
+	      if (score > 0)
+		best_size = size;
+	    }
+#ifdef CUPS_DEBUG
+	    dmprintf1(pdev->memory, "DEBUG2: Checking against PPD page size (landscape): %s\n",
+		      size->name);
+	    dmprintf2(pdev->memory, "DEBUG2:    Width: %.2f; Height: %.2f\n",
+		      size->width, size->length);
+	    dmprintf4(pdev->memory, "DEBUG2:    Margins: Left: %.2f; Right: %.2f; Top: %.2f; Bottom: %.2f\n",
+		      size->left, size->right, size->top, size->bottom);
+	    dmprintf4(pdev->memory, "DEBUG2:    Size mismatch: Long Edge (%.3f): %.5f; Short Edge (%.3f): %.5f\n",
+		      LONG_EDGE_LENGTH_MATCH_LIMIT, long_edge_mismatch,
+		      SHORT_EDGE_LENGTH_MATCH_LIMIT, short_edge_mismatch);
+	    dmprintf4(pdev->memory, "DEBUG2:    Match: Size: %d; Margins: %d; Imageable Area: %d; Name requested: %d\n",
+		      size_matched, margins_matched, imageable_area_matched,
+		      name_requested_matched);
+	    dmprintf2(pdev->memory, "DEBUG2:    Score: %ld; Best Score: %ld\n",
+		      score, best_score);
+#endif /* CUPS_DEBUG */
+	  }
+
+	  if (best_size)
+	  {
+	   /*
+	    * Standard size in landscape orientation...
+	    */
+
+#ifdef CUPS_DEBUG
+	    dmprintf1(pdev->memory, "DEBUG: landscape size = %s\n", best_size->name);
+#endif /* CUPS_DEBUG */
+
+	    mediasize[0] = best_size->length;
+	    mediasize[1] = best_size->width;
+
+	    cups->landscape = 1;
+
+#ifdef CUPS_RASTER_SYNCv1
+	    strncpy(cups->header.cupsPageSizeName, best_size->name,
+		    sizeof(cups->header.cupsPageSizeName));
+	    cups->header.cupsPageSizeName[sizeof(cups->header.cupsPageSizeName) - 1] =
+	      '\0';
+
+	    if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
+	    {
+#endif
+	      margins[0] = (best_size->length - best_size->top) / 72.0;
+	      margins[1] = best_size->left / 72.0;
+	      margins[2] = best_size->bottom / 72.0;
+	      margins[3] = (best_size->width - best_size->right) / 72.0;
+	      if (xflip == 1)
+	      {
+		swap = margins[1]; margins[1] = margins[3]; margins[3] = swap;
+	      }
+	      if (yflip == 1)
+	      {
+		swap = margins[0]; margins[0] = margins[2]; margins[2] = swap;
+	      }
+#ifdef CUPS_RASTER_SYNCv1
+	    }
+	    else
+	    {
+	      margins[0] = 0.0;
+	      margins[1] = 0.0;
+	      margins[2] = 0.0;
+	      margins[3] = 0.0;
+	    }
+#endif
+	  }
+	}
+      }
+
+      if (!best_size)
+      {
+       /*
+	* Custom size...
+	*/
+
+#ifdef CUPS_DEBUG
+	dmprintf(pdev->memory, "DEBUG: size = Custom\n");
+#endif /* CUPS_DEBUG */
+
+#ifdef CUPS_RASTER_SYNCv1
+	snprintf(cups->header.cupsPageSizeName,
+		 sizeof(cups->header.cupsPageSizeName),
+		 "Custom.%.2fx%.2f",
+		 cups->MediaSize[0], cups->MediaSize[1]);
+#endif
+
+	/* Rotate page if it only fits into the printer's dimensions
+	   when rotated */
+	if (((cups->MediaSize[0] > cups->PPD->custom_max[0]) ||
+	     (cups->MediaSize[1] > cups->PPD->custom_max[1])) &&
+	    ((cups->MediaSize[0] <= cups->PPD->custom_max[1]) &&
+	     (cups->MediaSize[1] <= cups->PPD->custom_max[0]))) {
+	  /* Rotate */
+	  mediasize[0] = cups->MediaSize[1];
+	  mediasize[1] = cups->MediaSize[0];
+
+	  cups->landscape = 1;
+
+#ifdef CUPS_RASTER_SYNCv1
+	  if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
+	  {
+#endif
+	    margins[0] = cups->PPD->custom_margins[3] / 72.0;
+	    margins[1] = cups->PPD->custom_margins[0] / 72.0;
+	    margins[2] = cups->PPD->custom_margins[1] / 72.0;
+	    margins[3] = cups->PPD->custom_margins[2] / 72.0;
 	    if (xflip == 1)
 	    {
 	      swap = margins[1]; margins[1] = margins[3]; margins[3] = swap;
@@ -3844,93 +3967,36 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 	}
 	else
 	{
-	 /*
-	  * Custom size...
-	  */
+	  /* Do not rotate */
+	  mediasize[0] = cups->MediaSize[0];
+	  mediasize[1] = cups->MediaSize[1];
 
-#ifdef CUPS_DEBUG
-          dmprintf(pdev->memory, "DEBUG: size = Custom\n");
-#endif /* CUPS_DEBUG */
+	  cups->landscape = 0;
 
 #ifdef CUPS_RASTER_SYNCv1
-	  snprintf(cups->header.cupsPageSizeName,
-		   sizeof(cups->header.cupsPageSizeName),
-		   "Custom.%.2fx%.2f",
-		   cups->MediaSize[0], cups->MediaSize[1]);
+	  if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
+	  {
 #endif
-
-	  /* Rotate page if it only fits into the printer's dimensions
-	     when rotated */
-	  if (((cups->MediaSize[0] > cups->PPD->custom_max[0]) ||
-	       (cups->MediaSize[1] > cups->PPD->custom_max[1])) &&
-	      ((cups->MediaSize[0] <= cups->PPD->custom_max[1]) &&
-	      (cups->MediaSize[1] <= cups->PPD->custom_max[0]))) {
-	    /* Rotate */
-	    mediasize[0] = cups->MediaSize[1];
-	    mediasize[1] = cups->MediaSize[0];
-
-	    cups->landscape = 1;
-
-#ifdef CUPS_RASTER_SYNCv1
-	    if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
+	    for (i = 0; i < 4; i ++)
+	      margins[i] = cups->PPD->custom_margins[i] / 72.0;
+	    if (xflip == 1)
 	    {
-#endif
-	      margins[0] = cups->PPD->custom_margins[3] / 72.0;
-	      margins[1] = cups->PPD->custom_margins[0] / 72.0;
-	      margins[2] = cups->PPD->custom_margins[1] / 72.0;
-	      margins[3] = cups->PPD->custom_margins[2] / 72.0;
-	      if (xflip == 1)
-	      {
-		swap = margins[1]; margins[1] = margins[3]; margins[3] = swap;
-	      }
-	      if (yflip == 1)
-	      {
-		swap = margins[0]; margins[0] = margins[2]; margins[2] = swap;
-	      }
-#ifdef CUPS_RASTER_SYNCv1
+	      swap = margins[0]; margins[0] = margins[2]; margins[2] = swap;
 	    }
-	    else
+	    if (yflip == 1)
 	    {
-	      margins[0] = 0.0;
-	      margins[1] = 0.0;
-	      margins[2] = 0.0;
-	      margins[3] = 0.0;
+	      swap = margins[1]; margins[1] = margins[3]; margins[3] = swap;
 	    }
-#endif
+#ifdef CUPS_RASTER_SYNCv1
 	  }
 	  else
 	  {
-	    /* Do not rotate */
-	    mediasize[0] = cups->MediaSize[0];
-	    mediasize[1] = cups->MediaSize[1];
-
-	    cups->landscape = 0;
-
-#ifdef CUPS_RASTER_SYNCv1
-	    if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
-	    {
-#endif
-	      for (i = 0; i < 4; i ++)
-		margins[i] = cups->PPD->custom_margins[i] / 72.0;
-	      if (xflip == 1)
-	      {
-		swap = margins[0]; margins[0] = margins[2]; margins[2] = swap;
-	      }
-	      if (yflip == 1)
-	      {
-		swap = margins[1]; margins[1] = margins[3]; margins[3] = swap;
-	      }
-#ifdef CUPS_RASTER_SYNCv1
-	    }
-	    else
-	    {
-	      margins[0] = 0.0;
-	      margins[1] = 0.0;
-	      margins[2] = 0.0;
-	      margins[3] = 0.0;
-	    }
-#endif
+	    margins[0] = 0.0;
+	    margins[1] = 0.0;
+	    margins[2] = 0.0;
+	    margins[3] = 0.0;
 	  }
+#endif
 	}
       }
 
@@ -3942,6 +4008,86 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
     else
     {
       /* No PPD file available */
+#ifdef CUPS_DEBUG
+      dmprintf1(pdev->memory, "DEBUG2: cups->header.Duplex = %d\n", cups->header.Duplex);
+      dmprintf1(pdev->memory, "DEBUG2: cups->header.Tumble = %d\n", cups->header.Tumble);
+      dmprintf1(pdev->memory, "DEBUG2: cups->page = %d\n", cups->page);
+#endif /* CUPS_DEBUG */
+
+#ifdef CUPS_DEBUG
+      dmprintf1(pdev->memory, "DEBUG2: cupsBackSideOrientation = %s\n",
+		cups->cupsBackSideOrientation);
+#endif /* CUPS_DEBUG */
+
+#ifdef CUPS_DEBUG
+      if (cups->cupsBackSideFlipMargins)
+        dmprintf0(pdev->memory, "DEBUG2: Duplex requires flipped margins\n");
+#endif /* CUPS_DEBUG */
+
+      if (cups->header.Duplex &&
+	  (cups->header.Tumble &&
+	   (!strcasecmp(cups->cupsBackSideOrientation, "Flipped"))) &&
+	  !(cups->page & 1))
+      {
+	xflip = 1;
+	if (!cups->cupsBackSideFlipMargins) {
+#ifdef CUPS_DEBUG
+          dmprintf(pdev->memory, "DEBUG2: (1) Flip: X=1 Y=0\n");
+#endif /* CUPS_DEBUG */
+	  yflip = 0;
+	} else {
+#ifdef CUPS_DEBUG
+          dmprintf(pdev->memory, "DEBUG2: (1) Flip: X=1 Y=1\n");
+#endif /* CUPS_DEBUG */
+	  yflip = 1;
+	}
+      }
+      else if (cups->header.Duplex &&
+	       (!cups->header.Tumble &&
+		(!strcasecmp(cups->cupsBackSideOrientation, "Flipped"))) &&
+	       !(cups->page & 1))
+      {
+	xflip = 0;
+	if (!cups->cupsBackSideFlipMargins) {
+#ifdef CUPS_DEBUG
+          dmprintf(pdev->memory, "DEBUG2: (2) Flip: X=0 Y=1\n");
+#endif /* CUPS_DEBUG */
+	  yflip = 1;
+	} else {
+#ifdef CUPS_DEBUG
+          dmprintf(pdev->memory, "DEBUG2: (2) Flip: X=0 Y=0\n");
+#endif /* CUPS_DEBUG */
+	  yflip = 0;
+	}
+      }
+      else if (cups->header.Duplex &&
+	       ((!cups->header.Tumble &&
+		 (!strcasecmp(cups->cupsBackSideOrientation, "Rotated"))) ||
+		(cups->header.Tumble &&
+		 (!strcasecmp(cups->cupsBackSideOrientation, "ManualTumble")))) &&
+	       !(cups->page & 1))
+      {
+	xflip = 1;
+	if (cups->cupsBackSideFlipMargins) {
+#ifdef CUPS_DEBUG
+          dmprintf(pdev->memory, "DEBUG2: (3) Flip: X=1 Y=0\n");
+#endif /* CUPS_DEBUG */
+	  yflip = 0;
+	} else {
+#ifdef CUPS_DEBUG
+          dmprintf(pdev->memory, "DEBUG2: (3) Flip: X=1 Y=1\n");
+#endif /* CUPS_DEBUG */
+	  yflip = 1;
+	}
+      }
+      else
+      {
+#ifdef CUPS_DEBUG
+        dmprintf(pdev->memory, "DEBUG2: (4) Flip: X=0 Y=0\n");
+#endif /* CUPS_DEBUG */
+	xflip = 0;
+	yflip = 0;
+      }
       mediasize[0] = cups->MediaSize[0];
       mediasize[1] = cups->MediaSize[1];
 #ifdef CUPS_RASTER_SYNCv1
@@ -3956,6 +4102,14 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 	margins[1] = pdev->HWMargins[1] / 72.0;
 	margins[2] = pdev->HWMargins[2] / 72.0;
 	margins[3] = pdev->HWMargins[3] / 72.0;
+	if (xflip == 1)
+	{
+	  swap = margins[0]; margins[0] = margins[2]; margins[2] = swap;
+	}
+	if (yflip == 1)
+	{
+	  swap = margins[1]; margins[1] = margins[3]; margins[3] = swap;
+	}
 #ifdef CUPS_RASTER_SYNCv1
       }
       else
@@ -4009,17 +4163,17 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 
     if (cups->landscape)
     {
-      width  = (pdev->MediaSize[1] - pdev->HWMargins[1] - pdev->HWMargins[3]) *
-               pdev->HWResolution[0] / 72.0f + 0.499f;
-      height = (pdev->MediaSize[0] - pdev->HWMargins[0] - pdev->HWMargins[2]) *
-               pdev->HWResolution[1] / 72.0f + 0.499f;
+      width  = (int)((pdev->MediaSize[1] - pdev->HWMargins[1] - pdev->HWMargins[3]) *
+                     pdev->HWResolution[0] / 72.0f + 0.499f);
+      height = (int)((pdev->MediaSize[0] - pdev->HWMargins[0] - pdev->HWMargins[2]) *
+                     pdev->HWResolution[1] / 72.0f + 0.499f);
     }
     else
     {
-      width  = (pdev->MediaSize[0] - pdev->HWMargins[0] - pdev->HWMargins[2]) *
-               pdev->HWResolution[0] / 72.0f + 0.499f;
-      height = (pdev->MediaSize[1] - pdev->HWMargins[1] - pdev->HWMargins[3]) *
-               pdev->HWResolution[1] / 72.0f + 0.499f;
+      width  = (int)((pdev->MediaSize[0] - pdev->HWMargins[0] - pdev->HWMargins[2]) *
+                     pdev->HWResolution[0] / 72.0f + 0.499f);
+      height = (int)((pdev->MediaSize[1] - pdev->HWMargins[1] - pdev->HWMargins[3]) *
+                     pdev->HWResolution[1] / 72.0f + 0.499f);
     }
 
     if (width <= 0 || height <= 0) {
@@ -4030,8 +4184,8 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 #ifdef CUPS_RASTER_SYNCv1
     if (cups->header.cupsBorderlessScalingFactor > 1.0)
     {
-      width  *= cups->header.cupsBorderlessScalingFactor;
-      height *= cups->header.cupsBorderlessScalingFactor;
+      width  = (int)(width * cups->header.cupsBorderlessScalingFactor);
+      height = (int)(height * cups->header.cupsBorderlessScalingFactor);
     }
 #endif /* CUPS_RASTER_SYNCv1 */
 
@@ -4086,8 +4240,8 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
   * Set CUPS raster header values...
   */
 
-  cups->header.HWResolution[0] = pdev->HWResolution[0];
-  cups->header.HWResolution[1] = pdev->HWResolution[1];
+  cups->header.HWResolution[0] = (unsigned int)pdev->HWResolution[0];
+  cups->header.HWResolution[1] = (unsigned int)pdev->HWResolution[1];
 
 #ifdef CUPS_RASTER_SYNCv1
 
@@ -4099,19 +4253,23 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
     if ((sf = cups->header.cupsBorderlessScalingFactor) < 1.0)
       sf = 1.0;
 
-    cups->header.PageSize[0] = (cups_mediasize[1] * sf) + 0.5;
-    cups->header.PageSize[1] = (cups_mediasize[0] * sf) + 0.5;
+    cups->header.PageSize[0] = (unsigned int)((cups_mediasize[1] * sf) + 0.5);
+    cups->header.PageSize[1] = (unsigned int)((cups_mediasize[0] * sf) + 0.5);
 
     if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
     {
-      cups->header.Margins[0] = (cups_margins[1] * sf) + 0.5;
-      cups->header.Margins[1] = (cups_margins[2] * sf) + 0.5;
-      cups->header.ImagingBoundingBox[0] = (cups_margins[1] * sf) + 0.5;
-      cups->header.ImagingBoundingBox[1] = (cups_margins[2] * sf) + 0.5;
-      cups->header.ImagingBoundingBox[2] = ((cups_mediasize[1] -
-					     cups_margins[3]) * sf) + 0.5;
-      cups->header.ImagingBoundingBox[3] = ((cups_mediasize[0] -
-					     cups_margins[0]) * sf) + 0.5;
+      cups->header.Margins[0] = (unsigned int)((cups_margins[1] * sf) + 0.5);
+      cups->header.Margins[1] = (unsigned int)((cups_margins[2] * sf) + 0.5);
+      cups->header.ImagingBoundingBox[0] =
+                                (unsigned int)((cups_margins[1] * sf) + 0.5);
+      cups->header.ImagingBoundingBox[1] =
+                                (unsigned int)((cups_margins[2] * sf) + 0.5);
+      cups->header.ImagingBoundingBox[2] =
+                                (unsigned int)(((cups_mediasize[1] -
+                                                 cups_margins[3]) * sf) + 0.5);
+      cups->header.ImagingBoundingBox[3] =
+                                (unsigned int)(((cups_mediasize[0] -
+                                                 cups_margins[0]) * sf) + 0.5);
       cups->header.cupsImagingBBox[0] = cups_margins[1];
       cups->header.cupsImagingBBox[1] = cups_margins[2];
       cups->header.cupsImagingBBox[2] = cups_mediasize[1] - cups_margins[3];
@@ -4136,19 +4294,23 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
     if ((sf = cups->header.cupsBorderlessScalingFactor) < 1.0)
       sf = 1.0;
 
-    cups->header.PageSize[0] = (cups_mediasize[0] * sf) + 0.5;
-    cups->header.PageSize[1] = (cups_mediasize[1] * sf) + 0.5;
+    cups->header.PageSize[0] = (unsigned int)((cups_mediasize[0] * sf) + 0.5);
+    cups->header.PageSize[1] = (unsigned int)((cups_mediasize[1] * sf) + 0.5);
 
     if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
     {
       cups->header.Margins[0] = (cups_margins[0] * sf) + 0.5;
       cups->header.Margins[1] = (cups_margins[1] * sf) + 0.5;
-      cups->header.ImagingBoundingBox[0] = (cups_margins[0] * sf) + 0.5;
-      cups->header.ImagingBoundingBox[1] = (cups_margins[1] * sf) + 0.5;
-      cups->header.ImagingBoundingBox[2] = ((cups_mediasize[0] -
-					     cups_margins[2]) * sf) + 0.5;
-      cups->header.ImagingBoundingBox[3] = ((cups_mediasize[1] -
-					     cups_margins[3]) * sf) + 0.5;
+      cups->header.ImagingBoundingBox[0] =
+                               (unsigned int)((cups_margins[0] * sf) + 0.5);
+      cups->header.ImagingBoundingBox[1] =
+                               (unsigned int)((cups_margins[1] * sf) + 0.5);
+      cups->header.ImagingBoundingBox[2] =
+                               (unsigned int)(((cups_mediasize[0] -
+                                                cups_margins[2]) * sf) + 0.5);
+      cups->header.ImagingBoundingBox[3] =
+                               (unsigned int)(((cups_mediasize[1] -
+                                                cups_margins[3]) * sf) + 0.5);
       cups->header.cupsImagingBBox[0] = cups_margins[0];
       cups->header.cupsImagingBBox[1] = cups_margins[1];
       cups->header.cupsImagingBBox[2] = cups_mediasize[0] - cups_margins[2];
@@ -4833,6 +4995,8 @@ cups_print_chunked(gx_device_printer *pdev,
 #endif
                 ystart, yend, ystep;    /* Loop control for scanline order */
   ppd_attr_t    *backside = NULL;
+  const char    *backside_str = "Normal";
+  int           flip_duplex = 0;
 
 #ifdef CUPS_DEBUG
   dmprintf1(pdev->memory, "DEBUG2: cups->header.Duplex = %d\n", cups->header.Duplex);
@@ -4844,30 +5008,34 @@ cups_print_chunked(gx_device_printer *pdev,
   if (cups->PPD) {
     backside = ppdFindAttr(cups->PPD, "cupsBackSide", NULL);
     if (backside) {
-#ifdef CUPS_DEBUG
-      dmprintf1(pdev->memory, "DEBUG2: cupsBackSide = %s\n", backside->value);
-#endif /* CUPS_DEBUG */
+      backside_str = backside->value;
       cups->PPD->flip_duplex = 0;
     }
+    flip_duplex = cups->PPD->flip_duplex;
   }
-  if (cups->header.Duplex && cups->PPD &&
+  else
+    backside_str = cups->cupsBackSideOrientation;
+#ifdef CUPS_DEBUG
+  dmprintf1(pdev->memory, "DEBUG2: Back side orientation: %s\n", backside_str);
+#endif /* CUPS_DEBUG */
+  if (cups->header.Duplex &&
       ((!cups->header.Tumble &&
-	(cups->PPD->flip_duplex ||
-	 (backside && !strcasecmp(backside->value, "Rotated")))) ||
+	(flip_duplex ||
+	 (!strcasecmp(backside_str, "Rotated")))) ||
        (cups->header.Tumble &&
-	(backside && (!strcasecmp(backside->value, "Flipped") ||
-		      !strcasecmp(backside->value, "ManualTumble"))))) &&
+	((!strcasecmp(backside_str, "Flipped") ||
+	  !strcasecmp(backside_str, "ManualTumble"))))) &&
       !(cups->page & 1))
     xflip = 1;
   else
     xflip = 0;
-  if (cups->header.Duplex && cups->PPD &&
+  if (cups->header.Duplex &&
       ((!cups->header.Tumble &&
-	(cups->PPD->flip_duplex ||
-	 (backside && (!strcasecmp(backside->value, "Flipped") ||
-		       !strcasecmp(backside->value, "Rotated"))))) ||
+	(flip_duplex ||
+	 ((!strcasecmp(backside_str, "Flipped") ||
+	   !strcasecmp(backside_str, "Rotated"))))) ||
        (cups->header.Tumble &&
-	(backside && !strcasecmp(backside->value, "ManualTumble")))) &&
+	(!strcasecmp(backside_str, "ManualTumble")))) &&
       !(cups->page & 1)) {
 #ifdef CUPS_DEBUG
     yflip = 1;
@@ -5066,6 +5234,9 @@ cups_print_banded(gx_device_printer *pdev,
 #endif
                 ystart, yend, ystep;    /* Loop control for scanline order */
   ppd_attr_t    *backside = NULL;
+  const char     *backside_str = "Normal";
+  int           flip_duplex = 0;
+
 
 #ifdef CUPS_DEBUG
   dmprintf1(pdev->memory, "DEBUG2: cups->header.Duplex = %d\n", cups->header.Duplex);
@@ -5077,30 +5248,34 @@ cups_print_banded(gx_device_printer *pdev,
   if (cups->PPD) {
     backside = ppdFindAttr(cups->PPD, "cupsBackSide", NULL);
     if (backside) {
-#ifdef CUPS_DEBUG
-      dmprintf1(pdev->memory, "DEBUG2: cupsBackSide = %s\n", backside->value);
-#endif /* CUPS_DEBUG */
+      backside_str = backside->value;
       cups->PPD->flip_duplex = 0;
     }
+    flip_duplex = cups->PPD->flip_duplex;
   }
-  if (cups->header.Duplex && cups->PPD &&
+  else
+    backside_str = cups->cupsBackSideOrientation;
+#ifdef CUPS_DEBUG
+  dmprintf1(pdev->memory, "DEBUG2: Back side orientation: %s\n", backside_str);
+#endif /* CUPS_DEBUG */
+  if (cups->header.Duplex &&
       ((!cups->header.Tumble &&
-	(cups->PPD->flip_duplex ||
-	 (backside && !strcasecmp(backside->value, "Rotated")))) ||
+	(flip_duplex ||
+	 (!strcasecmp(backside_str, "Rotated")))) ||
        (cups->header.Tumble &&
-	(backside && (!strcasecmp(backside->value, "Flipped") ||
-		      !strcasecmp(backside->value, "ManualTumble"))))) &&
+	((!strcasecmp(backside_str, "Flipped") ||
+	  !strcasecmp(backside_str, "ManualTumble"))))) &&
       !(cups->page & 1))
     xflip = 1;
   else
     xflip = 0;
-  if (cups->header.Duplex && cups->PPD &&
+  if (cups->header.Duplex &&
       ((!cups->header.Tumble &&
-	(cups->PPD->flip_duplex ||
-	 (backside && (!strcasecmp(backside->value, "Flipped") ||
-		       !strcasecmp(backside->value, "Rotated"))))) ||
+	(flip_duplex ||
+	 ((!strcasecmp(backside_str, "Flipped") ||
+	   !strcasecmp(backside_str, "Rotated"))))) ||
        (cups->header.Tumble &&
-	(backside && !strcasecmp(backside->value, "ManualTumble")))) &&
+	(!strcasecmp(backside_str, "ManualTumble")))) &&
       !(cups->page & 1)) {
 #ifdef CUPS_DEBUG
     yflip = 1;
@@ -6133,5 +6308,8 @@ cups_spec_op(gx_device *dev_, int op, void *data, int datasize)
     return gx_default_dev_spec_op(dev_, op, data, datasize);
 }
 
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 /*
  */

@@ -96,12 +96,14 @@ halftone_init(gx_image_enum *penum)
     byte *cache = (penum->color_cache != NULL ? penum->color_cache->device_contone : NULL);
     cal_matrix matrix;
     int clip_x, clip_y;
+    gx_device_halftone *pdht = gx_select_dev_ht(penum->pgs);
 
     if (!gx_device_must_halftone(penum->dev))
         return NULL;
 
-    if (penum->pgs == NULL || penum->pgs->dev_ht == NULL)
+    if (penum->pgs == NULL || pdht == NULL)
         return NULL;
+
     dda_ht = penum->dda.pixel0.x;
     if (penum->dxx > 0)
         dda_translate(dda_ht, -fixed_epsilon);
@@ -129,20 +131,20 @@ halftone_init(gx_image_enum *penum)
     if (cal_ht == NULL)
         goto fail;
 
-    for (k = 0; k < penum->pgs->dev_ht->num_comp; k++) {
-        d_order = &(penum->pgs->dev_ht->components[k].corder);
+    for (k = 0; k < pdht->num_comp; k++) {
+        d_order = &(pdht->components[k].corder);
         code = gx_ht_construct_threshold(d_order, penum->dev, penum->pgs, k);
         if (code < 0)
             goto fail;
         if (cal_halftone_add_screen(penum->memory->gs_lib_ctx->core->cal_ctx,
                                     penum->memory->non_gc_memory,
                                     cal_ht,
-                                    penum->pgs->dev_ht->components[k].corder.threshold_inverted,
-                                    penum->pgs->dev_ht->components[k].corder.width,
-                                    penum->pgs->dev_ht->components[k].corder.full_height,
+                                    pdht->components[k].corder.threshold_inverted,
+                                    pdht->components[k].corder.width,
+                                    pdht->components[k].corder.full_height,
                                     penum->pgs->screen_phase[k].x,
                                     -penum->pgs->screen_phase[k].y,
-                                    penum->pgs->dev_ht->components[k].corder.threshold) < 0)
+                                    pdht->components[k].corder.threshold) < 0)
             goto fail;
     }
 
@@ -1069,12 +1071,12 @@ image_render_mono_ht(gx_image_enum * penum_orig, const byte * buffer, int data_x
                 xrun += penum->x_extent.x;
             vdi = penum->hci;
             contone_stride = penum->line_size;
-            offset_threshold = (- (((long)(penum->thresh_buffer)) +
-                                      penum->ht_offset_bits)) & 15;
+            offset_threshold = (- (((int)(intptr_t)(penum->thresh_buffer)) +
+                                   penum->ht_offset_bits)) & 15;
             for (k = 0; k < spp_out; k ++) {
-                offset_contone[k]   = (- (((long)(penum->line)) +
-                                          (long)contone_stride * k +
-                                          penum->ht_offset_bits)) & 15;
+                offset_contone[k]   = (- (((int)(intptr_t)(penum->line)) +
+                                           contone_stride * k +
+                                           penum->ht_offset_bits)) & 15;
             }
             data_length = dest_width;
             dest_height = fixed2int_var_rounded(any_abs(penum->y_extent.y));
@@ -1096,10 +1098,10 @@ image_render_mono_ht(gx_image_enum * penum_orig, const byte * buffer, int data_x
             xrun = dda_current(dda_ht);            /* really yrun, but just used here for landscape */
             dest_height = gxht_dda_length(&dda_ht, src_size);
             data_length = dest_height;
-            offset_threshold = (-(long)(penum->thresh_buffer)) & 15;
+            offset_threshold = (-(int)(intptr_t)(penum->thresh_buffer)) & 15;
             for (k = 0; k < spp_out; k ++) {
-                offset_contone[k] = (- ((long)(penum->line) +
-                                        (long)contone_stride * k)) & 15;
+                offset_contone[k] = (- ((int)(intptr_t)(penum->line) +
+                                        contone_stride * k)) & 15;
             }
             /* In the landscaped case, we want to accumulate multiple columns
                of data before sending to the device.  We want to have a full

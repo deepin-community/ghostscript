@@ -5,7 +5,9 @@ version=4
 # NB! below is unusual (see "man uscan" for common Github pattern)
 
 opts=\
-dversionmangle=auto,repacksuffix=~dfsg,uversionmangle=s/\d\K(rc)/~~$1/,\
-filenamemangle=s%.*?(@ANY_VERSION@@ARCHIVE_EXT@)%@PACKAGE@-$1% \
+uversionmangle=s/\d\K(rc)/~~$1/,\
+filenamemangle=s%.*?(@ANY_VERSION@@ARCHIVE_EXT@)%@PACKAGE@-$1%,\
+repacksuffix=~dfsg,\
+dversionmangle=auto \
 https://github.com/ArtifexSoftware/ghostpdl-downloads/releases \
 .*?ghostpdl@ANY_VERSION@@ARCHIVE_EXT@

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -159,6 +159,11 @@ typedef struct psdf_distiller_params_s {
 
     psdf_image_params MonoImage;
 
+    /* Font outlining parameters */
+
+    gs_param_string_array AlwaysOutline;
+    gs_param_string_array NeverOutline;
+
     /* Font embedding parameters */
 
     gs_param_string_array AlwaysEmbed;
@@ -174,6 +179,7 @@ typedef struct psdf_distiller_params_s {
     int MaxSubsetPct;
     bool SubsetFonts;
     bool PassThroughJPEGImages;
+    bool PassThroughJPXImages;
     gs_param_string PSDocOptions;
     gs_param_string_array PSPageOptions;
 } psdf_distiller_params;
@@ -258,6 +264,8 @@ extern const stream_template s_zlibE_template;
     }
 
 #define psdf_font_param_defaults\
+    {0},	    /* AlwaysOutline (array of names) */ \
+    {0},	    /* NeverOutline (array of names) */ \
     {0},	    /* AlwaysEmbed (array of names) */ \
     {0},	    /* NeverEmbed (array of names) */ \
     cefp_Warning,   /* CannotEmbedFontPolicy */ \
@@ -267,6 +275,8 @@ extern const stream_template s_zlibE_template;
 
 #define psdf_JPEGPassThrough_param_defaults\
     1           /* PassThroughJPEGImages */
+#define psdf_JPXPassThrough_param_defaults\
+    1           /* PassThroughJPXImages */
 
 #define psdf_PSOption_param_defaults\
     {0},        /* PSDocOptions */\
@@ -292,6 +302,7 @@ typedef enum {
         bool HaveCIDSystem;\
         double ParamCompatibilityLevel;\
         bool JPEG_PassThrough;\
+        bool JPX_PassThrough;\
         psdf_distiller_params params
 
 typedef struct gx_device_psdf_s {
@@ -307,12 +318,14 @@ typedef struct gx_device_psdf_s {
         false,\
         1.3,\
         0,\
+        0,\
          { psdf_general_param_defaults(ascii),\
            psdf_color_image_param_defaults,\
            psdf_gray_image_param_defaults,\
            psdf_mono_image_param_defaults,\
            psdf_font_param_defaults,\
            psdf_JPEGPassThrough_param_defaults,\
+           psdf_JPXPassThrough_param_defaults,\
            psdf_PSOption_param_defaults\
          }
 /* st_device_psdf is never instantiated per se, but we still need to */
@@ -330,6 +343,8 @@ extern_st(st_device_psdf);
                 params.GrayImage.Dict),\
     GC_OBJ_ELT2(gx_device_psdf, params.MonoImage.ACSDict,\
                 params.MonoImage.Dict),\
+    GC_OBJ_ELT2(gx_device_psdf, params.AlwaysOutline.data,\
+                params.NeverOutline.data),\
     GC_OBJ_ELT2(gx_device_psdf, params.AlwaysEmbed.data,\
                 params.NeverEmbed.data),\
     GC_CONST_STRING_ELT(gx_device_psdf, params.PSDocOptions)\
@@ -508,11 +523,10 @@ int psdf_set_color(gx_device_vector *vdev, const gx_drawing_color *pdc,
 /* Round a double value to a specified precision. */
 double psdf_round(double v, int precision, int radix);
 
-/* stubs to disable get_bits, get_bits_rectangle */
-dev_proc_get_bits(psdf_get_bits);
+/* stub to disable get_bits_rectangle */
 dev_proc_get_bits_rectangle(psdf_get_bits_rectangle);
 
 /* intercept and ignore overprint compositor creation */
-dev_proc_create_compositor(psdf_create_compositor);
+dev_proc_composite(psdf_composite);
 
 #endif /* gdevpsdf_INCLUDED */

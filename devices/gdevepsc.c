@@ -143,12 +143,20 @@ epson_map_color_rgb(gx_device * dev, gx_color_index color,
 static dev_proc_print_page(epsc_print_page);
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static gx_device_procs epson_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                epson_map_rgb_color, epson_map_color_rgb);
+static void
+epson_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, map_rgb_color, epson_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, epson_map_color_rgb);
+    set_dev_proc(dev, encode_color, epson_map_rgb_color);
+    set_dev_proc(dev, decode_color, epson_map_color_rgb);
+}
 
 const gx_device_printer far_data gs_epsonc_device =
-prn_device(epson_procs, "epsonc",
+prn_device(epson_initialize_device_procs,
+           "epsonc",
            DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
            X_DPI, Y_DPI,
            0, 0, 0.25, 0,       /* margins */

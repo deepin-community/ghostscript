@@ -2,7 +2,7 @@
 
 #include <exception>
 #include <string.h>
-#include <varargs.h>
+#include <stdarg.h>
 #include <string>
 
 using namespace util;
@@ -90,7 +90,7 @@ char **util::jbyteArray2DToCharArray(JNIEnv *env, jobjectArray array)
     {
         jbyteArray byteArrayObject = (jbyteArray)env->GetObjectArrayElement(array, i);
         char *elem = (char *)env->GetByteArrayElements(byteArrayObject, &copy);
-        jsize slen = strlen(elem);
+        jsize slen = (jsize)strlen(elem);
         char *nstring = new char[slen + 1LL];
         nstring[slen] = 0;
         memcpy(nstring, elem, slen);
@@ -145,14 +145,14 @@ jint util::getIntField(JNIEnv *env, jobject object, const char *field)
     return env->GetIntField(object, fieldID);
 }
 
-int util::callIntMethod(JNIEnv *env, jobject object, const char *method, const char *sig, ...)
+jint util::callIntMethod(JNIEnv *env, jobject object, const char *method, const char *sig, ...)
 {
     jmethodID methodID = getMethodID(env, object, method, sig);
     if (methodID == NULL)
         return 0;
 
     va_list args;
-    int result;
+    jint result;
     va_start(args, sig);
     result = env->CallIntMethodV(object, methodID, args);
     va_end(args);
@@ -451,7 +451,8 @@ jint util::throwNoClassDefError(JNIEnv *env, const char *message)
 
     exClass = env->FindClass(className);
     if (exClass == NULL)
-        throw std::exception("Failed to find java.lang.NoClassDefFoundError");
+        return -2;
+        //throw std::exception("Failed to find java.lang.NoClassDefFoundError");
 
     return env->ThrowNew(exClass, message);
 }
@@ -558,7 +559,7 @@ void util::freeClassName(const char *className)
     delete[] className;
 }
 
-util::Reference::Reference(JNIEnv *env) : Reference(m_env, NULL)
+util::Reference::Reference(JNIEnv *env) : Reference(env, NULL)
 {
 }
 

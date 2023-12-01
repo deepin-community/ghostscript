@@ -228,14 +228,20 @@ static dev_proc_open_device(imagen_prn_open);
 static dev_proc_close_device(imagen_prn_close);
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-gx_device_procs imagen_procs =
-        prn_procs(imagen_prn_open, gdev_prn_bg_output_page, imagen_prn_close);
+static void
+imagen_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono_bg(dev);
+
+    set_dev_proc(dev, open_device, imagen_prn_open);
+    set_dev_proc(dev, close_device, imagen_prn_close);
+}
 
 #define ppdev ((gx_device_printer *)pdev)
 
 /*-------------------------------------------*/
 const gx_device_printer far_data gs_imagen_device =
-  prn_device(/*prn_std_procs*/ imagen_procs,
+  prn_device(imagen_initialize_device_procs,
         "imagen",
         WIDTH_10THS,
         HEIGHT_10THS,

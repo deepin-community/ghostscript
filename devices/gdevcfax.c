@@ -28,12 +28,19 @@ static dev_proc_close_device(cfax_prn_close);
 /* an additional "end of document" signature after the last */
 /* "end page" signature */
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs gdev_cfax_std_procs =
-    prn_params_procs(gdev_prn_open, gdev_prn_bg_output_page, cfax_prn_close,
-                     gdev_fax_get_params, gdev_fax_put_params);
+static void
+cfax_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono_bg(dev);
+
+    set_dev_proc(dev, close_device, cfax_prn_close);
+    set_dev_proc(dev, get_params, gdev_fax_get_params);
+    set_dev_proc(dev, put_params, gdev_fax_put_params);
+}
 
 const gx_device_fax gs_cfax_device = {
-    FAX_DEVICE_BODY(gx_device_fax, gdev_cfax_std_procs, "cfax", cfax_print_page)
+    FAX_DEVICE_BODY(gx_device_fax, cfax_initialize_device_procs,
+                    "cfax", cfax_print_page)
 };
 
 /* ---------------- SFF output ----------------- */

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -90,6 +90,7 @@ There are two compile-time options for this driver:
 
 #include "gdevprn.h" /** Printer-superclass header */
 #include "gsparam.h" /** For the Parameter-Handling (optional) */
+#include "gxgetbit.h"
 
 #include <stdlib.h>  /** for rand */
 #include <limits.h>  /** for INT_MIN */
@@ -209,33 +210,22 @@ static int             upd_procs_map( upd_device *udev);
 /* Prototype of the Device-Structure (the only thing exported!)        */
 /* ------------------------------------------------------------------- */
 
-/**
-"uniprint" needs a procedure-table of its own, since it provides several
-optional procedures. Simpler-Drivers (e.g. non-color-drivers) may use
-prn_std_procs instead of defining their own procedure-table.
-*/
-
 #define upd_set_dev_proc(dev, p, proc) \
    ((dev)->std_procs.p = (dev)->orig_procs.p = (proc))
 
-static gx_device_procs upd_procs = {  /** Table of procedures */
-   upd_open,                      /** open-function, upd-special */
-   gx_default_get_initial_matrix, /** retrieve matrix */
-   gx_default_sync_output,        /** sync display */
-   gdev_prn_output_page,          /** superclass-print (calls back) */
-   upd_close,                     /** close-function, upd-special */
-   gx_default_map_rgb_color,      /** RGB-mapping */
-   gx_default_map_color_rgb,      /** reverse mapping */
-   NULL,                          /** fill_rectangle */
-   NULL,                          /** tile_rectangle */
-   NULL,                          /** copy_mono */
-   NULL,                          /** copy_color */
-   NULL,                          /** draw_line */
-   gx_default_get_bits,           /** reads scanlines, e.g. for the driver */
-   upd_get_params,                /** Export parameters, upd-special */
-   upd_put_params,                /** Import parameters, upd-special */
-   gx_default_map_cmyk_color      /** KCMY-mapping */
-};                                     /** */
+static void
+upd_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, initialize_device, gx_init_non_threadsafe_device);
+    set_dev_proc(dev, open_device, upd_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page);
+    set_dev_proc(dev, close_device, upd_close);
+    set_dev_proc(dev, map_rgb_color, gx_default_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gx_default_map_color_rgb);
+    set_dev_proc(dev, get_params, upd_get_params);
+    set_dev_proc(dev, put_params, upd_put_params);
+    set_dev_proc(dev, map_cmyk_color, gx_default_map_cmyk_color);
+}
 
 /**
 The prototype-instance of the device-structure _must_ have the name
@@ -256,7 +246,7 @@ and the reader might directly skip to the section titled
 */
 
 upd_device far_data gs_uniprint_device = { /** */
-   prn_device_body(upd_device, upd_procs,  /** The Type and Procedures */
+   prn_device_body(upd_device, upd_initialize_device_procs, /** The Type and Init Proc */
       "uniprint",                          /** External name of the Device */
       DEFAULT_WIDTH_10THS,                 /** X-Size (1/10") */
       DEFAULT_HEIGHT_10THS,                /** Y-Size (1/10") */
@@ -1035,6 +1025,8 @@ upd_print_page(gx_device_printer *pdev, gp_file *out)
    const upd_p       upd   = udev->upd;
    const int *const  ints  = upd ? upd->ints : NULL;
    int error,need,yfill;
+   gs_int_rect rect;
+   gs_get_bits_params_t params;
 
 #if UPD_SIGNAL /* variables required for signal-handling only */
    void (*oldint )(int) = NULL;
@@ -1102,6 +1094,11 @@ upd_print_page(gx_device_printer *pdev, gp_file *out)
    upd->ixpass =  0;
    upd->icomp  = -1; /* Enforces initial selection */
    upd->lf     = -1; /* Enforces initial selection */
+
+   rect.p.x = 0;
+   rect.q.x = pdev->width;
+   params.x_offset = 0;
+   params.raster = bitmap_raster(pdev->width * pdev->color_info.depth);
 /*
  * Main Loop
  */
@@ -1118,14 +1115,24 @@ upd_print_page(gx_device_printer *pdev, gp_file *out)
 
          if(upd->gsheight > upd->yscnbuf)  {
 
-            if(0 > (*dev_proc(udev,get_bits))((gx_device *) udev,
-                                   upd->yscnbuf,upd->gsbuf,&upd->gsscan)) {
+            rect.p.y = upd->yscnbuf;
+            rect.q.y = upd->yscnbuf+1;
+
+            params.options = (GB_ALIGN_ANY |
+                              (GB_RETURN_COPY | GB_RETURN_POINTER) |
+                              GB_OFFSET_0 |
+                              GB_RASTER_STANDARD | GB_PACKING_CHUNKY |
+                              GB_COLORS_NATIVE | GB_ALPHA_NONE);
+            params.data[0] = upd->gsbuf;
+            if(0 > (*dev_proc(udev,get_bits_rectangle))((gx_device *) udev,
+                                   &rect,&params)) {
 #if UPD_MESSAGES & UPD_M_WARNING
                errprintf(udev->memory, "get_bits aborted with error, yscnbuf = %4d\n",
                          upd->yscnbuf);
 #endif
                break;
             }
+            upd->gsscan = params.data[0];
          } else {
 
             memset(upd->gsscan = upd->gsbuf,0,upd->ngsbuf);
@@ -2213,7 +2220,7 @@ in the W- or K-Component.
 /* ------------------------------------------------------------------- */
 
 static int
-upd_icolor_rgb(gx_device *pdev, gx_color_index color, gx_color_value prgb[3])
+upd_icolor_rgb(gx_device *pdev, gx_color_index color, gx_color_value prgb[])
 {
    const upd_p     upd = ((upd_device *)pdev)->upd;
    gx_color_value c,m,y,k;
@@ -2296,7 +2303,7 @@ upd_rgb_1color(gx_device *pdev, const gx_color_value cv[])
 /* ------------------------------------------------------------------- */
 
 static int
-upd_1color_rgb(gx_device *pdev, gx_color_index color, gx_color_value cv[1])
+upd_1color_rgb(gx_device *pdev, gx_color_index color, gx_color_value cv[])
 {
    const upd_p     upd = ((upd_device *)pdev)->upd;
 /*
@@ -2355,7 +2362,7 @@ upd_rgb_3color(gx_device *pdev, const gx_color_value cv[])
 /* ------------------------------------------------------------------- */
 
 static int
-upd_3color_rgb(gx_device *pdev, gx_color_index color, gx_color_value prgb[3])
+upd_3color_rgb(gx_device *pdev, gx_color_index color, gx_color_value prgb[])
 {
    const upd_p     upd = ((upd_device *)pdev)->upd;
 
@@ -2436,7 +2443,7 @@ upd_rgb_4color(gx_device *pdev, const gx_color_value cv[])
 /* ------------------------------------------------------------------- */
 
 static int
-upd_4color_rgb(gx_device *pdev, gx_color_index color, gx_color_value prgb[3])
+upd_4color_rgb(gx_device *pdev, gx_color_index color, gx_color_value prgb[])
 {
    const upd_p     upd = ((upd_device *)pdev)->upd;
 
@@ -2533,7 +2540,7 @@ upd_cmyk_kcolor(gx_device *pdev, const gx_color_value cv[])
 /* ------------------------------------------------------------------- */
 
 static int
-upd_kcolor_rgb(gx_device *pdev, gx_color_index color, gx_color_value prgb[3])
+upd_kcolor_rgb(gx_device *pdev, gx_color_index color, gx_color_value prgb[])
 {
    const upd_p     upd = ((upd_device *)pdev)->upd;
    gx_color_value c,m,y,k;
@@ -3552,7 +3559,7 @@ upd_close_fscomp(upd_device *udev)
  *                            3/16  5/16  1/16 Y+1
  */
 #define FS_DIST(I)                                                    \
-   if(!first) rowerr[I-dir] += ((3*pixel[I]+8)>>4); /* 3/16 */        \
+   if(!first) { rowerr[I-dir] += ((3*pixel[I]+8)>>4);} /* 3/16 */        \
               rowerr[I    ]  = ((5*pixel[I]  )>>4)  /* 5/16 */        \
                              + (( colerr[I]+4)>>3); /* 1/16 (rest) */ \
               colerr[I    ]  = pixel[I]             /* 8/16 (neu) */  \
@@ -6477,7 +6484,7 @@ upd_open_wrtrtl(upd_device *udev)
            if(       (B_PAGEWIDTH  & upd->flags) &&
                      ((c == 0x73) || (c == 0x53))  ) { /* esc * r # S */
 
-             gs_sprintf(cv,"%d",upd->pwidth);
+             gs_snprintf(cv,sizeof(cv),"%d",upd->pwidth);
              ncv = strlen(cv);
 
              nbp = (j+1) + ncv + (upd->strings[S_BEGIN].size-i);
@@ -6495,7 +6502,7 @@ upd_open_wrtrtl(upd_device *udev)
            } else if((B_PAGELENGTH & upd->flags) &&
                      ((c == 0x74) || (c == 0x54))  ) { /* esc * r # T */
 
-             gs_sprintf(cv,"%d",upd->pheight);
+             gs_snprintf(cv,sizeof(cv),"%d",upd->pheight);
              ncv = strlen(cv);
 
              nbp = (j+1) + ncv + (upd->strings[S_BEGIN].size-i);
@@ -6524,7 +6531,7 @@ upd_open_wrtrtl(upd_device *udev)
            if(        (B_RESOLUTION  & upd->flags) &&
                      ((c == 0x72) || (c == 0x52))  ) { /* esc * t # R */
 
-             gs_sprintf(cv,"%d",(int)
+             gs_snprintf(cv,sizeof(cv),"%d",(int)
                ((udev->y_pixels_per_inch < udev->x_pixels_per_inch ?
                  udev->x_pixels_per_inch : udev->y_pixels_per_inch)
                +0.5));
@@ -6731,7 +6738,7 @@ upd_open_wrtrtl(upd_device *udev)
 
              if(B_PAGELENGTH  & upd->flags) { /* insert new number */
 
-               gs_sprintf(cv,"%d",(int)
+               gs_snprintf(cv,sizeof(cv),"%d",(int)
                  (720.0 * udev->height / udev->y_pixels_per_inch + 0.5));
                ncv = strlen(cv);
 
@@ -6796,7 +6803,7 @@ upd_open_wrtrtl(upd_device *udev)
 
              if(B_PAGEWIDTH  & upd->flags) { /* insert new number */
 
-               gs_sprintf(cv,"%d",(int)
+               gs_snprintf(cv,sizeof(cv),"%d",(int)
                  (720.0 * udev->width / udev->x_pixels_per_inch + 0.5));
                ncv = strlen(cv);
 
@@ -6891,7 +6898,7 @@ upd_open_wrtrtl(upd_device *udev)
 
              if(B_RESOLUTION  & upd->flags) { /* insert new number */
 
-               gs_sprintf(cv,"%d",(int)
+               gs_snprintf(cv,sizeof(cv),"%d",(int)
                  ((udev->y_pixels_per_inch < udev->x_pixels_per_inch ?
                    udev->x_pixels_per_inch : udev->y_pixels_per_inch)
                  +0.5));
@@ -6946,7 +6953,7 @@ It must hold:
       char  tmp[16];
 
       if(0 < upd->strings[S_YMOVE].size) {
-         gs_sprintf(tmp,"%d",upd->pheight);
+         gs_snprintf(tmp,sizeof(tmp),"%d",upd->pheight);
          ny = upd->strings[S_YMOVE].size + strlen(tmp);
       } else {
          ny = 1 + upd->string_a[SA_WRITECOMP].data[upd->ocomp-1].size;
@@ -7007,14 +7014,14 @@ upd_wrtrtl(upd_p upd, gp_file *out)
  */
       if(upd->yscan != upd->yprinter) { /* Adjust Y-Position */
          if(1 < upd->strings[S_YMOVE].size) {
-           gs_sprintf((char *)upd->outbuf+ioutbuf,
+           gs_snprintf((char *)upd->outbuf+ioutbuf, upd->noutbuf-ioutbuf,
              (const char *) upd->strings[S_YMOVE].data,
              upd->yscan - upd->yprinter);
            ioutbuf += strlen((char *)upd->outbuf+ioutbuf);
          } else {
            while(upd->yscan > upd->yprinter) {
              for(icomp = 0; icomp < upd->ocomp; ++icomp) {
-               gs_sprintf((char *)upd->outbuf+ioutbuf,
+               gs_snprintf((char *)upd->outbuf+ioutbuf, upd->noutbuf-ioutbuf,
                  (const char *) upd->string_a[SA_WRITECOMP].data[icomp].data,0);
                ioutbuf += strlen((char *)upd->outbuf+ioutbuf);
              }

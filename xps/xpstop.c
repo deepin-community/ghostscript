@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -31,12 +31,7 @@
 
 #include <assert.h>
 
-int xps_zip_trace = 0;
-int xps_doc_trace = 0;
-
 static int xps_install_halftone(xps_context_t *ctx, gx_device *pdevice);
-
-#define XPS_PARSER_MIN_INPUT_SIZE (8192 * 4)
 
 /*
  * The XPS interpeter is identical to pl_interp_t.
@@ -54,17 +49,13 @@ struct xps_interp_instance_s
     char scratch_name[gp_file_name_sizeof];
 };
 
-/* version and build date are not currently used */
-#define XPS_VERSION NULL
-#define XPS_BUILD_DATE NULL
-
 static int
 xps_detect_language(const char *s, int len)
 {
     if (len < 2)
         return 0;
     if (memcmp(s, "PK", 2) == 0)
-        return 100;
+        return 80; /* Pretty sure, but not 100, so the SO one can override us. */
     return 0;
 }
 
@@ -75,9 +66,6 @@ xps_impl_characteristics(const pl_interp_implementation_t *pimpl)
     {
         "XPS",
         xps_detect_language,
-        "Artifex",
-        XPS_VERSION,
-        XPS_BUILD_DATE
     };
     return &xps_characteristics;
 }
@@ -104,7 +92,7 @@ xps_set_icc_user_params(pl_interp_implementation_t *impl, gs_gstate *pgs)
 /* Do per-instance interpreter allocation/init. No device is set yet */
 static int
 xps_impl_allocate_interp_instance(pl_interp_implementation_t *impl,
-                                 gs_memory_t *pmem)
+                                  gs_memory_t *pmem)
 {
     int code = 0;
     xps_interp_instance_t *instance;
@@ -202,11 +190,6 @@ xps_impl_init_job(pl_interp_implementation_t *impl,
     bool disable_page_handler = false;
     int true_val = 1;
     gs_memory_t* mem = ctx->memory;
-
-    if (gs_debug_c('|'))
-        xps_zip_trace = 1;
-    if (gs_debug_c('|'))
-        xps_doc_trace = 1;
 
     ctx->font_table = xps_hash_new(ctx);
     ctx->colorspace_table = xps_hash_new(ctx);
@@ -596,7 +579,9 @@ xps_install_halftone(xps_context_t *ctx, gx_device *pdevice)
 
     if (gx_device_must_halftone(pdevice))
     {
+        memset(&ht.rc, 0x00, sizeof(ht.rc));
         ht.type = ht_type_threshold;
+        ht.objtype = HT_OBJTYPE_DEFAULT;
         ht.params.threshold.width = width;
         ht.params.threshold.height = height;
         ht.params.threshold.thresholds.data = thresh.data;

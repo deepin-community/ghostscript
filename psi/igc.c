@@ -786,7 +786,8 @@ gc_trace_clump(const gs_memory_t *mem, clump_t * cp, gc_state_t * pstate, gc_mar
 /* 1 if we completed and marked some new objects. */
 static int gc_extend_stack(gc_mark_stack *, gc_state_t *);
 static int
-gc_trace(gs_gc_root_t * rp, gc_state_t * pstate, gc_mark_stack * pmstack)
+gc_trace(gs_gc_root_t * rp, /* lgtm [cpp/use-of-goto] */
+         gc_state_t * pstate, gc_mark_stack * pmstack)
 {
     int min_trace = pstate->min_collect;
     gc_mark_stack *pms = pmstack;
@@ -958,6 +959,7 @@ gc_trace(gs_gc_root_t * rp, gc_state_t * pstate, gc_mark_stack * pmstack)
                 case t_fontID:
                 case t_struct:
                 case t_astruct:
+                case t_pdfctx:
                     nptr = rptr->value.pstruct;
                     goto rs;
                     /* Non-trivial non-struct cases */

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -90,6 +90,13 @@ xps_deobfuscate_font_resource(xps_context_t *ctx, xps_part_t *part)
     byte key[16];
     char *p;
     int i;
+
+    /* Ensure the part has at least 32 bytes we can write */
+    if (part->size < 32)
+    {
+        gs_warn("obfuscated font part is too small");
+        return;
+    }
 
     p = strrchr(part->name, '/');
     if (!p)
@@ -776,8 +783,12 @@ xps_parse_glyphs(xps_context_t *ctx,
 
         if (sim_bold)
         {
-            /* widening strokes by 1% of em size */
-            gs_setlinewidth(ctx->pgs, font_size * 0.02);
+            if (!ctx->preserve_tr_mode)
+                /* widening strokes by 1% of em size */
+                gs_setlinewidth(ctx->pgs, font_size * 0.02);
+            else
+                /* Undo CTM scaling */
+                gs_setlinewidth(ctx->pgs, font_size * 0.02 * fabs(ctx->pgs->ctm.xx) / (ctx->pgs->device->HWResolution[0] / 72.0));
             gs_settextrenderingmode(ctx->pgs, 2);
         }
 

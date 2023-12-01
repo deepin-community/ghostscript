@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -309,9 +309,25 @@ int
 zchar_charstring_data(gs_font *font, const ref *pgref, gs_glyph_data_t *pgd)
 {
     ref *pcstr;
+    ref *cffcstr;
+    ref *pdr = pfont_dict(font);
 
     if (dict_find(&pfont_data(font)->CharStrings, pgref, &pcstr) <= 0)
         return_error(gs_error_undefined);
+
+    if (r_has_type(pcstr, t_integer)
+       && dict_find_string(pdr, "CFFCharStrings", &cffcstr) > 0) {
+        ref *pcstr2;
+        if (dict_find(cffcstr, pcstr, &pcstr2) <= 0) {
+            ref nd;
+            make_int(&nd, 0);
+            if (dict_find(cffcstr, &nd, &pcstr2) <= 0) {
+                return_error(gs_error_undefined);
+            }
+        }
+        pcstr = pcstr2;
+    }
+
     if (!r_has_type(pcstr, t_string)) {
         /*
          * The ADOBEPS4 Windows driver replaces the .notdef entry of
@@ -326,8 +342,26 @@ zchar_charstring_data(gs_font *font, const ref *pgref, gs_glyph_data_t *pgd)
             charstring_is_notdef_proc(font->memory, pcstr)
             )
             return charstring_make_notdef(pgd, font);
-        else
+        else {
+            /* Bug #703779. It seems that other tools can modify type 1 fonts, using
+             * a procedure in place of a CharString for the /.notdef. In this case the
+             * culprit is "Polylogics DIAD White Pages Pagination". Doing this prevents
+             * pdfwrite from being able to write the font. Obviously we cannot have a
+             * PostScript procedure in a PDF file. Adobe Acrobat Distiller replaces
+             * the procedure with a simple 'endchar' CharString, so we now do the
+             * same. I've chosen to leave the specific ADOBEPS4 test above unchanged, rather
+             * than roll it in here, because I can't find an example file for it and
+             * can't be certain that 'pgref' will be a name in that case.
+             */
+            ref namestr;
+
+            if (r_has_type(pgref, t_name)) {
+                name_string_ref(pgd->memory, pgref, &namestr);
+                if (r_size(&namestr) == 7 && !memcmp(namestr.value.bytes, ".notdef", 7))
+                    return charstring_make_notdef(pgd, font);
+            }
             return_error(gs_error_typecheck);
+        }
     }
     gs_glyph_data_from_string(pgd, pcstr->value.const_bytes, r_size(pcstr),
                               NULL);

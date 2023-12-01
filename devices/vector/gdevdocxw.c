@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -30,7 +30,7 @@
 #include "gxfcid.h"
 #include "gxgstate.h"
 #include "gxpath.h"
-#include "gdevagl.h"
+#include "gsagl.h"
 #include "gxdevsop.h"
 #include "gzpath.h"
 #include "gdevkrnlsclass.h" /* 'standard' built in subclasses, currently First/Last Page and obejct filter */
@@ -38,7 +38,8 @@
 
 #include "doc_common.h"
 
-#include "../../extract/include/extract.h"
+#include "extract/extract.h"
+#include "extract/buffer.h"
 
 #include <errno.h>
 
@@ -103,7 +104,6 @@ typedef struct {
     extract_alloc_t *alloc;
     extract_t *extract;
     int file_per_page;
-    float x;    /* Used to maintain x pos as we iterate through a span. */
 } gx_device_docxwrite_t;
 
 
@@ -117,7 +117,7 @@ static dev_proc_put_params(docxwrite_put_params);
 static dev_proc_fill_path(docxwrite_fill_path);
 static dev_proc_stroke_path(docxwrite_stroke_path);
 static dev_proc_text_begin(docxwrite_text_begin);
-static dev_proc_strip_copy_rop(docxwrite_strip_copy_rop);
+static dev_proc_strip_copy_rop2(docxwrite_strip_copy_rop2);
 static dev_proc_dev_spec_op(docxwrite_dev_spec_op);
 
 
@@ -144,93 +144,41 @@ typedef struct {
 
 private_st_textw_text_enum();
 
+static void
+docxwrite_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, open_device, docxwrite_open_device);
+    set_dev_proc(dev, output_page, docxwrite_output_page);
+    set_dev_proc(dev, close_device, docxwrite_close_device);
+    set_dev_proc(dev, fill_rectangle, docxwrite_fill_rectangle);
+    set_dev_proc(dev, get_params, docxwrite_get_params);
+    set_dev_proc(dev, put_params, docxwrite_put_params);
+    set_dev_proc(dev, get_page_device, gx_page_device_get_page_device);
+    set_dev_proc(dev, fill_path, docxwrite_fill_path);
+    set_dev_proc(dev, stroke_path, docxwrite_stroke_path);
+    set_dev_proc(dev, strip_copy_rop2, docxwrite_strip_copy_rop2);
+    set_dev_proc(dev, composite, gx_null_composite);
+    set_dev_proc(dev, text_begin, docxwrite_text_begin);
+    set_dev_proc(dev, dev_spec_op, docxwrite_dev_spec_op);
+}
+
 const gx_device_docxwrite_t gs_docxwrite_device =
 {
     /* Define the device as 8-bit gray scale to avoid computing halftones. */
-    std_device_dci_body(gx_device_docxwrite_t, 0, "docxwrite",
+    std_device_dci_body(gx_device_docxwrite_t,
+                        docxwrite_initialize_device_procs,
+                        "docxwrite",
                         DEFAULT_WIDTH_10THS * X_DPI / 10,
                         DEFAULT_HEIGHT_10THS * Y_DPI / 10,
                         X_DPI, Y_DPI,
                         1, 8, 255, 0, 256, 1),
-    {docxwrite_open_device,
-     NULL, /*gx_upright_get_initial_matrix,*/
-     NULL, /*gx_default_sync_output,*/
-     docxwrite_output_page,
-     docxwrite_close_device,
-     NULL, /*gx_default_gray_map_rgb_color,*/
-     NULL, /*gx_default_gray_map_color_rgb,*/
-     docxwrite_fill_rectangle,               /* Can't be NULL and there is no gx_default_fill_rectangle! */
-     NULL, /*gx_default_tile_rectangle,*/
-     NULL, /*gx_default_copy_mono,*/
-     NULL, /*gx_default_copy_color,*/
-     NULL, /*gx_default_draw_line,*/
-     NULL, /*gx_default_get_bits,*/
-     docxwrite_get_params,
-     docxwrite_put_params,
-     NULL, /*gx_default_map_cmyk_color,*/
-     NULL, /*gx_default_get_xfont_procs,*/
-     NULL, /*gx_default_get_xfont_device,*/
-     NULL, /*gx_default_map_rgb_alpha_color,*/
-     gx_page_device_get_page_device, /*gx_page_device_get_page_device,*/
-     NULL,			/* get_alpha_bits */
-     NULL, /*gx_default_copy_alpha,*/
-     NULL,			/* get_band */
-     NULL,			/* copy_rop */
-     docxwrite_fill_path,
-     docxwrite_stroke_path,
-     NULL, /*gx_default_fill_mask,*/
-     NULL, /*gx_default_fill_trapezoid,*/
-     NULL, /*gx_default_fill_parallelogram,*/
-     NULL, /*gx_default_fill_triangle,*/
-     NULL, /*gx_default_draw_thin_line,*/
-     NULL,                      /* begin image */
-     NULL,			/* image_data */
-     NULL,			/* end_image */
-     NULL, /*gx_default_strip_tile_rectangle,*/
-     docxwrite_strip_copy_rop,
-     NULL,			/* get_clipping_box */
-     NULL, /* docxwrite_begin_typed_image */
-     NULL,			/* get_bits_rectangle */
-     NULL, /*gx_default_map_color_rgb_alpha,*/
-     gx_null_create_compositor,
-     NULL,			/* get_hardware_params */
-     docxwrite_text_begin,
-     NULL,			/* finish_copydevice */
-     NULL,			/* begin_transparency_group */
-     NULL,			/* end_transparency_group */
-     NULL,			/* begin_transparency_mask */
-     NULL,			/* end_transparency_mask */
-     NULL,			/* discard_transparency_layer */
-     NULL,			/* get_color_mapping_procs */
-     NULL,			/* get_color_comp_index */
-     NULL,			/* encode_color */
-     NULL,			/* decode_color */
-     NULL,                      /* pattern manager */
-     NULL,                      /* fill_rectangle_hl_color */
-     NULL,                      /* include_color_space */
-     NULL,                      /* fill_linear_color_scanline */
-     NULL,                      /* fill_linear_color_trapezoid */
-     NULL,                      /* fill_linear_color_triangle */
-     NULL,                      /* update_spot_equivalent_colors */
-     NULL,                      /* ret_devn_params */
-     NULL,                      /* fillpage */
-     NULL,                      /* push_transparency_state */
-     NULL,                      /* pop_transparency_state */
-     NULL,                      /* put_image */
-     docxwrite_dev_spec_op,      /* dev_spec_op */
-     NULL,                      /* copy_planes */
-     NULL,                      /* get_profile */
-     NULL,                      /* set_graphics_type_tag */
-     NULL,                      /* strip_copy_rop2 */
-     NULL                       /* strip_tile_rect_devn */
-    },
+    { 0 },                      /* procs */
     { 0 },			/* Page Data */
     0,				/* Output FILE * */
     0,				/* TextFormat */
     NULL,           /* alloc */
     NULL,			/* extract */
-    0,              /* file_per_page */
-    0.0             /* x */
+    0               /* file_per_page */
 };
 
 
@@ -292,6 +240,12 @@ docxwrite_open_device(gx_device * dev)
     gs_parsed_file_name_t parsed;
     int code = 0;
 
+    if (tdev->extract) {
+        /* We can be called multiple times; nothing to do after the first time.
+        */
+        return 0;
+    }
+
     gx_device_fill_in_procs(dev);
     if (tdev->fname[0] == 0)
         return_error(gs_error_undefinedfilename);
@@ -300,6 +254,7 @@ docxwrite_open_device(gx_device * dev)
     dev->color_info.separable_and_linear = GX_CINFO_SEP_LIN;
     set_linear_color_bits_mask_shift(dev);
     dev->interpolate_control = 0;
+    dev->non_strict_bounds = 0;
 
     tdev->alloc = NULL;
     tdev->extract = NULL;
@@ -314,11 +269,12 @@ docxwrite_open_device(gx_device * dev)
     }
     extract_alloc_exp_min(tdev->alloc, 64);
 
-    if (extract_begin(tdev->alloc, &tdev->extract)) {
+    if (extract_begin(tdev->alloc, extract_format_DOCX, &tdev->extract)) {
         code = s_errno_to_gs();
         goto end;
     }
-    if (extract_page_begin(tdev->extract)) {
+    /* Pass dummy page bbox for now; our simple use of extract ignores it. */
+    if (extract_page_begin(tdev->extract, 0, 0, 0, 0)) {
         code = s_errno_to_gs();
         goto end;
     }
@@ -423,12 +379,13 @@ docxwrite_output_page(gx_device * dev, int num_copies, int flush)
     if (tdev->file_per_page) {
         /* Create a new extract_t for the next page. */
         extract_end(&tdev->extract);
-        if (extract_begin(tdev->alloc, &tdev->extract)) {
+        if (extract_begin(tdev->alloc, extract_format_DOCX, &tdev->extract)) {
             code = s_errno_to_gs();
             goto end;
         }
     }
-    if (extract_page_begin(tdev->extract)) {
+    /* Pass dummy page bbox for now; our simple use of extract ignores it. */
+    if (extract_page_begin(tdev->extract, 0, 0, 0, 0)) {
         code = s_errno_to_gs();
         goto end;
     }
@@ -482,14 +439,15 @@ docxwrite_strip_tile_rectangle(gx_device * dev, const gx_strip_bitmap * tiles,
 }
 
 static int
-docxwrite_strip_copy_rop(gx_device * dev,
+docxwrite_strip_copy_rop2(gx_device * dev,
                     const byte * sdata, int sourcex, uint sraster,
                     gx_bitmap_id id,
                     const gx_color_index * scolors,
                     const gx_strip_bitmap * textures,
                     const gx_color_index * tcolors,
                     int x, int y, int w, int h,
-                    int phase_x, int phase_y, gs_logical_operation_t lop)
+                    int phase_x, int phase_y, gs_logical_operation_t lop,
+                    uint plane_height)
 {
     return 0;
 }*/
@@ -635,6 +593,7 @@ docxwrite_put_params(gx_device * dev, gs_param_list * plist)
     dev->is_open = open;
 
     dev->interpolate_control = 0;
+    dev->non_strict_bounds = 0;
 
     return 0;
 }
@@ -736,7 +695,7 @@ docx_update_text_state(docx_list_entry_t *ppts,
     gs_matrix smat, tmat;
     float size;
     int mask = 0;
-    int code = gx_path_current_point(penum->path, &cpt);
+    int code = gx_path_current_point(gs_text_enum_path(penum), &cpt);
 
     if (code < 0)
         return code;
@@ -778,7 +737,8 @@ docx_update_text_state(docx_list_entry_t *ppts,
         font->font_name.size + 1, "txtwrite alloc font name");
     if (!ppts->FontName)
         return gs_note_error(gs_error_VMerror);
-    memcpy(ppts->FontName, font->font_name.chars, font->font_name.size + 1);
+    memcpy(ppts->FontName, font->font_name.chars, font->font_name.size);
+    ppts->FontName[font->font_name.size] = 0;
 
     if (font->PaintType == 2 && penum->pgs->text_rendering_mode == 0)
     {
@@ -854,6 +814,7 @@ docxwrite_process_cmap_text(gx_device_docxwrite_t *tdev, gs_text_enum_t *pte)
     unsigned int rcode = 0;
     gs_text_enum_t scan = *(gs_text_enum_t *)pte;
     int i;
+    gs_point at = { 0, 0 };
 
     /* Composite font using a CMap */
 
@@ -915,8 +876,13 @@ docxwrite_process_cmap_text(gx_device_docxwrite_t *tdev, gs_text_enum_t *pte)
             return code;
         }
         if (!prevFontName && penum->text_state->FontName) {
+            gs_rect *fbbox = &((gs_font_base *)subfont)->FontBBox;
+            gs_matrix fm = *&((gs_font_base *)subfont)->FontMatrix;
+            gs_rect bbox;
 
-            tdev->x = fixed2float(penum->origin.x) - penum->text_state->matrix.tx;
+            code = gs_bbox_transform(fbbox, &fm, &bbox);
+            if (code < 0)
+                return code;
 
             if (extract_span_begin(
                     tdev->extract,
@@ -924,19 +890,15 @@ docxwrite_process_cmap_text(gx_device_docxwrite_t *tdev, gs_text_enum_t *pte)
                     0 /*font_bold*/,
                     0 /*font_italic*/,
                     penum->text_state->wmode,
-                    penum->text_state->matrix.xx,
-                    penum->text_state->matrix.xy,
-                    penum->text_state->matrix.yx,
-                    penum->text_state->matrix.yy,
-                    penum->text_state->matrix.tx,
-                    penum->text_state->matrix.ty,
-                    penum->text_state->size,
-                    0.0f,
-                    0.0f,
-                    penum->text_state->size,
-                    0.0f,
-                    0.0f
-                    )) {
+                    penum->pgs->ctm.xx,
+                    penum->pgs->ctm.xy,
+                    penum->pgs->ctm.yx,
+                    penum->pgs->ctm.yy,
+                    bbox.p.x,
+                    bbox.p.y,
+                    bbox.q.x,
+                    bbox.q.y))
+            {
                 return s_errno_to_gs();
             }
         }
@@ -982,19 +944,24 @@ docxwrite_process_cmap_text(gx_device_docxwrite_t *tdev, gs_text_enum_t *pte)
 
             txt_get_unicode(penum->dev, (gs_font *)pte->orig_font, glyph, chr, &buffer[0]);
 
+            /* Pass dummy glyph bbox because our use of extract does not
+            currently cause it to be used. */
             if (extract_add_char(
                     tdev->extract,
-                    tdev->x,
-                    fixed2float(penum->origin.y) - penum->text_state->matrix.ty,
+                    penum->text_state->matrix.tx + at.x, penum->text_state->matrix.ty + at.y,
                     buffer[0] /*ucs*/,
                     glyph_width / penum->text_state->size /*adv*/,
-                    0 /*autosplit*/
+                    0, 0, 0, 0 /* bbox*/
                     )) {
                 return s_errno_to_gs();
             }
         }
 
-        tdev->x += widths.real_width.xy.x * penum->text_state->size;
+        gs_distance_transform(widths.real_width.xy.x,
+                              widths.real_width.xy.y,
+                              &ctm_only(pte->pgs), &wanted);
+        at.x += dpt.x + wanted.x;
+        at.y += dpt.y + wanted.y;
 
         if (rcode || pte->index >= pte->text.size)
             break;
@@ -1016,10 +983,10 @@ docxwrite_process_plain_text(gx_device_docxwrite_t *tdev, gs_text_enum_t *pte)
     uint operation = pte->text.operation;
     txt_glyph_widths_t widths;
     gs_point wanted;	/* user space */
+    gs_point at = { 0, 0 };
 
     for (i=pte->index;i<pte->text.size;i++) {
         const char* prevFontName;
-        float span_delta_x;
         float glyph_width;
         unsigned short chr2[4];
 
@@ -1030,7 +997,7 @@ docxwrite_process_plain_text(gx_device_docxwrite_t *tdev, gs_text_enum_t *pte)
             ch = pte->text.data.chars[pte->index];
         } else if (operation & (TEXT_FROM_GLYPHS | TEXT_FROM_SINGLE_GLYPH)) {
             if (operation & TEXT_FROM_GLYPHS) {
-                gdata = pte->text.data.glyphs + (pte->index++ * sizeof (gs_glyph));
+                gdata = pte->text.data.glyphs + pte->index++;
             } else {
                 gdata = &pte->text.data.d_glyph;
             }
@@ -1056,8 +1023,13 @@ docxwrite_process_plain_text(gx_device_docxwrite_t *tdev, gs_text_enum_t *pte)
             return code;
 
         if (!prevFontName && penum->text_state->FontName) {
+            gs_rect *fbbox = &((gs_font_base *)font)->FontBBox;
+            gs_matrix fm = *&((gs_font_base *)font)->FontMatrix;
+            gs_rect bbox;
 
-            tdev->x = fixed2float(penum->origin.x) - penum->text_state->matrix.tx;
+            code = gs_bbox_transform(fbbox, &fm, &bbox);
+            if (code < 0)
+                return code;
 
             if (extract_span_begin(
                     tdev->extract,
@@ -1065,30 +1037,47 @@ docxwrite_process_plain_text(gx_device_docxwrite_t *tdev, gs_text_enum_t *pte)
                     0 /*font_bold*/,
                     0 /*font_italic*/,
                     penum->text_state->wmode,
-                    penum->text_state->matrix.xx,
-                    penum->text_state->matrix.xy,
-                    penum->text_state->matrix.yx,
-                    penum->text_state->matrix.yy,
-                    penum->text_state->matrix.tx,
-                    penum->text_state->matrix.ty,
-                    penum->text_state->size,
-                    0.0f,
-                    0.0f,
-                    penum->text_state->size,
-                    0.0f,
-                    0.0f
-                    )) {
+                    penum->pgs->ctm.xx,
+                    penum->pgs->ctm.xy,
+                    penum->pgs->ctm.yx,
+                    penum->pgs->ctm.yy,
+                    bbox.p.x,
+                    bbox.p.y,
+                    bbox.q.x,
+                    bbox.q.y))
+            {
                 return s_errno_to_gs();
             }
         }
+
+        /* Calculate glyph_width from the **original** glyph metrics, not the overriding
+         * advance width (if TEXT_REPLACE_WIDTHS is set below)
+         */
         txt_char_widths_to_uts(pte->orig_font, &widths); /* convert design->text space */
+        glyph_width = widths.real_width.xy.x * penum->text_state->size;
+
+        if (pte->text.operation & TEXT_REPLACE_WIDTHS)
+        {
+            gs_point tpt;
+
+            /* We are applying a width override, from x/y/xyshow. This could be from
+             * a PostScript file, or it could be from a PDF file where we have a font
+             * with a FontMatrix which is neither horizontal nor vertical.
+             */
+            code = gs_text_replaced_width(&pte->text, pte->xy_index++, &tpt);
+            if (code < 0)
+                return_error(gs_error_unregistered);
+
+            widths.Width.w = widths.real_width.w = tpt.x;
+            widths.Width.xy.x = widths.real_width.xy.x = tpt.x;
+            widths.Width.xy.y = widths.real_width.xy.y = tpt.y;
+        }
+
         gs_distance_transform(widths.real_width.xy.x * penum->text_state->size,
                           widths.real_width.xy.y * penum->text_state->size,
                           &penum->text_state->matrix, &wanted);
         pte->returned.total_width.x += wanted.x;
         pte->returned.total_width.y += wanted.y;
-        span_delta_x = widths.real_width.xy.x * penum->text_state->size;
-        glyph_width = widths.real_width.xy.x * penum->text_state->size;
 
         if (pte->text.operation & TEXT_ADD_TO_ALL_WIDTHS) {
             gs_point tpt;
@@ -1109,24 +1098,29 @@ docxwrite_process_plain_text(gx_device_docxwrite_t *tdev, gs_text_enum_t *pte)
         pte->returned.total_width.x += dpt.x;
         pte->returned.total_width.y += dpt.y;
 
-        span_delta_x += dpt.x;
-
-        code = txt_get_unicode(penum->dev, (gs_font *)pte->orig_font, glyph, ch, &chr2[0]);
+        (void) txt_get_unicode(penum->dev, (gs_font *)pte->orig_font, glyph, ch, &chr2[0]);
         /* If a single text code returned multiple Unicode values, then we need to set the
          * 'extra' code points' widths to 0.
          */
 
+        /* Pass dummy glyph bbox because our use of extract does not currently
+        cause it to be used. */
         if (extract_add_char(
                 tdev->extract,
-                tdev->x,
-                fixed2float(penum->origin.y) - penum->text_state->matrix.ty,
+                penum->text_state->matrix.tx + at.x, penum->text_state->matrix.ty + at.y,
                 chr2[0] /*ucs*/,
                 glyph_width / penum->text_state->size /*adv*/,
-                0 /*autosplit*/
+                0, 0, 0, 0 /*bbox*/
                 )) {
             return s_errno_to_gs();
         }
-        tdev->x += span_delta_x;
+
+        gs_distance_transform(widths.real_width.xy.x,
+                              widths.real_width.xy.y,
+                              &ctm_only(pte->pgs), &wanted);
+        at.x += dpt.x + wanted.x;
+        at.y += dpt.y + wanted.y;
+
         pte->index++;
     }
     code = 0;
@@ -1190,7 +1184,7 @@ textw_text_process(gs_text_enum_t *pte)
                 return code;
             /* Fall back to the default implementation. */
             code = gx_default_text_begin(pte->dev, pte->pgs, &pte->text, pte->current_font,
-                                 pte->path, pte->pdcolor, pte->pcpath, pte->memory, &pte_fallback);
+                                         pte->pcpath, &pte_fallback);
             if (code < 0)
                 return code;
             penum->pte_fallback = pte_fallback;
@@ -1291,13 +1285,14 @@ static const gs_text_enum_procs_t textw_text_procs = {
 static int
 docxwrite_text_begin(gx_device * dev, gs_gstate * pgs,
                 const gs_text_params_t * text, gs_font * font,
-                gx_path * path, const gx_device_color * pdcolor,
                 const gx_clip_path * pcpath,
-                gs_memory_t * mem, gs_text_enum_t ** ppenum)
+                gs_text_enum_t ** ppenum)
 {
     gx_device_docxwrite_t *const tdev = (gx_device_docxwrite_t *) dev;
     docxw_text_enum_t *penum;
     int code;
+    gx_path *path = pgs->path;
+    gs_memory_t * mem = pgs->memory;
 
     /* If this is a stringwidth, we must let the default graphics library code handle it
      * in case there is no current point (this can happen if this is the first operation
@@ -1308,8 +1303,8 @@ docxwrite_text_begin(gx_device * dev, gs_gstate * pgs,
      */
     if ((!(text->operation & TEXT_DO_DRAW) && pgs->text_rendering_mode != 3)
                     || path == 0 || !path_position_valid(path))
-            return gx_default_text_begin(dev, pgs, text, font, path, pdcolor,
-                                         pcpath, mem, ppenum);
+            return gx_default_text_begin(dev, pgs, text, font,
+                                         pcpath, ppenum);
     /* Allocate and initialize one of our text enumerators. */
     rc_alloc_struct_1(penum, docxw_text_enum_t, &st_textw_text_enum, mem,
                       return_error(gs_error_VMerror), "gdev_textw_text_begin");
@@ -1328,7 +1323,7 @@ docxwrite_text_begin(gx_device * dev, gs_gstate * pgs,
     memset(penum->text_state, 0x00, sizeof(docx_list_entry_t));
 
     code = gs_text_enum_init((gs_text_enum_t *)penum, &textw_text_procs,
-                             dev, pgs, text, font, path, pdcolor, pcpath, mem);
+                             dev, pgs, text, font, pcpath, mem);
     if (code < 0) {
         /* Belt and braces; I'm not certain this is required, but its safe */
         gs_free(tdev->memory, penum->text_state, 1, sizeof(docx_list_entry_t), "txtwrite free text state");
@@ -1337,7 +1332,7 @@ docxwrite_text_begin(gx_device * dev, gs_gstate * pgs,
         return code;
     }
 
-    code = gx_path_current_point(penum->path, &penum->origin);
+    code = gx_path_current_point(gs_text_enum_path(penum), &penum->origin);
     if (code != 0)
        return code;
 
@@ -1347,14 +1342,15 @@ docxwrite_text_begin(gx_device * dev, gs_gstate * pgs,
 }
 
 static int
-docxwrite_strip_copy_rop(gx_device * dev,
+docxwrite_strip_copy_rop2(gx_device * dev,
                     const byte * sdata, int sourcex, uint sraster,
                     gx_bitmap_id id,
                     const gx_color_index * scolors,
                     const gx_strip_bitmap * textures,
                     const gx_color_index * tcolors,
                     int x, int y, int w, int h,
-                    int phase_x, int phase_y, gs_logical_operation_t lop)
+                    int phase_x, int phase_y, gs_logical_operation_t lop,
+                    uint plane_height)
 {
     return 0;
 }

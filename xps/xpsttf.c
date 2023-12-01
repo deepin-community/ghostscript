@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -190,7 +190,7 @@ xps_true_callback_glyph_name(gs_font *pfont, gs_glyph glyph, gs_const_string *ps
     {
         /* Invent a name if we don't know the table format. */
         char buf[32];
-        gs_sprintf(buf, "glyph%d", (int)glyph);
+        gs_snprintf(buf, sizeof(buf), "glyph%d", (int)glyph);
 
         /* Ugly hackery. see comment below, after 'not mac' this ends up as a memory leak.
          * The PostScript interpreter adds the strings it creates to the PostScript name table
@@ -424,7 +424,9 @@ xps_init_truetype_font(xps_context_t *ctx, xps_font_t *font)
         p42->data.string_proc = xps_true_callback_string_proc;
         p42->data.proc_data = font;
 
-        gs_type42_font_init(p42, font->subfontid);
+        code = gs_type42_font_init(p42, font->subfontid);
+        if (code < 0)
+            return code;
         p42->data.get_glyph_index = xps_true_get_glyph_index;
     }
 

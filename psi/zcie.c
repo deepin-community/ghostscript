@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -144,7 +144,7 @@ dict_matrix3_param(const gs_memory_t *mem,
 
 /* Get 3 procedures from a dictionary. */
 int
-dict_proc3_param(const gs_memory_t *mem, const ref *pdref, const char *kstr, ref proc3[3])
+dict_proc3_param(const gs_memory_t *mem, const ref *pdref, const char *kstr, ref *proc3)
 {
     return dict_proc_array_param(mem, pdref, kstr, 3, proc3);
 }
@@ -448,8 +448,11 @@ ciedefgspace(i_ctx_t *i_ctx_p, ref *CIEDict, uint64_t dictkey)
     bool has_defg_procs, has_abc_procs, has_lmn_procs;
     gs_ref_memory_t *imem = (gs_ref_memory_t *)mem;
 
-    if (dictkey != 0)
+    if (dictkey != 0) {
         pcs = gsicc_find_cs(dictkey, igs);
+        if (pcs && gs_color_space_num_components(pcs) != 4)
+            pcs = NULL;
+    }
     else
         pcs = NULL;
     push(1); /* Sacrificial */
@@ -464,8 +467,8 @@ ciedefgspace(i_ctx_t *i_ctx_p, ref *CIEDict, uint64_t dictkey)
         check_read_type(*ptref, t_array);
         if (r_size(ptref) != 5)
             return_error(gs_error_rangecheck);
-            /* Stable memory due to current caching of color space */
-            code = gs_cspace_build_CIEDEFG(&pcs, NULL, mem->stable_memory);
+        /* Stable memory due to current caching of color space */
+        code = gs_cspace_build_CIEDEFG(&pcs, NULL, mem->stable_memory);
         if (code < 0)
             return cie_set_finish(i_ctx_p, pcs, &procs, edepth, code);
         pcie = pcs->params.defg;
@@ -558,8 +561,11 @@ ciedefspace(i_ctx_t *i_ctx_p, ref *CIEDict, uint64_t dictkey)
     bool has_def_procs, has_lmn_procs, has_abc_procs;
     gs_ref_memory_t *imem = (gs_ref_memory_t *)mem;
 
-    if (dictkey != 0)
+    if (dictkey != 0) {
         pcs = gsicc_find_cs(dictkey, igs);
+        if (pcs && gs_color_space_num_components(pcs) != 3)
+            pcs = NULL;
+    }
     else
         pcs = NULL;
     push(1); /* Sacrificial */
@@ -574,8 +580,8 @@ ciedefspace(i_ctx_t *i_ctx_p, ref *CIEDict, uint64_t dictkey)
         check_read_type(*ptref, t_array);
         if (r_size(ptref) != 4)
             return_error(gs_error_rangecheck);
-            /* Stable memory due to current caching of color space */
-            code = gs_cspace_build_CIEDEF(&pcs, NULL, mem->stable_memory);
+       /* Stable memory due to current caching of color space */
+        code = gs_cspace_build_CIEDEF(&pcs, NULL, mem->stable_memory);
         if (code < 0)
             return cie_set_finish(i_ctx_p, pcs, &procs, edepth, code);
         pcie = pcs->params.def;
@@ -626,8 +632,11 @@ cieabcspace(i_ctx_t *i_ctx_p, ref *CIEDict, uint64_t dictkey)
     gs_ref_memory_t *imem = (gs_ref_memory_t *)mem;
 
 /* See if the color space is in the profile cache */
-    if (dictkey != 0)
+    if (dictkey != 0) {
         pcs = gsicc_find_cs(dictkey, igs);
+        if (pcs && gs_color_space_num_components(pcs) != 3)
+            pcs = NULL;
+    }
     else
         pcs = NULL;
 
@@ -690,8 +699,11 @@ cieaspace(i_ctx_t *i_ctx_p, ref *CIEdict, uint64_t dictkey)
     bool has_lmn_procs;
 
 /* See if the color space is in the profile cache */
-    if (dictkey != 0)
+    if (dictkey != 0) {
         pcs = gsicc_find_cs(dictkey, igs);
+        if (pcs && gs_color_space_num_components(pcs) != 1)
+            pcs = NULL;
+    }
     else
         pcs = NULL;
     push(1); /* Sacrificial */

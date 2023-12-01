@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -344,6 +344,15 @@ pick_cell_size(gs_screen_halftone * ph, const gs_matrix * pmat, ulong max_size,
 
     if (u0 == 0 && v0 == 0)
         return_error(gs_error_rangecheck);
+
+    /* We increment rt in a loop below until (u+v) * rt
+     * is at least 4. Make sure that rt has enough range
+     * to satisfy that calculation. If it doesn't then
+     * give up (silly values).
+     */
+    if ((fabs(u0) + fabs(v0)) < ((double)5.0 / max_int))
+        return_error(gs_error_rangecheck);
+
     while ((fabs(u0) + fabs(v0)) * rt < 4)
         ++rt;
     phcp->C = 0;
@@ -602,7 +611,7 @@ gs_screen_next(gs_screen_enum * penum, double value)
     if (value < -1.0 || value > 1.0)
         return_error(gs_error_rangecheck);
     sample = (ht_sample_t) ((value + 1) * max_ht_sample);
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#if defined(DEBUG)
     if (gs_debug_c('H')) {
         gs_point pt;
 
@@ -627,6 +636,7 @@ gs_screen_install(gs_screen_enum * penum)
     dev_ht.rc.memory = penum->halftone.rc.memory;
     dev_ht.order = penum->order;
     dev_ht.components = 0;
+    penum->halftone.objtype = HT_OBJTYPE_DEFAULT;
     if ((code = gx_ht_install(penum->pgs, &penum->halftone, &dev_ht)) < 0)
         gx_device_halftone_release(&dev_ht, dev_ht.rc.memory);
     return code;

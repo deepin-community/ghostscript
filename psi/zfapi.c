@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -103,6 +103,10 @@ sfnts_next_elem(sfnts_reader *r)
             r->error = code;
             return;
         }
+        if (!r_has_type(&s, t_string)) {
+            r->error = gs_note_error(gs_error_typecheck);
+            return;
+        }
     	r->p = s.value.const_bytes;
     	r->length = r_size(&s) & ~(uint) 1; /* See Adobe Technical Note # 5012, section 4.2. */
     } while (r->length == 0);
@@ -189,8 +193,9 @@ sfnts_reader_seek(sfnts_reader *r, ulong pos)
 }
 
 static void
-sfnts_reader_init(sfnts_reader *r, ref *pdr)
+sfnts_reader_init(const gs_memory_t *mem, sfnts_reader *r, ref *pdr)
 {
+    r->memory = mem;
     r->rbyte = sfnts_reader_rbyte;
     r->rword = sfnts_reader_rword;
     r->rlong = sfnts_reader_rlong;
@@ -381,11 +386,11 @@ sfnts_copy_except_glyf(sfnts_reader *r, sfnts_writer *w)
 }
 
 static int
-true_type_size(ref *pdr, unsigned long int *length)
+true_type_size(const gs_memory_t *mem, ref *pdr, unsigned long int *length)
 {
     sfnts_reader r;
 
-    sfnts_reader_init(&r, pdr);
+    sfnts_reader_init(mem, &r, pdr);
     *length = sfnts_copy_except_glyf(&r, 0);
 
     return r.error;
@@ -400,7 +405,7 @@ FAPI_FF_serialize_tt_font(gs_fapi_font *ff, void *buf, int buf_size)
 
     w.buf_size = buf_size;
     w.buf = w.p = buf;
-    sfnts_reader_init(&r, pdr);
+    sfnts_reader_init(ff->memory, &r, pdr);
     return sfnts_copy_except_glyf(&r, &w);
 }
 
@@ -691,11 +696,11 @@ FAPI_FF_get_word(gs_fapi_font *ff, gs_fapi_font_feature var_id, int index, unsig
                             length += r_size(&string) + 1;
                             break;
                         case t_real:
-                            gs_sprintf(Buffer, "%f", Element.value.realval);
+                            gs_snprintf(Buffer, sizeof(Buffer), "%f", Element.value.realval);
                             length += strlen(Buffer) + 1;
                             break;
                         case t_integer:
-                            gs_sprintf(Buffer, "%"PRIpsint, Element.value.intval);
+                            gs_snprintf(Buffer, sizeof(Buffer), "%"PRIpsint, Element.value.intval);
                             length += strlen(Buffer) + 1;
                             break;
                         case t_operator:
@@ -1409,7 +1414,7 @@ FAPI_FF_get_long(gs_fapi_font *ff, gs_fapi_font_feature var_id, int index, unsig
             }
             break;
         case gs_fapi_font_feature_TT_size:
-            code = true_type_size(pdr, ret);
+            code = true_type_size(ff->memory, pdr, ret);
             break;
     }
     return code;
@@ -1657,12 +1662,12 @@ FAPI_FF_get_proc(gs_fapi_font *ff, gs_fapi_font_feature var_id, int index,
                             ptr += r_size(&string);
                             break;
                         case t_real:
-                            gs_sprintf(Buf, "%f", Element.value.realval);
+                            gs_snprintf(Buf, sizeof(Buf), "%f", Element.value.realval);
                             strcpy(ptr, Buf);
                             ptr += strlen(Buf);
                             break;
                         case t_integer:
-                            gs_sprintf(Buf, "%"PRIpsint, Element.value.intval);
+                            gs_snprintf(Buf, sizeof(Buf), "%"PRIpsint, Element.value.intval);
                             strcpy(ptr, Buf);
                             ptr += strlen(Buf);
                             break;
@@ -1902,7 +1907,7 @@ sfnt_get_glyph_offset(ref *pdr, gs_font_type42 *pfont42, int index,
     ulong fullsize;
 
     if (index < pfont42->data.trueNumGlyphs) {
-        sfnts_reader_init(&r, pdr);
+        sfnts_reader_init(pfont42->memory, &r, pdr);
         r.seek(&r, pfont42->data.loca + index * (ulong)glyf_elem_size);
         *offset0 =
             pfont42->data.glyf + (glyf_elem_size ==
@@ -2023,7 +2028,7 @@ FAPI_FF_get_glyph(gs_fapi_font *ff, gs_glyph char_code, byte *buf, int buf_lengt
             glyph_length = get_type1_data(ff, &glyph, buf, buf_length);
         }
         else {
-            ref *CharStrings, char_name, *glyph;
+            ref *CharStrings, *CFFCharStrings, char_name, *glyph;
 
             if (ff->char_data != NULL) {
                 /*
@@ -2068,6 +2073,20 @@ FAPI_FF_get_glyph(gs_fapi_font *ff, gs_glyph char_code, byte *buf, int buf_lengt
             }
             if (r_has_type(glyph, t_array) || r_has_type(glyph, t_mixedarray))
                 return gs_fapi_glyph_invalid_format;
+
+            if (r_has_type(glyph, t_integer)
+                && dict_find_string(pdr, "CFFCharStrings", &CFFCharStrings) > 0) {
+                ref *g2;
+                if (dict_find(CFFCharStrings, glyph, &g2) <= 0) {
+                    ref nd;
+                    make_int(&nd, 0);
+                    if (dict_find(CFFCharStrings, &nd, &g2) <= 0) {
+                        return gs_fapi_glyph_invalid_format;
+                    }
+                }
+                glyph = g2;
+            }
+
             if (!r_has_type(glyph, t_string))
                 return 0;
             glyph_length = get_type1_data(ff, glyph, buf, buf_length);
@@ -2156,7 +2175,7 @@ FAPI_FF_get_glyph(gs_fapi_font *ff, gs_glyph char_code, byte *buf, int buf_lengt
                 if (buf != 0 && !error) {
                     sfnts_reader r;
 
-                    sfnts_reader_init(&r, pdr);
+                    sfnts_reader_init(pfont42->memory, &r, pdr);
 
                     r.seek(&r, offset0);
                     length_read =
@@ -2254,6 +2273,7 @@ static const gs_fapi_font ps_ff_stub = {
     FAPI_FF_get_raw_subr,
     FAPI_FF_get_glyph,
     FAPI_FF_serialize_tt_font,
+    NULL,                       /* retrieve_tt_font */
     FAPI_FF_get_charstring,
     FAPI_FF_get_charstring_name,
     ps_get_GlyphDirectory_data_ptr,

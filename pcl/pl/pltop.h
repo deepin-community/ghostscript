@@ -38,9 +38,6 @@ typedef struct pl_interp_characteristics_s
     const char *language;       /* generic language should correspond with
                                    HP documented PJL name */
     int (*auto_sense)(const char *string, int length);      /* routine used to detect language - returns a score: 0 is definitely not, 100 is definitely yes. */
-    const char *manufacturer;   /* manuf str */
-    const char *version;        /* version str */
-    const char *build_date;     /* build date str */
 } pl_interp_characteristics_t;
 
 /*
@@ -155,6 +152,13 @@ typedef int (*pl_interp_proc_dnit_job_t) (pl_interp_implementation_t *);
 int pl_deallocate_interp_instance(pl_interp_implementation_t *);
 typedef int (*pl_interp_proc_deallocate_interp_instance_t) (pl_interp_implementation_t *);
 
+typedef enum {
+    PL_RESET_RESOURCES = 1
+} pl_interp_reset_reason;
+
+int pl_reset(pl_interp_implementation_t *, pl_interp_reset_reason reason);
+typedef int (*pl_interp_proc_reset_t)(pl_interp_implementation_t *, pl_interp_reset_reason);
+
 /*
  * Define a generic interpreter implementation
  */
@@ -179,6 +183,7 @@ struct pl_interp_implementation_s
     pl_interp_proc_dnit_job_t proc_dnit_job;
     pl_interp_proc_deallocate_interp_instance_t
         proc_deallocate_interp_instance;
+    pl_interp_proc_reset_t reset;
     void *interp_client_data;
 };
 

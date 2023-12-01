@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -303,6 +303,7 @@ typedef struct clist_image_enum_s {
     int bits_per_plane;         /* bits per pixel per plane */
     gs_matrix matrix;           /* image space -> device space */
     bool uses_color;
+    bool masked;
     clist_color_space_t color_space;
     int ymin, ymax;
     gx_color_usage_t color_usage;
@@ -514,6 +515,7 @@ clist_begin_typed_image(gx_device * dev, const gs_gstate * pgs,
 #endif
     pie->memory = mem;
     pie->buffer = NULL;
+    pie->masked = masked;
     *pinfo = (gx_image_enum_common_t *) pie;
     /* num_planes and plane_depths[] are set later, */
     /* by gx_image_enum_common_init. */
@@ -1129,9 +1131,9 @@ clist_image_plane_data(gx_image_enum_common_t * info,
                 code = cmd_update_lop(cdev, re.pcls, lop);
             if (code < 0)
                 return code;
+            /* Does the result of this image depend upon the current color in the
+             * graphics state? If so, we need to send it. */
             if (pie->uses_color) {
-                gs_int_point color_phase;
-
                 /* We want to write the color taking into account the entire image so */
                 /* we set re.rect_nbands from pie->ymin and pie->ymax so that we will */
                 /* make the decision to write 'all_bands' the same for the whole image */
@@ -1143,13 +1145,37 @@ clist_image_plane_data(gx_image_enum_common_t * info,
                                              &re, devn_not_tile_fill);
                 if (code < 0)
                     return code;
-                /* see if phase informaiton must be inserted in the command list */
-                /* if so, go ahead and do it for all_bands */
-                if ( pie->dcolor.type->get_phase(&pie->dcolor, &color_phase) &&
-                     (color_phase.x != re.pcls->tile_phase.x ||
-                      color_phase.y != re.pcls->tile_phase.y ) &&
-                     (code = cmd_set_tile_phase_generic(cdev, re.pcls,
-                                                        color_phase.x, color_phase.y, true)) < 0  )
+                if (!pie->masked) {
+                    /* In PS and PDF, masked == uses_color. In PCL, due to rops, we can
+                     * have a non-imagemask image that relies on the current graphics
+                     * color. C303.BIN page 20 has an example of this. Normally the above
+                     * call the cmd_put_drawing_color will have sent through the halftone
+                     * phase, but we can be in the situation where the current drawing
+                     * color is pure (so no phase is sent), but the colors in the image
+                     * are not (so a phase must be sent). Accordingly, we catch that
+                     * here. */
+                    if (pie->pgs->screen_phase[gs_color_select_texture].x != re.pcls->screen_phase[gs_color_select_texture].x ||
+                        pie->pgs->screen_phase[gs_color_select_texture].y != re.pcls->screen_phase[gs_color_select_texture].y) {
+                        code = cmd_set_screen_phase_generic(cdev, re.pcls,
+                                                            pie->pgs->screen_phase[gs_color_select_texture].x,
+                                                            pie->pgs->screen_phase[gs_color_select_texture].y,
+                                                            gs_color_select_texture, true);
+                        if (code < 0)
+                            return code;
+                    }
+                    if (pie->pgs->screen_phase[gs_color_select_source].x != re.pcls->screen_phase[gs_color_select_source].x ||
+                        pie->pgs->screen_phase[gs_color_select_source].y != re.pcls->screen_phase[gs_color_select_source].y) {
+                        code = cmd_set_screen_phase_generic(cdev, re.pcls,
+                                                            pie->pgs->screen_phase[gs_color_select_source].x,
+                                                            pie->pgs->screen_phase[gs_color_select_source].y,
+                                                            gs_color_select_source, true);
+                        if (code < 0)
+                            return code;
+                    }
+                }
+            } else if (0 != re.pcls->tile_phase.x || 0 != re.pcls->tile_phase.y) {
+                code = cmd_set_tile_phase(cdev, re.pcls, 0, 0);
+                if (code < 0)
                     return code;
             }
             if (entire_box.p.x != 0 || entire_box.p.y != 0 ||
@@ -1287,7 +1313,7 @@ clist_image_end_image(gx_image_enum_common_t * info, bool draw_last)
 
 /* Create a compositor device. */
 int
-clist_create_compositor(gx_device * dev,
+clist_composite(gx_device * dev,
                         gx_device ** pcdev, const gs_composite_t * pcte,
                         gs_gstate * pgs, gs_memory_t * mem, gx_device *cldev)
 {
@@ -1367,15 +1393,14 @@ clist_create_compositor(gx_device * dev,
     if (cropping_op == ALLBANDS) {
         /* overprint applies to all bands */
         size_dummy = size;
-        code = set_cmd_put_all_op(& dp,
+        code = set_cmd_put_all_extended_op(& dp,
                                    (gx_device_clist_writer *)dev,
-                                   cmd_opv_extend,
+                                   cmd_opv_ext_composite,
                                    size );
         if (code < 0)
             return code;
 
-        /* insert the command and compositor identifier */
-        dp[1] = cmd_opv_ext_create_compositor;
+        /* insert the compositor identifier */
         dp[2] = pcte->type->comp_id;
 
         /* serialize the remainder of the compositor */
@@ -1413,10 +1438,9 @@ clist_create_compositor(gx_device * dev,
         RECT_ENUM_INIT(re, temp_cropping_min, temp_cropping_max - temp_cropping_min);
         do {
             RECT_STEP_INIT(re);
-            code = set_cmd_put_op(&dp, cdev, re.pcls, cmd_opv_extend, size);
+            code = set_cmd_put_extended_op(&dp, cdev, re.pcls, cmd_opv_ext_composite, size);
             if (code >= 0) {
                 size_dummy = size;
-                dp[1] = cmd_opv_ext_create_compositor;
                 dp[2] = pcte->type->comp_id;
                 code = pcte->type->procs.write(pcte, dp + 3, &size_dummy, cdev);
             }
@@ -1502,9 +1526,8 @@ cmd_put_halftone(gx_device_clist_writer * cldev, const gx_device_halftone * pdht
     req_size = 2 + enc_u_sizew(ht_size);
 
     /* output the "put halftone" command */
-    if ((code = set_cmd_put_all_op(&dp, cldev, cmd_opv_extend, req_size)) < 0)
+    if ((code = set_cmd_put_all_extended_op(&dp, cldev, cmd_opv_ext_put_halftone, req_size)) < 0)
         return code;
-    dp[1] = cmd_opv_ext_put_halftone;
     dp += 2;
     enc_u_putw(ht_size, dp);
 
@@ -1518,11 +1541,10 @@ cmd_put_halftone(gx_device_clist_writer * cldev, const gx_device_halftone * pdht
     } else {
         /* send the only segment command */
         req_size += ht_size;
-        code = set_cmd_put_all_op(&dp, cldev, cmd_opv_extend, req_size);
+        code = set_cmd_put_all_extended_op(&dp, cldev, cmd_opv_ext_put_ht_seg, req_size);
         if (code < 0)
             return code;
         dp0 = dp;
-        dp[1] = cmd_opv_ext_put_ht_seg;
         dp += 2;
         enc_u_putw(ht_size, dp);
         pht_buff = dp;
@@ -1559,9 +1581,8 @@ cmd_put_halftone(gx_device_clist_writer * cldev, const gx_device_halftone * pdht
             seg_size = ( ht_size > cbuf_ht_seg_max_size ? cbuf_ht_seg_max_size
                                                         : ht_size );
             tmp_size = 2 + enc_u_sizew(seg_size) + seg_size;
-            code = set_cmd_put_all_op(&dp, cldev, cmd_opv_extend, tmp_size);
+            code = set_cmd_put_all_extended_op(&dp, cldev, cmd_opv_ext_put_ht_seg, tmp_size);
             if (code >= 0) {
-                dp[1] = cmd_opv_ext_put_ht_seg;
                 dp += 2;
                 enc_u_putw(seg_size, dp);
                 memcpy(dp, pbuff, seg_size);
@@ -1585,10 +1606,10 @@ cmd_put_color_mapping(gx_device_clist_writer * cldev,
                       const gs_gstate * pgs)
 {
     int code;
-    const gx_device_halftone *pdht = pgs->dev_ht;
+    const gx_device_halftone *pdht = gx_select_dev_ht(pgs);
 
-    /* Put out the halftone, if present. */
-    if (pdht && pdht->id != cldev->device_halftone_id) {
+    /* Put out the halftone, if present, and target is not contone. */
+    if (pdht && pdht->id != cldev->device_halftone_id && !device_is_contone(cldev->target)) {
         code = cmd_put_halftone(cldev, pdht);
         if (code < 0)
             return code;
@@ -1864,6 +1885,17 @@ image_band_box(gx_device * dev, const clist_image_enum * pie, int y, int h,
     return (pbox->p.x < pbox->q.x && pbox->p.y < pbox->q.y);
 }
 
+inline static bool
+icc_info_notequal(clist_icc_color_t info1, clist_icc_color_t info2)
+{
+    if (info1.data_cs != info2.data_cs || info1.default_match != info2.default_match ||
+        info1.icc_num_components != info2.icc_num_components || info1.is_lab != info2.is_lab ||
+        info1.icc_hash != info2.icc_hash)
+        return true;
+    else
+        return false;
+}
+
 /* Determine which image-related properties are unknown */
 static uint     /* mask of unknown properties(see pcls->known) */
 clist_image_unknowns(gx_device *dev, const clist_image_enum *pie)
@@ -1893,10 +1925,12 @@ clist_image_unknowns(gx_device *dev, const clist_image_enum *pie)
         cdev->color_space.space = 0; /* for GC */
     } else {                    /* not masked */
         if (cdev->color_space.id != pie->color_space.id ||
-            cdev->color_space.space != pie->color_space.space) {
+            cdev->color_space.space != pie->color_space.space ||
+            icc_info_notequal(cdev->color_space.icc_info, pie->color_space.icc_info)) {
             unknown |= color_space_known;
             cdev->color_space.space = pie->color_space.space;
             cdev->color_space = pie->color_space;
+            memcpy(&(cdev->color_space.icc_info), &(pie->color_space.icc_info), sizeof(clist_icc_color_t));
         }
     }
     if (cdev->gs_gstate.fill_adjust.x != pgs->fill_adjust.x ||

@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2022 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -47,6 +47,10 @@ XPSSOC_XENAME=$(XPS_SO_BASE)c$(XE)
 XPSSOC_XE=$(BINDIR)/$(XPSSOC_XENAME)
 XPSSOC=$(BINDIR)/$(XPSSOC_XENAME)
 
+PDFSOC_XENAME=$(PDF_SO_BASE)c$(XE)
+PDFSOC_XE=$(BINDIR)/$(PDFSOC_XENAME)
+PDFSOC=$(BINDIR)/$(PDFSOC_XENAME)
+
 GPDLSOC_XENAME=$(GPDL_SO_BASE)c$(XE)
 GPDLSOC_XE=$(BINDIR)/$(GPDLSOC_XENAME)
 GPDLSOC=$(BINDIR)/$(GPDLSOC_XENAME)
@@ -60,6 +64,7 @@ GSSOX=$(BINDIR)/$(GSSOX_XENAME)
 GS_SONAME_BASE=lib$(GS_SO_BASE)
 PCL_SONAME_BASE=lib$(PCL_SO_BASE)
 XPS_SONAME_BASE=lib$(XPS_SO_BASE)
+PDF_SONAME_BASE=lib$(PDF_SO_BASE)
 GPDL_SONAME_BASE=lib$(GPDL_SO_BASE)
 
 # GNU/Linux
@@ -77,6 +82,10 @@ GS_DLLEXT=$(DLL_EXT)
 #XPS_SONAME=$(XPS_SONAME_BASE)$(GS_SOEXT)$(GS_DLLEXT)
 #XPS_SONAME_MAJOR=$(XPS_SONAME_BASE)$(GS_SOEXT)$(SO_LIB_VERSION_SEPARATOR)$(GS_VERSION_MAJOR)$(GS_DLLEXT)
 #XPS_SONAME_MAJOR_MINOR=$(XPS_SONAME_BASE)$(GS_SOEXT)$(SO_LIB_VERSION_SEPARATOR)$(GS_VERSION_MAJOR)$(SO_LIB_VERSION_SEPARATOR)$(GS_VERSION_MINOR)$(GS_DLLEXT)
+
+#PDF_SONAME=$(PDF_SONAME_BASE)$(GS_SOEXT)$(GS_DLLEXT)
+#PDF_SONAME_MAJOR=$(PDF_SONAME_BASE)$(GS_SOEXT)$(SO_LIB_VERSION_SEPARATOR)$(GS_VERSION_MAJOR)$(GS_DLLEXT)
+#PDF_SONAME_MAJOR_MINOR=$(PDF_SONAME_BASE)$(GS_SOEXT)$(SO_LIB_VERSION_SEPARATOR)$(GS_VERSION_MAJOR)$(SO_LIB_VERSION_SEPARATOR)$(GS_VERSION_MINOR)$(GS_DLLEXT)
 
 #GPDL_SONAME=$(GPDL_SONAME_BASE)$(GS_SOEXT)$(GS_DLLEXT)
 #GPDL_SONAME_MAJOR=$(GPDL_SONAME_BASE)$(GS_SOEXT)$(SO_LIB_VERSION_SEPARATOR)$(GS_VERSION_MAJOR)$(GS_DLLEXT)
@@ -111,6 +120,10 @@ XPS_SO=$(BINDIR)/$(XPS_SONAME)
 XPS_SO_MAJOR=$(BINDIR)/$(XPS_SONAME_MAJOR)
 XPS_SO_MAJOR_MINOR=$(BINDIR)/$(XPS_SONAME_MAJOR_MINOR)
 
+PDF_SO=$(BINDIR)/$(PDF_SONAME)
+PDF_SO_MAJOR=$(BINDIR)/$(PDF_SONAME_MAJOR)
+PDF_SO_MAJOR_MINOR=$(BINDIR)/$(PDF_SONAME_MAJOR_MINOR)
+
 GPDL_SO=$(BINDIR)/$(GPDL_SONAME)
 GPDL_SO_MAJOR=$(BINDIR)/$(GPDL_SONAME_MAJOR)
 GPDL_SO_MAJOR_MINOR=$(BINDIR)/$(GPDL_SONAME_MAJOR_MINOR)
@@ -143,6 +156,14 @@ $(XPS_SO_MAJOR): $(XPS_SO_MAJOR_MINOR) $(UNIX_DLL_MAK) $(MAKEDIRS)
 	$(RM_) $(XPS_SO_MAJOR)
 	ln -s $(XPS_SONAME_MAJOR_MINOR) $(XPS_SO_MAJOR)
 
+$(PDF_SO): $(PDF_SO_MAJOR) $(UNIX_DLL_MAK) $(MAKEDIRS)
+	$(RM_) $(PDF_SO)
+	ln -s $(PDF_SONAME_MAJOR_MINOR) $(PDF_SO)
+
+$(PDF_SO_MAJOR): $(PDF_SO_MAJOR_MINOR) $(UNIX_DLL_MAK) $(MAKEDIRS)
+	$(RM_) $(PDF_SO_MAJOR)
+	ln -s $(PDF_SONAME_MAJOR_MINOR) $(PDF_SO_MAJOR)
+
 $(GPDL_SO): $(GPDL_SO_MAJOR) $(UNIX_DLL_MAK) $(MAKEDIRS)
 	$(RM_) $(GPDL_SO)
 	ln -s $(GPDL_SONAME_MAJOR_MINOR) $(GPDL_SO)
@@ -161,6 +182,9 @@ gpcl6-so-links-subtarget: $(PCL_SO) $(UNIX_DLL_MAK) $(MAKEDIRS)
 gxps-so-links-subtarget: $(XPS_SO) $(UNIX_DLL_MAK) $(MAKEDIRS)
 	$(NO_OP)
 
+gpdf-so-links-subtarget: $(PDF_SO) $(UNIX_DLL_MAK) $(MAKEDIRS)
+	$(NO_OP)
+
 gpdl-so-links-subtarget: $(GPDL_SO) $(UNIX_DLL_MAK) $(MAKEDIRS)
 	$(NO_OP)
 
@@ -169,12 +193,16 @@ gpdl-so-links-subtarget: $(GPDL_SO) $(UNIX_DLL_MAK) $(MAKEDIRS)
 	$(NO_OP)
 
 # Build the small Ghostscript loaders, with Gtk+ and without
-$(GSSOC_XE): gs-so-links-subtarget $(PSSRC)dxmainc.c $(UNIX_DLL_MAK) $(MAKEDIRS)
+$(GLO)dxmainc.$(OBJ): $(PSSRC)dxmainc.c $(UNIX_DLL_MAK) $(MAKEDIRS)
 	$(GLCC) $(GLO_)dxmainc.$(OBJ) $(C_) $(PSSRC)dxmainc.c
+
+$(GLO)dxmain.$(OBJ): $(PSSRC)dxmain.c $(UNIX_DLL_MAK) $(MAKEDIRS)
+	$(GLCC) $(SOC_CFLAGS) $(GLO_)dxmain.$(OBJ) $(C_) $(PSSRC)dxmain.c
+
+$(GSSOC_XE): gs-so-links-subtarget $(GLO)dxmainc.$(OBJ) $(UNIX_DLL_MAK) $(MAKEDIRS)
 	$(GLCC) -L$(BINDIR) $(LDFLAGS) $(O_) $(GSSOC_XE) $(GLOBJ)dxmainc.$(OBJ) -l$(GS_SO_BASE)
 
-$(GSSOX_XE): gs-so-links-subtarget $(PSSRC)$(SOC_LOADER).c $(UNIX_DLL_MAK) $(MAKEDIRS)
-	$(GLCC) $(SOC_CFLAGS) $(GLO_)$(SOC_LOADER).$(OBJ) $(C_) $(PSSRC)$(SOC_LOADER).c
+$(GSSOX_XE): gs-so-links-subtarget $(GLO)$(SOC_LOADER).$(OBJ) $(UNIX_DLL_MAK) $(MAKEDIRS)
 	$(GLCC) -L$(BINDIR) $(LDFLAGS) $(O_) $(GSSOX_XE) $(GLOBJ)$(SOC_LOADER).$(OBJ) -l$(GS_SO_BASE) $(SOC_LIBS)
 
 $(PCLSOC_XE): gpcl6-so-links-subtarget $(UNIX_DLL_MAK) $(PLOBJ)$(REALMAIN_SRC).$(OBJ) $(MAKEDIRS)
@@ -183,13 +211,19 @@ $(PCLSOC_XE): gpcl6-so-links-subtarget $(UNIX_DLL_MAK) $(PLOBJ)$(REALMAIN_SRC).$
 $(XPSSOC_XE): gxps-so-links-subtarget $(UNIX_DLL_MAK) $(PLOBJ)$(REALMAIN_SRC).$(OBJ) $(MAKEDIRS)
 	$(GLCC) -L$(BINDIR) $(LDFLAGS) $(O_) $(XPSSOC_XE) $(PLOBJ)$(REALMAIN_SRC).$(OBJ) -l$(XPS_SO_BASE)
 
-$(GPDLSOC_XE): gpdl-so-links-subtarget $(UNIX_DLL_MAK) $(PLOBJ)$(REALMAIN_SRC).$(OBJ) $(MAKEDIRS)
-	$(GLCC) -L$(BINDIR) $(LDFLAGS) $(O_) $(GPDLSOC_XE) $(PLOBJ)$(REALMAIN_SRC).$(OBJ) -l$(GPDL_SO_BASE)
+$(PDFSOC_XE): gpdf-so-links-subtarget $(PLSRC)$(REALMAIN_SRC).c $(UNIX_DLL_MAK) $(MAKEDIRS)
+	$(GLCC) -g -o $(PDFSOC_XE) $(PLSRC)$(REALMAIN_SRC).c -L$(BINDIR) -l$(PDF_SO_BASE)
+
+$(GPDLSOC_XE): gpdl-so-links-subtarget $(PLSRC)$(REALMAIN_SRC).c $(UNIX_DLL_MAK) $(MAKEDIRS)
+	$(GLCC) -g -o $(GPDLSOC_XE) $(PLSRC)$(REALMAIN_SRC).c -L$(BINDIR) -l$(GPDL_SO_BASE)
 
 gpcl6-so-loader: $(PCLSOC_XE)
 	$(NO_OP)
 
 gxps-so-loader: $(XPSSOC_XE)
+	$(NO_OP)
+
+gpdf-so-loader: $(PDFSOC_XE)
 	$(NO_OP)
 
 gpdl-so-loader: $(GPDLSOC_XE)
@@ -209,6 +243,9 @@ gpcl6-so-strip:
 gxps-so-strip:
 	$(STRIP_XE) $(STRIP_XE_OPTS) $(GXPS_XE)
 
+gpdf-so-strip:
+	$(STRIP_XE) $(STRIP_XE_OPTS) $(GPDF_XE)
+
 gpdl-so-strip:
 	$(STRIP_XE)$(STRIP_XE_OPTS)  $(GPDL_XE)
 
@@ -225,6 +262,7 @@ SODEFS=\
  GS_XE=$(BINDIR)/$(GS_SONAME_MAJOR_MINOR) \
  GPCL_XE=$(BINDIR)/$(PCL_SONAME_MAJOR_MINOR) \
  GXPS_XE=$(BINDIR)/$(XPS_SONAME_MAJOR_MINOR) \
+ GPDF_XE=$(BINDIR)/$(PDF_SONAME_MAJOR_MINOR) \
  GPDL_XE=$(BINDIR)/$(GPDL_SONAME_MAJOR_MINOR) \
  DISPLAY_DEV=$(DD)display.dev \
  BUILDDIRPREFIX=$(BUILDDIRPREFIX)
@@ -252,6 +290,7 @@ so-only:
 	$(MAKE) $(SUB_MAKE_OPTION) gs-so-links-subtarget \
                                    $(PCL_TARGET)-so-links-subtarget \
                                    $(XPS_TARGET)-so-links-subtarget \
+                                   $(PDF_TARGET)-so-links-subtarget \
                                    $(GPDL_TARGET)-so-links-subtarget BUILDDIRPREFIX=$(SODIRPREFIX)
 
 
@@ -260,6 +299,7 @@ so-only-stripped:
 	$(MAKE) $(SUB_MAKE_OPTION) gs-so-links-subtarget \
                                    $(PCL_TARGET)-so-links-subtarget \
                                    $(XPS_TARGET)-so-links-subtarget \
+                                   $(PDF_TARGET)-so-links-subtarget \
                                    $(GPDL_TARGET)-so-links-subtarget BUILDDIRPREFIX=$(SODIRPREFIX)
 
 # Debug shared object
@@ -284,16 +324,16 @@ so-only-subtarget:
 	 $(AUXDIR)/echogs$(XEAUX) $(AUXDIR)/genarch$(XEAUX)
 	$(MAKE) $(SUB_MAKE_OPTION) $(SODEFS) GENOPT='$(GENOPT)' GS_LDFLAGS='$(LDFLAGS) $(GS_LDFLAGS_SO)'\
          PCL_LDFLAGS='$(LDFLAGS) $(PCL_LDFLAGS_SO)' XPS_LDFLAGS='$(LDFLAGS) $(XPS_LDFLAGS_SO)' \
-         PDL_LDFLAGS='$(LDFLAGS) $(PDL_LDFLAGS_SO)' CFLAGS='$(CFLAGS_STANDARD) $(CFLAGS_SO) \
-         $(GCFLAGS) $(AC_CFLAGS) $(XCFLAGS)' prefix=$(prefix)
+         PDL_LDFLAGS='$(LDFLAGS) $(PDL_LDFLAGS_SO)' PDF_LDFLAGS='$(LDFLAGS) $(PDF_LDFLAGS_SO)' \
+         CFLAGS='$(CFLAGS_STANDARD) $(CFLAGS_SO) $(GCFLAGS) $(AC_CFLAGS) $(XCFLAGS)' prefix=$(prefix)
 
 so-only-stripped-subtarget: so-only-subtarget
-	$(MAKE) $(SUB_MAKE_OPTION) $(SODEFS) gs-so-strip $(PCL_TARGET)-so-strip $(XPS_TARGET)-so-strip $(GPDL_TARGET)-so-strip
+	$(MAKE) $(SUB_MAKE_OPTION) $(SODEFS) gs-so-strip $(PCL_TARGET)-so-strip $(XPS_TARGET)-so-strip $(GPDL_TARGET)-so-strip$ (PDF_TARGET)-so-strip
 
 so-subtarget: so-only-subtarget
 	$(MAKE) $(SUB_MAKE_OPTION) $(SODEFS_FINAL) GENOPT='$(GENOPT)' LDFLAGS='$(LDFLAGS)'\
 	 CFLAGS='$(CFLAGS_STANDARD) $(GCFLAGS) $(AC_CFLAGS) $(XCFLAGS)' prefix=$(prefix)\
-	 $(GSSOC_XE) $(GSSOX_XE) $(PCL_TARGET)-so-loader $(XPS_TARGET)-so-loader $(GPDL_TARGET)-so-loader
+	 $(GSSOC_XE) $(GSSOX_XE) $(PCL_TARGET)-so-loader $(XPS_TARGET)-so-loader $(GPDL_TARGET)-so-loader $(PDF_TARGET)-so-loader
 
 install-so-gs:
 	$(MAKE) $(SUB_MAKE_OPTION) install-so-subtarget BUILDDIRPREFIX=$(SODIRPREFIX)

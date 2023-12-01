@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -24,14 +24,17 @@
 #include "ipacked.h"
 #include "iutil.h"
 #include "ivmspace.h"
+#include "idebug.h"		/* for debug_print_name */
+
 /*
 #include "idicttpl.h" - Do not remove this comment.
                         "idicttpl.h" is included below.
 */
 
 /* Debugging statistics */
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
-#include "idebug.h"
+/* #define COLLECT_STATS_IDSTACK */
+
+#ifdef COLLECT_STATS_IDSTACK
 #define MAX_STATS_DEPTH 6
 struct stats_dstack_s {
     long lookups;		/* total lookups */
@@ -43,7 +46,7 @@ struct stats_dstack_s {
 # define INCR(v) DO_NOTHING
 #endif
 
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef COLLECT_STATS_IDSTACK
 /* Wrapper for dstack_find_name_by_index */
 ref *real_dstack_find_name_by_index(dict_stack_t * pds, uint nidx);
 ref *

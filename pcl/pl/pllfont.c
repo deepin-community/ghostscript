@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -189,7 +189,7 @@ check_resident_ufst_fonts(pl_dict_t * pfontdict,
                                 NULL) /* return data ignored */ )
                 dmprintf2(mem,
                           "%s not available in font dictionary, resident table position: %d\n",
-                          pl_built_in_resident_font_table[j].full_font_name, j);
+                          (char *)pl_built_in_resident_font_table[j].full_font_name, j);
         }
     }
     return;
@@ -358,6 +358,7 @@ pl_load_ufst_lineprinter(gs_memory_t * mem, pl_dict_t * pfontdict,
     return 0;
 }
 
+
 static int
 pl_load_built_in_mtype_fonts(const char *pathname, gs_memory_t * mem,
                              pl_dict_t * pfontdict, gs_font_dir * pdir,
@@ -366,7 +367,7 @@ pl_load_built_in_mtype_fonts(const char *pathname, gs_memory_t * mem,
     int i, k;
     short status = 0;
     int bSize;
-    byte key[3];
+    byte key[3] = {0};
     char pthnm[1024];
     char *ufst_root_dir;
     char *fco;
@@ -395,12 +396,13 @@ pl_load_built_in_mtype_fonts(const char *pathname, gs_memory_t * mem,
     fco_start = fco = (char *)pl_fapi_ufst_get_fco_list(mem);
     fco_lim = fco_start + strlen(fco_start) + 1;
 
-    for (k = 0; strlen(fco) > 0 && fco < fco_lim; k++) {
+    for (k = 0; fco < fco_lim && strlen(fco) > 0; k++) {
         status = 0;
         /* build and open (get handle) for the k'th fco file name */
         gs_strlcpy((char *)pthnm, ufst_root_dir, sizeof pthnm);
 
-        for (i = 2; fco[i] != gp_file_name_list_separator && (&fco[i]) < fco_lim; i++);
+        for (i = 2; fco[i] != gp_file_name_list_separator && (&fco[i]) < fco_lim - 1; i++)
+            ;
 
         strncat(pthnm, fco, i);
         fco += (i + 1);

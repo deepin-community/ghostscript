@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -475,6 +475,13 @@ int
 gscms_transform_color(gx_device *dev, gsicc_link_t *icclink, void *inputcolor,
                              void *outputcolor, int num_bytes)
 {
+    return gscms_transform_color_const(dev, icclink, inputcolor, outputcolor, num_bytes);
+}
+
+int
+gscms_transform_color_const(const gx_device *dev, gsicc_link_t *icclink, void *inputcolor,
+                             void *outputcolor, int num_bytes)
+{
     gsicc_lcms2mt_link_list_t *link_handle = (gsicc_lcms2mt_link_list_t *)(icclink->link_handle);
     cmsHTRANSFORM hTransform = (cmsHTRANSFORM)link_handle->hTransform;
     cmsUInt32Number dwInputFormat, dwOutputFormat;
@@ -670,9 +677,25 @@ gscms_get_link(gcmmhprofile_t  lcms_srchandle, gcmmhprofile_t lcms_deshandle,
                                                     rendering_params->rendering_intent,
                                                     flag | cmm_flags);
     if (link_handle->hTransform == NULL) {
-        gs_free_object(memory, link_handle, "gscms_get_link");
+        int k;
+
+        /* Add a bit of robustness here. Some profiles are ill-formed and
+           do not have all the intents.  If we failed due to a missing
+           intent, lets go ahead and try each and see if we can get something
+           that works. */
+        for (k = 0; k <= gsABSOLUTECOLORIMETRIC; k++) {
+            link_handle->hTransform = cmsCreateTransform(ctx, lcms_srchandle, src_data_type,
+                lcms_deshandle, des_data_type, k, flag | cmm_flags);
+            if (link_handle->hTransform != NULL)
+                break;
+        }
+
+        if (link_handle->hTransform == NULL) {
+            gs_free_object(memory, link_handle, "gscms_get_link");
             return NULL;
+        }
     }
+
     link_handle->next = NULL;
     link_handle->flags = gsicc_link_flags(0, 0, 0, 0, 0,    /* no alpha, not planar, no endian swap */
                                           sizeof(gx_color_value), sizeof(gx_color_value));
@@ -854,7 +877,7 @@ gscms_get_link_proof_devlink(gcmmhprofile_t lcms_srchandle,
 }
 
 /* Do any initialization if needed to the CMS */
-int
+void *
 gscms_create(gs_memory_t *memory)
 {
     cmsContext ctx;
@@ -862,32 +885,30 @@ gscms_create(gs_memory_t *memory)
     /* Set our own error handling function */
     ctx = cmsCreateContext((void *)&gs_cms_memhandler, memory);
     if (ctx == NULL)
-        return_error(gs_error_VMerror);
+        return NULL;
 
 #ifdef USE_LCMS2_LOCKING
     cmsPlugin(ctx, (void *)&gs_cms_mutexhandler);
 #endif
 
 #ifdef WITH_CAL
-    cmsPlugin(ctx, cal_cms_extensions());
     cmsPlugin(ctx, cal_cms_extensions2());
 #endif
 
     cmsSetLogErrorHandler(ctx, gscms_error);
-    gs_lib_ctx_set_cms_context(memory, ctx);
-    return 0;
+
+    return ctx;
 }
 
 /* Do any clean up when done with the CMS if needed */
 void
-gscms_destroy(gs_memory_t *memory)
+gscms_destroy(void *cmsContext_)
 {
-    cmsContext ctx = gs_lib_ctx_get_cms_context(memory);
+    cmsContext ctx = (cmsContext)cmsContext_;
     if (ctx == NULL)
         return;
 
     cmsDeleteContext(ctx);
-    gs_lib_ctx_set_cms_context(memory, NULL);
 }
 
 /* Have the CMS release the link */

@@ -99,24 +99,52 @@ struct gx_device_lips4_s {
     lips4_params_common;
 };
 
-static gx_device_procs lips2p_prn_procs =
-prn_params_procs(lips2p_open, gdev_prn_output_page, lips_close,
-                 lips_get_params, lips_put_params);
+static void
+lips2p_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
 
-static gx_device_procs lips3_prn_procs =
-prn_params_procs(lips3_open, gdev_prn_output_page, lips_close,
-                 lips_get_params, lips_put_params);
+    set_dev_proc(dev, open_device, lips2p_open);
+    set_dev_proc(dev, close_device, lips_close);
+    set_dev_proc(dev, get_params, lips_get_params);
+    set_dev_proc(dev, put_params, lips_put_params);
+};
 
-static gx_device_procs bjc880j_prn_color_procs =
-prn_params_procs(bjc880j_open, gdev_prn_output_page, lips_close,
-                       lips4_get_params, lips4_put_params);
+static void
+lips3_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
 
-static gx_device_procs lips4_prn_procs =
-prn_params_procs(lips4_open, gdev_prn_output_page, lips_close,
-                       lips4_get_params, lips4_put_params);
+    set_dev_proc(dev, open_device, lips3_open);
+    set_dev_proc(dev, close_device, lips_close);
+    set_dev_proc(dev, get_params, lips_get_params);
+    set_dev_proc(dev, put_params, lips_put_params);
+};
+
+static void
+bjc880j_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
+
+    set_dev_proc(dev, open_device, bjc880j_open);
+    set_dev_proc(dev, close_device, lips_close);
+    set_dev_proc(dev, get_params, lips4_get_params);
+    set_dev_proc(dev, put_params, lips4_put_params);
+};
+
+static void
+lips4_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
+
+    set_dev_proc(dev, open_device, lips4_open);
+    set_dev_proc(dev, close_device, lips_close);
+    set_dev_proc(dev, get_params, lips4_get_params);
+    set_dev_proc(dev, put_params, lips4_put_params);
+};
 
 gx_device_lips far_data gs_lips2p_device =
-lips_device(gx_device_lips, lips2p_prn_procs, "lips2p",
+lips_device(gx_device_lips, lips2p_initialize_device_procs, "lips2p",
             LIPS2P_DPI_DEFAULT,
             LIPS2P_DPI_DEFAULT,
             LIPS2P_LEFT_MARGIN_DEFAULT,
@@ -128,7 +156,7 @@ lips_device(gx_device_lips, lips2p_prn_procs, "lips2p",
             LIPS_USERNAME_DEFAULT);
 
 gx_device_lips far_data gs_lips3_device =
-lips_device(gx_device_lips, lips3_prn_procs, "lips3",
+lips_device(gx_device_lips, lips3_initialize_device_procs, "lips3",
             LIPS3_DPI_DEFAULT,
             LIPS3_DPI_DEFAULT,
             LIPS3_LEFT_MARGIN_DEFAULT,
@@ -140,7 +168,7 @@ lips_device(gx_device_lips, lips3_prn_procs, "lips3",
             LIPS_USERNAME_DEFAULT);
 
 gx_device_lips4 far_data gs_bjc880j_device =
-lips4_device(gx_device_lips4, bjc880j_prn_color_procs, "bjc880j",
+lips4_device(gx_device_lips4, bjc880j_initialize_device_procs, "bjc880j",
              BJC880J_DPI_DEFAULT,
              BJC880J_DPI_DEFAULT,
              BJC880J_LEFT_MARGIN_DEFAULT,
@@ -152,7 +180,7 @@ lips4_device(gx_device_lips4, bjc880j_prn_color_procs, "bjc880j",
              LIPS_USERNAME_DEFAULT);
 
 gx_device_lips4 far_data gs_lips4_device =
-lips4_device(gx_device_lips4, lips4_prn_procs, "lips4",
+lips4_device(gx_device_lips4, lips4_initialize_device_procs, "lips4",
              LIPS4_DPI_DEFAULT,
              LIPS4_DPI_DEFAULT,
              LIPS4_LEFT_MARGIN_DEFAULT,
@@ -179,13 +207,8 @@ static int lips4c_output_page(gx_device_printer * pdev, gp_file * prn_stream);
 static int lips_delta_encode(byte * inBuff, byte * prevBuff, byte * outBuff, byte * diffBuff, int Length);
 static int lips_byte_cat(byte * TotalBuff, byte * Buff, int TotalLen, int Len);
 static int lips_print_page_copies(gx_device_printer * pdev, gp_file * prn_stream, lips_printer_type ptype, int numcopies);
-#if GS_VERSION_MAJOR >= 8
 static int lips_print_page_copies(gx_device_printer * pdev, gp_file * prn_stream, lips_printer_type ptype, int numcopies);
 static int lips4type_print_page_copies(gx_device_printer * pdev, gp_file * prn_stream, int num_copies, int ptype);
-#else
-static int lips_print_page_copies(P4(gx_device_printer * pdev, gp_file * prn_stream, lips_printer_type ptype, int numcopies));
-static int lips_print_page_copies(P4(gx_device_printer * pdev, gp_file * prn_stream, lips_printer_type ptype, int numcopies));
-#endif
 static int
 lips2p_open(gx_device * pdev)
 {
@@ -781,9 +804,9 @@ lips2p_image_out(gx_device_printer * pdev, gp_file * prn_stream, int x, int y, i
     move_cap(pdev, prn_stream, x, y);
 
     Len = lips_mode3format_encode(lprn->TmpBuf, lprn->CompBuf, width / 8 * height);
-    gs_sprintf(raw_str, "%c%d;%d;%d.r", LIPS_CSI,
+    gs_snprintf(raw_str, sizeof(raw_str), "%c%d;%d;%d.r", LIPS_CSI,
             width / 8 * height, width / 8, (int)pdev->x_pixels_per_inch);
-    gs_sprintf(comp_str, "%c%d;%d;%d;9;%d.r", LIPS_CSI,
+    gs_snprintf(comp_str, sizeof(comp_str), "%c%d;%d;%d;9;%d.r", LIPS_CSI,
             Len, width / 8, (int)pdev->x_pixels_per_inch, height);
 
     if (Len < width / 8 * height - strlen(comp_str) + strlen(raw_str)) {
@@ -812,11 +835,11 @@ lips4_image_out(gx_device_printer * pdev, gp_file * prn_stream, int x, int y, in
     Len = lips_packbits_encode(lprn->TmpBuf, lprn->CompBuf, width / 8 * height);
     Len_rle = lips_rle_encode(lprn->TmpBuf, lprn->CompBuf2, width / 8 * height);
 
-    gs_sprintf(raw_str, "%c%d;%d;%d.r", LIPS_CSI,
+    gs_snprintf(raw_str, sizeof(raw_str), "%c%d;%d;%d.r", LIPS_CSI,
             width / 8 * height, width / 8, (int)pdev->x_pixels_per_inch);
 
     if (Len < Len_rle) {
-        gs_sprintf(comp_str, "%c%d;%d;%d;11;%d.r", LIPS_CSI,
+        gs_snprintf(comp_str, sizeof(comp_str), "%c%d;%d;%d;11;%d.r", LIPS_CSI,
                 Len, width / 8, (int)pdev->x_pixels_per_inch, height);
         if (Len < width / 8 * height - strlen(comp_str) + strlen(raw_str)) {
             gp_fprintf(prn_stream, "%s", comp_str);
@@ -829,7 +852,7 @@ lips4_image_out(gx_device_printer * pdev, gp_file * prn_stream, int x, int y, in
     } else {
         /* 2019-11-28: changed two occurrencies of 'Len' to 'Len_rle' here, but
         unable to test. */
-        gs_sprintf(comp_str, "%c%d;%d;%d;10;%d.r", LIPS_CSI,
+        gs_snprintf(comp_str, sizeof(comp_str), "%c%d;%d;%d;10;%d.r", LIPS_CSI,
                 Len_rle, width / 8, (int)pdev->x_pixels_per_inch, height);
         if (Len_rle < width / 8 * height - strlen(comp_str) + strlen(raw_str)) {
             gp_fprintf(prn_stream, "%s", comp_str);

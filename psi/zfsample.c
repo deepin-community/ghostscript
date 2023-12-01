@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -501,12 +501,10 @@ sampled_data_continue(i_ctx_t *i_ctx_p)
              * (unused) stack stack space to allow for this but the function
              * exceeded even that.  Data on the stack may have been lost.
              * The only thing that we can do is move the stack pointer back and
-             * hope.  (We have not seen real Postscript files that have this
-             * problem.)
+             * hope.
              */
             push(-stack_depth_adjust);
-            ifree_object(penum->pfn, "sampled_data_continue(pfn)");
-            ifree_object(penum, "sampled_data_continue((enum)");
+            esp -= estack_storage;
             return_error(gs_error_undefinedresult);
         }
     }
@@ -533,15 +531,19 @@ sampled_data_continue(i_ctx_t *i_ctx_p)
         for (j = 0; j < bps; j++)
             data_ptr[bps * i + j] = (byte)(cv >> ((bps - 1 - j) * 8));	/* MSB first */
     }
-    pop(num_out);		    /* Move op to base of result values */
 
+    pop(num_out); /* Move op to base of result values */
+
+    /* From here on, we have to use ref_stack_pop() rather than pop()
+       so that it handles stack extension blocks properly, before calling
+       sampled_data_sample() which also uses the op stack.
+     */
     /* Check if we are done collecting data. */
-
     if (increment_cube_indexes(params, penum->indexes)) {
         if (stack_depth_adjust == 0)
-            pop(O_STACK_PAD);	    /* Remove spare stack space */
+            ref_stack_pop(&o_stack, O_STACK_PAD);	    /* Remove spare stack space */
         else
-            pop(stack_depth_adjust - num_out);
+            ref_stack_pop(&o_stack, stack_depth_adjust - num_out);
         /* Execute the closing procedure, if given */
         code = 0;
         if (esp_finish_proc != 0)
@@ -554,11 +556,11 @@ sampled_data_continue(i_ctx_t *i_ctx_p)
             if ((O_STACK_PAD - stack_depth_adjust) < 0) {
                 stack_depth_adjust = -(O_STACK_PAD - stack_depth_adjust);
                 check_op(stack_depth_adjust);
-                pop(stack_depth_adjust);
+                ref_stack_pop(&o_stack, stack_depth_adjust);
             }
             else {
                 check_ostack(O_STACK_PAD - stack_depth_adjust);
-                push(O_STACK_PAD - stack_depth_adjust);
+                ref_stack_push(&o_stack, O_STACK_PAD - stack_depth_adjust);
                 for (i=0;i<O_STACK_PAD - stack_depth_adjust;i++)
                     make_null(op - i);
             }

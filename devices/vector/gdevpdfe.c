@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -209,7 +209,7 @@ pdf_xmp_time(char *buf, int buf_length)
     time(&t);
     tms = *localtime(&t);
 #endif
-    gs_sprintf(buf1,
+    gs_snprintf(buf1, sizeof(buf1),
             "%04d-%02d-%02d",
             tms.tm_year + 1900, tms.tm_mon + 1, tms.tm_mday);
     strncpy(buf, buf1, buf_length);
@@ -489,8 +489,11 @@ pdf_xmp_write_translated(gx_device_pdf *pdev, stream *s, const byte *data, int d
         /* Skip the Byte Order Mark (0xfe 0xff) */
         buf0b = (short *)(buf0 + 2);
         code = gs_ConvertUTF16((unsigned char *)buf0b, j - 2, (unsigned char **)&buf1b, data_length * 2 * sizeof(unsigned char));
-        if (code < 0)
+        if (code < 0) {
+            gs_free_object(pdev->memory, buf0, "pdf_xmp_write_translated");
+            gs_free_object(pdev->memory, buf1, "pdf_xmp_write_translated");
             return code;
+        }
         write(s, (const byte *)buf1, buf1b - buf1);
         gs_free_object(pdev->memory, buf1, "pdf_xmp_write_translated");
     }
@@ -565,7 +568,7 @@ pdf_make_uuid(const byte node[6], uint64_t uuid_time, ulong time_seq, char *buf,
     writehex(&p, node[4], 1);
     writehex(&p, node[5], 1);
     *p = 0;
-    strncpy(buf, b, buf_length);
+    strncpy(buf, b, strlen(b) + 1);
 }
 
 static int
@@ -693,21 +696,23 @@ pdf_write_document_metadata(gx_device_pdf *pdev, const byte digest[6])
             pdf_xml_attribute_name(s, "xmlns:xmp");
             pdf_xml_attribute_value(s, "http://ns.adobe.com/xap/1.0/");
             pdf_xml_tag_end(s);
-            {
-                pdf_xml_tag_open_beg(s, "xmp:ModifyDate");
-                pdf_xml_tag_end(s);
-                mod_date_time[mod_date_time_len] = 0x00;
-                pdf_xml_copy(s, mod_date_time);
-                pdf_xml_tag_close(s, "xmp:ModifyDate");
-                pdf_xml_newline(s);
-            }
-            {
-                pdf_xml_tag_open_beg(s, "xmp:CreateDate");
-                pdf_xml_tag_end(s);
-                cre_date_time[cre_date_time_len] = 0x00;
-                pdf_xml_copy(s, cre_date_time);
-                pdf_xml_tag_close(s, "xmp:CreateDate");
-                pdf_xml_newline(s);
+            if (!pdev->OmitInfoDate) {
+                {
+                    pdf_xml_tag_open_beg(s, "xmp:ModifyDate");
+                    pdf_xml_tag_end(s);
+                    mod_date_time[mod_date_time_len] = 0x00;
+                    pdf_xml_copy(s, mod_date_time);
+                    pdf_xml_tag_close(s, "xmp:ModifyDate");
+                    pdf_xml_newline(s);
+                }
+                {
+                    pdf_xml_tag_open_beg(s, "xmp:CreateDate");
+                    pdf_xml_tag_end(s);
+                    cre_date_time[cre_date_time_len] = 0x00;
+                    pdf_xml_copy(s, cre_date_time);
+                    pdf_xml_tag_close(s, "xmp:CreateDate");
+                    pdf_xml_newline(s);
+                }
             }
             {
                 pdf_xml_tag_open_beg(s, "xmp:CreatorTool");
@@ -881,7 +886,7 @@ pdf_document_metadata(gx_device_pdf *pdev)
         code = COS_WRITE_OBJECT(pres->object, pdev, resourceNone);
         if (code < 0)
             return code;
-        gs_sprintf(buf, "%ld 0 R", pres->object->id);
+        gs_snprintf(buf, sizeof(buf), "%ld 0 R", pres->object->id);
         pdf_record_usage(pdev, pres->object->id, resource_usage_part9_structure);
 
         code = cos_dict_put_c_key_object(pdev->Catalog, "/Metadata", pres->object);

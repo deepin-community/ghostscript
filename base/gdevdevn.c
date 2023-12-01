@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -38,7 +38,7 @@
 
 /* Convert a gray color space to DeviceN colorants. */
 void
-gray_cs_to_devn_cm(gx_device * dev, int * map, frac gray, frac out[])
+gray_cs_to_devn_cm(const gx_device * dev, int * map, frac gray, frac out[])
 {
     int i = dev->color_info.num_components - 1;
 
@@ -50,7 +50,7 @@ gray_cs_to_devn_cm(gx_device * dev, int * map, frac gray, frac out[])
 
 /* Convert an RGB color space to DeviceN colorants. */
 void
-rgb_cs_to_devn_cm(gx_device * dev, int * map,
+rgb_cs_to_devn_cm(const gx_device * dev, int * map,
                 const gs_gstate *pgs, frac r, frac g, frac b, frac out[])
 {
     int i = dev->color_info.num_components - 1;
@@ -71,7 +71,7 @@ rgb_cs_to_devn_cm(gx_device * dev, int * map,
 
 /* Convert a CMYK color space to DeviceN colorants. */
 void
-cmyk_cs_to_devn_cm(gx_device * dev, const int * map,
+cmyk_cs_to_devn_cm(const gx_device * dev, const int * map,
                 frac c, frac m, frac y, frac k, frac out[])
 {
     int i = dev->color_info.num_components - 1;
@@ -236,6 +236,12 @@ check_pcm_and_separation_names(const gx_device * dev,
             color_component_number++;
         }
     }
+    /* For some devices, Tags is part of the process color model list. If so,
+     * that throws us off here since it is thrown at the end of the list. Adjust. */
+    if (device_encodes_tags(dev)) {
+        color_component_number--;
+    }
+
     return check_separation_names(dev, pparams, pname, name_size,
         component_type, color_component_number);
 }
@@ -477,7 +483,7 @@ devn_put_params(gx_device * pdev, gs_param_list * plist,
         return_error(gs_error_rangecheck);
     }
 
-    /* Separations are only valid with a subrtractive color model */
+    /* Separations are only valid with a subtractive color model */
     if (pdev->color_info.polarity == GX_CINFO_POLARITY_SUBTRACTIVE) {
         /*
          * Process the SeparationColorNames.  Remove any names that already
@@ -642,7 +648,7 @@ devn_put_params(gx_device * pdev, gs_param_list * plist,
             pdev->color_info.num_components = (num_order)
                 ? num_order
                 : (page_spot_colors >= 0)
-                    ? npcmcolors + num_spot + page_spot_colors
+                    ? npcmcolors + page_spot_colors
                     : pdev->color_info.max_components;
 
             if (pdev->color_info.num_components >
@@ -807,13 +813,10 @@ static bool devn_params_equal(const gs_devn_params *p1, const gs_devn_params *p2
     return true;
 }
 
-/*
- * Utility routine for handling DeviceN related parameters in a
- * standard raster printer type device.
- */
 int
-devn_printer_put_params(gx_device * pdev, gs_param_list * plist,
-    gs_devn_params * pdevn_params, equivalent_cmyk_color_params * pequiv_colors)
+devn_generic_put_params(gx_device *pdev, gs_param_list *plist,
+                        gs_devn_params *pdevn_params, equivalent_cmyk_color_params *pequiv_colors,
+                        int is_printer)
 {
     int code;
     /* Save current data in case we have a problem */
@@ -828,7 +831,7 @@ devn_printer_put_params(gx_device * pdev, gs_param_list * plist,
     code = devn_put_params(pdev, plist, pdevn_params, pequiv_colors);
 
     /* Check for default printer parameters */
-    if (code >= 0)
+    if (is_printer && code >= 0)
         code = gdev_prn_put_params(pdev, plist);
 
     /* If we have an error then restore original data. */
@@ -845,8 +848,19 @@ devn_printer_put_params(gx_device * pdev, gs_param_list * plist,
         !devn_params_equal(pdevn_params, &saved_devn_params) ||
         (pequiv_colors != NULL &&
             compare_equivalent_cmyk_color_params(pequiv_colors, &saved_equiv_colors))) {
-        gs_closedevice(pdev);
-        /* Reset the sparable and linear shift, masks, bits. */
+        gx_device *parent_dev = pdev;
+        gx_device_color_info resave_info = pdev->color_info;
+
+        while (parent_dev->parent != NULL)
+            parent_dev = parent_dev->parent;
+
+        /* Temporarily restore the old color_info, so the close happens with
+         * the old version. In particular this allows Nup to flush properly. */
+        pdev->color_info = save_info;
+        gs_closedevice(parent_dev);
+        /* Then put the shiny new color_info back in. */
+        pdev->color_info = resave_info;
+        /* Reset the separable and linear shift, masks, bits. */
         set_linear_color_bits_mask_shift(pdev);
     }
     /*
@@ -859,6 +873,17 @@ devn_printer_put_params(gx_device * pdev, gs_param_list * plist,
      */
     code = pdf14_put_devn_params(pdev, pdevn_params, plist);
     return code;
+}
+
+/*
+ * Utility routine for handling DeviceN related parameters in a
+ * standard raster printer type device.
+ */
+int
+devn_printer_put_params(gx_device *pdev, gs_param_list *plist,
+        gs_devn_params *pdevn_params, equivalent_cmyk_color_params *pequiv_colors)
+{
+    return devn_generic_put_params(pdev, plist, pdevn_params, pequiv_colors, 1);
 }
 
 /*
@@ -940,71 +965,21 @@ gs_public_st_composite_final(st_gx_devn_prn_device, gx_devn_prn_device,
     "gx_devn_prn_device", gx_devn_prn_device_enum_ptrs, gx_devn_prn_device_reloc_ptrs,
     static_gx_devn_prn_device_finalize);
 
-/*
- * Macro definition for DeviceN procedures
- */
-#define device_procs()\
-{       spotcmyk_prn_open,\
-        gx_default_get_initial_matrix,\
-        NULL,                           /* sync_output */\
-        gdev_prn_output_page,           /* output_page */\
-        gdev_prn_close,                 /* close */\
-        NULL,                           /* map_rgb_color - not used */\
-        NULL,                           /* map_color_rgb - not used */\
-        NULL,                           /* fill_rectangle */\
-        NULL,                           /* tile_rectangle */\
-        NULL,                           /* copy_mono */\
-        NULL,                           /* copy_color */\
-        NULL,                           /* draw_line */\
-        NULL,                           /* get_bits */\
-        gx_devn_prn_get_params,         /* get_params */\
-        gx_devn_prn_put_params,         /* put_params */\
-        NULL,                           /* map_cmyk_color - not used */\
-        NULL,                           /* get_xfont_procs */\
-        NULL,                           /* get_xfont_device */\
-        NULL,                           /* map_rgb_alpha_color */\
-        gx_page_device_get_page_device, /* get_page_device */\
-        NULL,                           /* get_alpha_bits */\
-        NULL,                           /* copy_alpha */\
-        NULL,                           /* get_band */\
-        NULL,                           /* copy_rop */\
-        NULL,                           /* fill_path */\
-        NULL,                           /* stroke_path */\
-        NULL,                           /* fill_mask */\
-        NULL,                           /* fill_trapezoid */\
-        NULL,                           /* fill_parallelogram */\
-        NULL,                           /* fill_triangle */\
-        NULL,                           /* draw_thin_line */\
-        NULL,                           /* begin_image */\
-        NULL,                           /* image_data */\
-        NULL,                           /* end_image */\
-        NULL,                           /* strip_tile_rectangle */\
-        NULL,                           /* strip_copy_rop */\
-        NULL,                           /* get_clipping_box */\
-        NULL,                           /* begin_typed_image */\
-        NULL,                           /* get_bits_rectangle */\
-        NULL,                           /* map_color_rgb_alpha */\
-        NULL,                           /* create_compositor */\
-        NULL,                           /* get_hardware_params */\
-        NULL,                           /* text_begin */\
-        NULL,                           /* finish_copydevice */\
-        NULL,                           /* begin_transparency_group */\
-        NULL,                           /* end_transparency_group */\
-        NULL,                           /* begin_transparency_mask */\
-        NULL,                           /* end_transparency_mask */\
-        NULL,                           /* discard_transparency_layer */\
-        gx_devn_prn_get_color_mapping_procs,/* get_color_mapping_procs */\
-        gx_devn_prn_get_color_comp_index,/* get_color_comp_index */\
-        gx_devn_prn_encode_color,       /* encode_color */\
-        gx_devn_prn_decode_color,       /* decode_color */\
-        NULL,                           /* pattern_manage */\
-        NULL,                           /* fill_rectangle_hl_color */\
-        NULL,                           /* include_color_space */\
-        NULL,                           /* fill_linear_color_scanline */\
-        NULL,                           /* fill_linear_color_trapezoid */\
-        NULL,                           /* fill_linear_color_triangle */\
-        gx_devn_prn_update_spot_equivalent_colors,/* update_spot_equivalent_colors */\
-        gx_devn_prn_ret_devn_params     /* ret_devn_params */\
+static void
+devicen_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, open_device, spotcmyk_prn_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page);
+    set_dev_proc(dev, close_device, gdev_prn_close);
+    set_dev_proc(dev, get_params, gx_devn_prn_get_params);
+    set_dev_proc(dev, put_params, gx_devn_prn_put_params);
+    set_dev_proc(dev, get_page_device, gx_page_device_get_page_device);
+    set_dev_proc(dev, get_color_mapping_procs, gx_devn_prn_get_color_mapping_procs);
+    set_dev_proc(dev, get_color_comp_index, gx_devn_prn_get_color_comp_index);
+    set_dev_proc(dev, encode_color, gx_devn_prn_encode_color);
+    set_dev_proc(dev, decode_color, gx_devn_prn_decode_color);
+    set_dev_proc(dev, update_spot_equivalent_colors, gx_devn_prn_update_spot_equivalent_colors);
+    set_dev_proc(dev, ret_devn_params, gx_devn_prn_ret_devn_params);
 }
 
 fixed_colorant_name DeviceGrayComponents[] = {
@@ -1027,8 +1002,8 @@ fixed_colorant_name DeviceCMYKComponents[] = {
         0               /* List terminator */
 };
 
-#define gx_devn_prn_device_body(procs, dname, ncomp, pol, depth, mg, mc, cn)\
-    std_device_full_body_type_extended(gx_devn_prn_device, &procs, dname,\
+#define gx_devn_prn_device_body(init, dname, ncomp, pol, depth, mg, mc, cn)\
+    std_device_full_body_type_extended(gx_devn_prn_device, init, dname,\
           &st_gx_devn_prn_device,\
           (int)((long)(DEFAULT_WIDTH_10THS) * (X_DPI) / 10),\
           (int)((long)(DEFAULT_HEIGHT_10THS) * (Y_DPI) / 10),\
@@ -1049,11 +1024,11 @@ fixed_colorant_name DeviceCMYKComponents[] = {
 /*
  * Example device with CMYK and spot color support
  */
-static const gx_device_procs spot_cmyk_procs = device_procs();
-
 const gx_devn_prn_device gs_spotcmyk_device =
 {
-    gx_devn_prn_device_body(spot_cmyk_procs, "spotcmyk", 4, GX_CINFO_POLARITY_SUBTRACTIVE, 4, 1, 1, "DeviceCMYK"),
+    gx_devn_prn_device_body(devicen_initialize_device_procs, "spotcmyk",
+                            4, GX_CINFO_POLARITY_SUBTRACTIVE, 4, 1, 1,
+                            "DeviceCMYK"),
     /* DeviceN device specific parameters */
     { 1,                        /* Bits per color - must match ncomp, depth, etc. above */
       DeviceCMYKComponents,     /* Names of color model colorants */
@@ -1069,11 +1044,11 @@ const gx_devn_prn_device gs_spotcmyk_device =
 /*
  * Example DeviceN color device
  */
-static const gx_device_procs devicen_procs = device_procs();
-
 const gx_devn_prn_device gs_devicen_device =
 {
-    gx_devn_prn_device_body(devicen_procs, "devicen", 4, GX_CINFO_POLARITY_SUBTRACTIVE, 32, 255, 255, "DeviceCMYK"),
+    gx_devn_prn_device_body(devicen_initialize_device_procs, "devicen",
+                            4, GX_CINFO_POLARITY_SUBTRACTIVE, 32, 255, 255,
+                            "DeviceCMYK"),
     /* DeviceN device specific parameters */
     { 8,                        /* Bits per color - must match ncomp, depth, etc. above */
       DeviceCMYKComponents,     /* Names of color model colorants */
@@ -1103,7 +1078,7 @@ spotcmyk_prn_open(gx_device * pdev)
 /* Color mapping routines for the spotcmyk device */
 
 static void
-gray_cs_to_spotcmyk_cm(gx_device * dev, frac gray, frac out[])
+gray_cs_to_spotcmyk_cm(const gx_device * dev, frac gray, frac out[])
 {
     int * map = ((gx_devn_prn_device *) dev)->devn_params.separation_order_map;
 
@@ -1111,7 +1086,7 @@ gray_cs_to_spotcmyk_cm(gx_device * dev, frac gray, frac out[])
 }
 
 static void
-rgb_cs_to_spotcmyk_cm(gx_device * dev, const gs_gstate *pgs,
+rgb_cs_to_spotcmyk_cm(const gx_device * dev, const gs_gstate *pgs,
                                    frac r, frac g, frac b, frac out[])
 {
     int * map = ((gx_devn_prn_device *) dev)->devn_params.separation_order_map;
@@ -1120,7 +1095,7 @@ rgb_cs_to_spotcmyk_cm(gx_device * dev, const gs_gstate *pgs,
 }
 
 static void
-cmyk_cs_to_spotcmyk_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
+cmyk_cs_to_spotcmyk_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 {
     int * map = ((gx_devn_prn_device *) dev)->devn_params.separation_order_map;
 
@@ -1132,8 +1107,9 @@ static const gx_cm_color_map_procs spotCMYK_procs = {
 };
 
 const gx_cm_color_map_procs *
-gx_devn_prn_get_color_mapping_procs(const gx_device * dev)
+gx_devn_prn_get_color_mapping_procs(const gx_device * dev, const gx_device **map_dev)
 {
+    *map_dev = dev;
     return &spotCMYK_procs;
 }
 
@@ -1211,15 +1187,23 @@ gx_devn_prn_ret_devn_params(gx_device * dev)
     return &pdev->devn_params;
 }
 
+const gs_devn_params *
+gx_devn_prn_ret_devn_params_const(const gx_device * dev)
+{
+    const gx_devn_prn_device *pdev = (const gx_devn_prn_device *)dev;
+
+    return &pdev->devn_params;
+}
+
 /*
  *  Device proc for updating the equivalent CMYK color for spot colors.
  */
 int
-gx_devn_prn_update_spot_equivalent_colors(gx_device *dev, const gs_gstate * pgs)
+gx_devn_prn_update_spot_equivalent_colors(gx_device *dev, const gs_gstate * pgs, const gs_color_space *pcs)
 {
     gx_devn_prn_device *pdev = (gx_devn_prn_device *)dev;
 
-    return update_spot_equivalent_cmyk_colors(dev, pgs, &pdev->devn_params,
+    return update_spot_equivalent_cmyk_colors(dev, pgs, pcs, &pdev->devn_params,
                                               &pdev->equiv_cmyk_colors);
 }
 
@@ -1403,7 +1387,7 @@ spotcmyk_print_page(gx_device_printer * pdev, gp_file * prn_stream)
 
     /* Open the output files for the spot colors */
     for(i = 0; i < nspot; i++) {
-        gs_sprintf(spotname, "%ss%d", pdevn->fname, i);
+        gs_snprintf(spotname, gp_file_name_sizeof, "%ss%d", pdevn->fname, i);
         code = gs_add_control_path(pdev->memory, gs_permit_file_writing, spotname);
         if (code < 0)
             goto prn_done;
@@ -1448,7 +1432,7 @@ spotcmyk_print_page(gx_device_printer * pdev, gp_file * prn_stream)
             goto prn_done;
     }
     for(i = 0; i < nspot; i++) {
-        gs_sprintf(spotname, "%ss%d", pdevn->fname, i);
+        gs_snprintf(spotname, gp_file_name_sizeof, "%ss%d", pdevn->fname, i);
         code = devn_write_pcx_file(pdev, spotname, 1, bpc, linelength[i]);
         if (code < 0)
             goto prn_done;
@@ -1795,7 +1779,7 @@ devn_write_pcx_file(gx_device_printer * pdev, char * filename, int ncomp,
         code = gs_note_error(gs_error_invalidfileaccess);
         goto done;
     }
-    gs_sprintf(outname, "%s.pcx", filename);
+    gs_snprintf(outname, gp_file_name_sizeof, "%s.pcx", filename);
     code = gs_add_control_path(pdev->memory, gs_permit_file_writing, outname);
     if (code < 0)
         goto done;
@@ -1882,7 +1866,7 @@ devn_pcx_write_page(gx_device_printer * pdev, gp_file * infile, int linesize, gp
         /* If needed, convert to rgb */
         if (convert_to_rgb) {
             int i;
-			byte *row_in = line;
+            byte *row_in = line;
 
             /* Transform the data. */
             row = rgb_buff;	/* adjust to converted output buffer */

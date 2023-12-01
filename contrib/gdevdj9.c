@@ -510,24 +510,39 @@ typedef struct
     terminate_page\
 }
 
-#define cmyk_colour_procs(proc_colour_open, proc_get_params, proc_put_params, \
-                          proc_colour_close, map_rgb_color, map_color_rgb, map_cmyk_color) {\
-        proc_colour_open,\
-        gx_default_get_initial_matrix,\
-        gx_default_sync_output,\
-        gdev_prn_output_page,\
-        proc_colour_close,\
-        map_rgb_color,\
-        map_color_rgb,\
-        NULL /* fill_rectangle */,\
-        NULL /* tile_rectangle */,\
-        NULL /* copy_mono */,\
-        NULL /* copy_color */,\
-        NULL /* draw_line */,\
-        gx_default_get_bits,\
-        proc_get_params,\
-        proc_put_params,\
-        map_cmyk_color\
+/* This decoding to RGB and conversion to CMYK simulates what */
+/* gx_default_decode_color does without calling the map_color_rgb method. */
+static int
+cdj970_compatible_cmyk_decode_color(gx_device *dev, gx_color_index color, gx_color_value cv[4])
+{
+    int i, code = gdev_cmyk_map_color_rgb(dev, color, cv);
+    gx_color_value min_val = gx_max_color_value;
+
+    for (i = 0; i < 3; i++) {
+        if ((cv[i] = gx_max_color_value - cv[i]) < min_val)
+            min_val = cv[i];
+    }
+    for (i = 0; i < 3; i++)
+        cv[i] -= min_val;
+    cv[3] = min_val;
+
+    return code;
+}
+
+static void
+cdj970_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, open_device, hp_colour_open);
+    set_dev_proc(dev, close_device, cdj970_close);
+    set_dev_proc(dev, map_rgb_color, gx_error_encode_color);
+    set_dev_proc(dev, map_color_rgb, gdev_cmyk_map_color_rgb);
+    set_dev_proc(dev, get_params, cdj970_get_params);
+    set_dev_proc(dev, put_params, cdj970_put_params);
+    set_dev_proc(dev, map_cmyk_color, gdev_cmyk_map_cmyk_color);
+    set_dev_proc(dev, encode_color, gdev_cmyk_map_cmyk_color);
+    set_dev_proc(dev, decode_color, cdj970_compatible_cmyk_decode_color);
 }
 
 static void
@@ -543,13 +558,9 @@ cdj970_print_non_blank_lines(gx_device_printer * pdev,
 static void
 cdj970_terminate_page(gx_device_printer * pdev, gp_file * prn_stream);
 
-static const gx_device_procs cdj970_procs =
-cmyk_colour_procs(hp_colour_open, cdj970_get_params, cdj970_put_params,
-                  cdj970_close, NULL, gdev_cmyk_map_color_rgb,
-                  gdev_cmyk_map_cmyk_color);
-
 const gx_device_cdj970 gs_cdj970_device =
-cdj_970_device(cdj970_procs, "cdj970", 600, 600, 32, cdj970_print_page, 0,
+cdj_970_device(cdj970_initialize_device_procs, "cdj970",
+               600, 600, 32, cdj970_print_page, 0,
                NORMAL, PLAIN_PAPER, NONE, 4, DJ970C, 2,
                1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                cdj970_start_raster_mode, cdj970_print_non_blank_lines,
@@ -769,9 +780,12 @@ do_floyd_steinberg(int scan, int cscan, int plane_size,
                    struct error_val_field *error_values);
 
 static int
-do_gcr(int bytecount, byte * inbyte, const byte * kvalues,
-       const byte * cvalues, const byte * mvalues,
-       const byte * yvalues, const int *kcorrect);
+do_gcr(int bytecount,
+       byte * inbyte,
+       const byte kvalues[256],
+       const byte cvalues[256],
+       const byte mvalues[256],
+       const byte yvalues[256], const int kcorrect[256]);
 
 static void
 send_scan_lines(gx_device_printer * pdev,
@@ -780,9 +794,11 @@ send_scan_lines(gx_device_printer * pdev,
                 struct error_val_field *error_values,
                 const Gamma * gamma, gp_file * prn_stream);
 
-static void do_gamma(float mastergamma, float gammaval, byte * values);
+static void
+do_gamma(float mastergamma, float gammaval, byte values[256]);
 
-static void do_black_correction(float kvalue, int *kcorrect);
+static void
+do_black_correction(float kvalue, int kcorrect[256]);
 
 static void
 init_data_structure(gx_device_printer * pdev,
@@ -2652,7 +2668,7 @@ cdj970_write_header(gx_device * pdev, gp_file * prn_stream)
 
     memset(startbuffer, 0, 1260);
 
-    gs_sprintf(&(startbuffer[600]),
+    gs_snprintf(&(startbuffer[600]), sizeof(startbuffer)- 600,
                "\033E\033%%-12345X@PJL JOB NAME = \"GHOST BY RENE HARSCH\"\n@PJL ENTER LANGUAGE=PCL3GUI\n");
 
     gp_fwrite(startbuffer, sizeof(char), 678, prn_stream);

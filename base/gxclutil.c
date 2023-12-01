@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -29,6 +29,7 @@
 #include "gsparams.h"
 
 #include "valgrind.h"
+#include <limits.h>
 
 /* ---------------- Statistics ---------------- */
 
@@ -48,10 +49,13 @@ const char *const *const cmd_sub_op_names[16] =
  0, 0, 0, 0,
  0, cmd_misc2_op_names, cmd_segment_op_names, cmd_path_op_names
 };
-#ifndef GS_THREADSAFE
+const char *cmd_extend_op_names[256] =
+{cmd_extend_op_name_strings};
+
+#ifdef COLLECT_STATS_CLIST
 struct stats_cmd_s {
-    ulong op_counts[256];
-    ulong op_sizes[256];
+    ulong op_counts[512];
+    ulong op_sizes[512];
     ulong tile_reset, tile_found, tile_added;
     ulong same_band, other_band;
 } stats_cmd;
@@ -73,6 +77,25 @@ cmd_count_op(int op, uint size,const gs_memory_t *mem)
     }
     return op;
 }
+int
+cmd_count_extended_op(int op, uint size,const gs_memory_t *mem)
+{
+    stats_cmd.op_counts[cmd_opv_extend]++;
+    stats_cmd.op_sizes[cmd_opv_extend] += size;
+    stats_cmd.op_counts[256+op]++;
+    stats_cmd.op_sizes[256+op] += size;
+    if (gs_debug_c('L')) {
+        const char *ext = cmd_extend_op_names[op];
+
+        if (ext)
+            dmlprintf2(mem, ", %s(%u)\n", ext, size);
+        else
+            dmlprintf2(mem, ", ?0x%02x?(%u)\n", op,
+                      size);
+        dmflush(mem);
+    }
+    return op;
+}
 void
 cmd_uncount_op(int op, uint size)
 {
@@ -83,7 +106,7 @@ cmd_uncount_op(int op, uint size)
 #endif
 
 /* Print statistics. */
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef COLLECT_STATS_CLIST
 void
 cmd_print_stats(const gs_memory_t *mem)
 {
@@ -122,6 +145,20 @@ cmd_print_stats(const gs_memory_t *mem)
                 else
                     dmprintf2(mem, " %lu(%lu)", stats_cmd.op_counts[cj],
                              stats_cmd.op_sizes[cj]);
+        }
+        dmputs(mem, "\n");
+    }
+    for (ci = 0x100; ci < 0x200; ci ++) {
+        const char *ext = cmd_extend_op_names[ci-0x100];
+
+        if (ext != NULL) {
+            dmprintf3(mem, "[l] %s (%lu,%lu)\n",
+                         ext,
+                         stats_cmd.op_counts[ci], stats_cmd.op_sizes[ci]);
+        } else if (stats_cmd.op_counts[ci] || stats_cmd.op_sizes[ci]) {
+            dmprintf3(mem, "[l] ?0x%02x? (%lu,%lu)\n",
+                      ci-0x100,
+                      stats_cmd.op_counts[ci], stats_cmd.op_sizes[ci]);
         }
         dmputs(mem, "\n");
     }
@@ -173,7 +210,7 @@ cmd_write_band(gx_device_clist_writer * cldev, int band_min, int band_max,
         clist_file_ptr cfile = cldev->page_cfile;
         clist_file_ptr bfile = cldev->page_bfile;
         cmd_block cb;
-        byte end = cmd_count_op(cmd_end, 1, cldev->memory);
+        byte end;
 
         if (cfile == 0 || bfile == 0)
             return_error(gs_error_ioerror);
@@ -195,12 +232,14 @@ cmd_write_band(gx_device_clist_writer * cldev, int band_min, int band_max,
                     return_error(gs_error_Fatal);
                 }
 #endif
-                if_debug2m('L', cldev->memory, "[L]Wrote cmd id=%ld at %"PRId64"\n",
+                if_debug2m('L', cldev->memory, "[L] cmd id=%ld at %"PRId64"\n",
                            cp->id, cldev->page_info.io_procs->ftell(cfile));
                 cldev->page_info.io_procs->fwrite_chars(cp + 1, cp->size, cfile);
             }
             pcl->head = pcl->tail = 0;
         }
+        if_debug0m('L', cldev->memory, "[L] adding terminator\n");
+        end  = cmd_count_op(cmd_end, 1, cldev->memory);
         cldev->page_info.io_procs->fwrite_chars(&end, 1, cfile);
         process_interrupts(cldev->memory);
         code_b = cldev->page_info.io_procs->ferror_code(bfile);
@@ -287,7 +326,7 @@ cmd_write_buffer(gx_device_clist_writer * cldev, byte cmd_end)
     VALGRIND_MAKE_MEM_UNDEFINED(cldev->cbuf, cldev->cend - cldev->cbuf);
 #endif
     cldev->ccl = 0;
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef COLLECT_STATS_CLIST
     if (gs_debug_c('l'))
         cmd_print_stats(cldev->memory);
 #endif
@@ -308,8 +347,10 @@ cmd_put_list_op(gx_device_clist_writer * cldev, cmd_list * pcl, uint size)
     CMD_CHECK_LAST_OP_BLOCK_DEFINED(cldev);
 
     if (size + cmd_headroom > cldev->cend - dp) {
-        if ((cldev->error_code =
-             cmd_write_buffer(cldev, cmd_opv_end_run)) != 0 ||
+        cldev->error_code = cmd_write_buffer(cldev, cmd_opv_end_run);
+        /* error_code can come back as +ve as a warning that memory
+         * is getting tight. Don't fail on that. */
+        if (cldev->error_code < 0 ||
             (size + cmd_headroom > cldev->cend - cldev->cnext)) {
             if (cldev->error_code == 0)
                 cldev->error_code = gs_error_VMerror;
@@ -326,7 +367,7 @@ cmd_put_list_op(gx_device_clist_writer * cldev, cmd_list * pcl, uint size)
             lprintf1("cmd_put_list_op error at "PRI_INTPTR"\n", (intptr_t)pcl->tail);
         }
 #endif
-        if_debug2m('L', cldev->memory, ", to id=%ld , offset=%ld",
+        if_debug2m('L', cldev->memory, "[L] id:%ld+%ld",
                    pcl->tail->id, (long)pcl->tail->size);
         pcl->tail->size += size;
     } else {
@@ -334,6 +375,21 @@ cmd_put_list_op(gx_device_clist_writer * cldev, cmd_list * pcl, uint size)
         /* (We assume the command buffer itself is aligned.) */
         cmd_prefix *cp = (cmd_prefix *)
             (dp + ((cldev->cbuf - dp) & (ARCH_ALIGN_PTR_MOD - 1)));
+
+        cp->id = cldev->ins_count++;
+#ifdef DEBUG
+        if (gs_debug_c('L'))
+        {
+            if (pcl == cldev->band_range_list)
+                dmlprintf2(cldev->memory, "[L]Change to bands=(%d->%d)", cldev->band_range_min, cldev->band_range_max);
+            else
+                dmlprintf1(cldev->memory, "[L]Change to band=%d",
+                           (int)(((intptr_t)pcl-(intptr_t)&cldev->states->list)/sizeof(*cldev->states)));
+
+            dmlprintf2(cldev->memory, ", align=%d\n[L] id:%ld+0",
+                       (int)((char *)cp-(char *)dp), cp->id);
+        }
+#endif
 
         cmd_count_add1(stats_cmd.other_band);
         dp = (byte *) (cp + 1);
@@ -352,11 +408,25 @@ cmd_put_list_op(gx_device_clist_writer * cldev, cmd_list * pcl, uint size)
         pcl->tail = cp;
         cldev->ccl = pcl;
         cp->size = size;
-        cp->id = cldev->ins_count;
-        if_debug1m('L', cldev->memory, ", id=%ld ", cldev->ins_count);
-        cldev->ins_count++;
     }
     cldev->cnext = dp + size;
+    return dp;
+}
+
+byte *
+cmd_put_list_extended_op(gx_device_clist_writer *cldev, cmd_list *pcl, int op, uint size)
+{
+    byte *dp = cmd_put_list_op(cldev, pcl, size);
+
+    if (dp) {
+        dp[1] = op;
+
+        if (gs_debug_c('L')) {
+            clist_debug_op(cldev->memory, dp);
+            dmlprintf1(cldev->memory, "[%u]\n", size);
+        }
+    }
+
     return dp;
 }
 
@@ -366,24 +436,31 @@ cmd_put_list_op(gx_device_clist_writer * cldev, cmd_list * pcl, uint size)
 int
 cmd_get_buffer_space(gx_device_clist_writer * cldev, gx_clist_state * pcls, uint size)
 {
+    size_t z;
     CMD_CHECK_LAST_OP_BLOCK_DEFINED(cldev);
 
     if (size + cmd_headroom > cldev->cend - cldev->cnext) {
+        /* error_code can come back as +ve as a warning that memory
+         * is getting tight. Don't fail on that. */
         cldev->error_code = cmd_write_buffer(cldev, cmd_opv_end_run);
         if (cldev->error_code < 0) {
             return cldev->error_code;
         }
     }
-    return cldev->cend - cldev->cnext - cmd_headroom;
+    /* Calculate the available size as a size_t. If this won't fit in
+     * an int, clip the value. This is a bit crap, but it should be
+     * safe at least until we can change the clist to use size_t's
+     * where appropriate. */
+    z = cldev->cend - cldev->cnext - cmd_headroom;
+    if (z > INT_MAX)
+        z = INT_MAX;
+    return z;
 }
 
 #ifdef DEBUG
 byte *
 cmd_put_op(gx_device_clist_writer * cldev, gx_clist_state * pcls, uint size)
 {
-    if_debug3m('L', cldev->memory, "[L]band %d: size=%u, left=%u",
-               (int)(pcls - cldev->states),
-               size, 0);
     return cmd_put_list_op(cldev, &pcls->list, size);
 }
 #endif
@@ -395,18 +472,21 @@ cmd_put_range_op(gx_device_clist_writer * cldev, int band_min, int band_max,
 {
     CMD_CHECK_LAST_OP_BLOCK_DEFINED(cldev);
 
-    if_debug4m('L', cldev->memory, "[L]band range(%d,%d): size=%u, left=%u",
-               band_min, band_max, size, 0);
     if (cldev->ccl != 0 &&
         (cldev->ccl != cldev->band_range_list ||
          band_min != cldev->band_range_min ||
          band_max != cldev->band_range_max)
         ) {
-        if ((cldev->error_code = cmd_write_buffer(cldev, cmd_opv_end_run)) != 0) {
-            return 0;
+        cldev->error_code = cmd_write_buffer(cldev, cmd_opv_end_run);
+        /* error_code can come back as +ve as a warning that memory
+         * is getting tight. Don't fail on that. */
+        if (cldev->error_code < 0) {
+            return NULL;
         }
         cldev->band_range_min = band_min;
         cldev->band_range_max = band_max;
+        if_debug2m('L', cldev->memory, "[L]Band range(%d,%d)\n",
+                   band_min, band_max);
     }
     return cmd_put_list_op(cldev, cldev->band_range_list, size);
 }
@@ -693,6 +773,36 @@ cmd_set_tile_phase(gx_device_clist_writer * cldev, gx_clist_state * pcls,
     return cmd_set_tile_phase_generic(cldev, pcls, px, py, false);
 }
 
+int
+cmd_set_screen_phase_generic(gx_device_clist_writer * cldev, gx_clist_state * pcls,
+                             int px, int py, gs_color_select_t color_select,
+                             bool all_bands)
+{
+    int pcsize;
+    byte *dp;
+    int code;
+
+    pcsize = 1 + cmd_size2w(px, py);
+    if (all_bands)
+        code = set_cmd_put_all_op(&dp, cldev, (byte)cmd_opv_set_screen_phaseT + color_select, pcsize);
+    else
+        code = set_cmd_put_op(&dp, cldev, pcls, (byte)cmd_opv_set_screen_phaseT + color_select, pcsize);
+    if (code < 0)
+        return code;
+    ++dp;
+    pcls->screen_phase[color_select].x = px;
+    pcls->screen_phase[color_select].y = py;
+    cmd_putxy(pcls->screen_phase[color_select], &dp);
+    return 0;
+}
+
+int
+cmd_set_screen_phase(gx_device_clist_writer * cldev, gx_clist_state * pcls,
+                     int px, int py, gs_color_select_t color_select)
+{
+    return cmd_set_screen_phase_generic(cldev, pcls, px, py, color_select, false);
+}
+
 /* Write a command to enable or disable the logical operation. */
 int
 cmd_put_enable_lop(gx_device_clist_writer * cldev, gx_clist_state * pcls,
@@ -777,14 +887,13 @@ cmd_put_params(gx_device_clist_writer *cldev,
         gs_param_list_serialize(param_list, local_buf, sizeof(local_buf));
     if (param_length > 0) {
         /* Get cmd buffer space for serialized */
-        code = set_cmd_put_all_op(&dp, cldev, cmd_opv_extend,
+        code = set_cmd_put_all_extended_op(&dp, cldev, cmd_opv_ext_put_params,
                                   2 + sizeof(unsigned) + param_length);
         if (code < 0)
             return code;
 
         /* write param list to cmd list: needs to all fit in cmd buffer */
         if_debug1m('l', cldev->memory, "[l]put_params, length=%d\n", param_length);
-        dp[1] = cmd_opv_ext_put_params;
         dp += 2;
         memcpy(dp, &param_length, sizeof(unsigned));
         dp += sizeof(unsigned);
@@ -869,3 +978,203 @@ cmd_read_matrix(gs_matrix * pmat, const byte * cbp)
     sget_matrix(&s, pmat);
     return cbp + stell(&s);
 }
+
+/*
+Some notes on understanding the output of -ZL.
+
+The examples here are given from:
+  gs -o out.png -r96 -sDEVICE=png16m -dBandHeight=20 -dMaxBitmap=1000 -ZL examples/tiger.eps
+
+Not every line in that output is explained here!
+
+When writing a command list, we gather up a list of 'commands' into the
+clist (cfile). We then have a series of indexes that says which of these
+commands is needed for each band (bfile).
+
+So, while writing, we can be writing for 1 band, or for a range of bands
+at any given time. Commands that follow one another for the same band
+(or range of bands) will be crammed together into a single command block.
+These command blocks are each given an id for debugging purposes. When
+the set of bands for which we are writing changes, the id changes.
+
+Somewhere towards the top of the output (i.e. within a
+hundred lines or so) you should see:
+
+  [L]Resetting: Band range(0,56)
+
+So, we are writing some commands that will apply to bands 0 to 56.
+
+  [L] id:0+0, put_fill_dcolor(13)
+  [L] id:0+13, fill_rect 0(5)
+
+So, for id 0, at 0 bytes offset, we first have a put_fill_dcolor command
+that takes 13 bytes. Then, still in id 0, at 13 bytes offset, we have
+a fill_rect that takes 5 bytes.
+
+Then we change the band:
+
+  [L]Change to band=0, align=6
+
+When we change the band, we change to a new command block, and the id
+changes - so you'll see the subsequent entries listed with id 1.
+Subsequent command blocks are aligned, so you'll see some alignment
+(padding) bytes used - here 6 bytes.
+
+  [L] id:1+0, set_misc2(6)
+  [L] id:1+6, begin_clip(1)
+  [L] id:1+7, fill_rect 0(7)
+
+Here we see various commands, each for id 1, at the expected offsets
+given their respective sizes. Then we get some debugging from elsewhere
+in the clist system.
+
+[L]  r6:0,793,0,1123
+
+This indicates details about the fill_rect (in particular the way
+the fill_rect is encoded, and the parameters it uses). Such lines can
+be differentiated fairly easily from the command block writing code
+as they do not start with 'id:'.
+
+We continue with more commands:
+
+  [L] id:1+14, end_clip(1)
+  [L] id:1+15, put_fill_dcolor(13)
+  [L]  rmoveto:0: 0 0
+  [L] id:1+28, rmoveto(5)
+  [L]  rlineto:0: 0 1123
+  [L] id:1+33, vlineto(4)
+  [L]  rlineto:0: 793 0
+  [L] id:1+37, hlineto(3)
+  [L]  rlineto:0: 0 -1123
+  [L] id:1+40, vlineto(4)
+  [L]  closepath:0:
+  [L] id:1+44, closepath(1)
+  [L] id:1+45, fill(1)
+
+Here we note a couple of things. The clist command encoding system
+works by first reserving the required number of bytes for a command,
+then filling in those bytes. Because lots of parameters vary in length
+according to their particular value, we often have to do a lot of the
+encoding work twice; once to count how many bytes we need to reserve
+and then once to fill in the block.
+
+The command buffer debug lines (i.e. the ones starting 'id:') are output
+at the point the buffer is reserved. Other debug lines for the same
+command can happen either before or after these lines. So the 'r6' line
+happened after the command reservation that it corresponded to, whereas
+the 'rmoveto' (and others) above happen before the command reservation.
+This can be confusing.
+
+Another confusing thing is that the commands can appear to change. The
+non-command block debug above mentions 4 rlineto's, but these all
+appear in the command list as vlineto or hlineto. This is because
+the command block queueing attempts to be smart and to simplify the
+sequence of commands. This can mean pulling a command into a previous
+one, or (as in this case) realising that a simpler encoding can be
+used.
+
+And we continue...
+
+  [L]Change to band=1, align=2
+  [L] id:2+0, set_misc2(6)
+  [L] id:2+6, begin_clip(1)
+
+After a while, we move to an output phase where things are actually
+written to the file. These come in groups like:
+
+  [l]writing for bands (0,56) at 0
+  [L] cmd id=0 at 0
+  [L] adding terminator, end_run(1)
+
+So this is writing out a note that bands 0 to 56 should execute the following
+id's. We then write out the id's in question (id 0, goes into cfile at offset 0).
+This is then terminated by a single byte 'end_run' marker.
+
+This repeats, with the file offsets increasing as we go. Some cases have more
+than one id, for instance:
+
+  [l]writing for bands (7,7) at 640
+  [L] cmd id=8 at 640
+  [L] cmd id=194 at 685
+  [L] cmd id=215 at 785
+  [L] cmd id=712 at 928
+  [L] cmd id=720 at 969
+  [L] cmd id=726 at 986
+  [L] cmd id=732 at 1016
+  [L] cmd id=809 at 1046
+  [L] cmd id=817 at 1185
+  [L] cmd id=822 at 1258
+  [L] adding terminator, end_page(1)
+
+So, by matching up the id's in this section, together with their offsets,
+we can find out what command was written there.
+
+For instance, suppose we hit a problem when reading the cfile at offset 1029.
+We can look to see that this is id=732 + 13 bytes. We can look back in the
+output to where id:732 was being output, and we see:
+
+  [L] id:732+13, rmoveto(5)
+
+Most clist bugs tend to involve the reader and writer disagreeing on how
+many bytes a given command should be and getting out of step. By looking at
+where the writer puts stuff, and the reader is trying to read stuff, we can
+hopefully spot this.
+
+The writing phase ends with:
+
+  [l]writing pseudo band 57 cb pos 92521
+  [l]writing 1824 bytes into cfile at 92521
+  [l]writing end for bands (-1,-1) at 94345
+
+FIXME: Explain the pseudo band.
+
+The next section of the logging shows the reader reading. For each band
+in turn, we'll see a section where we announce what band we are
+rendering:
+
+  [l]rendering bands (0,0)
+
+Then we will read through the different band records that were output
+above.
+
+  [l]reading for bands (0,0) at bfile 0, cfile 0, length 0
+  [l]reading for bands (0,56) at bfile 16, cfile 0, length 19
+  [l]reading for bands (0,0) at bfile 32, cfile 19, length 47
+
+If we look back, we can see that the first of these corresponded to an
+empty record. The second of these corresponded to the write of
+"cmd id=0 at 0", and the third corresponds to the write of
+"cmd id=1 at 19".
+
+When these records have been read in, we actually execute the data. Each
+line gives the offset from which the command was read (which allows us
+to track it back to what it *should* be in the case of a mismatch),
+and is followed by the command name, and a selection of its parameters:
+
+  [L] 0: put_fill_dcolor cmd_opv_ext_put_drawing_color
+  [L] 13: fill_rect 0 x=0 y=0 w=0 h=0
+  [L] 18: end_run
+  [L] 19: set_misc2
+  [L]      CJ=-1 AC=1 SA=1
+  [L]      BM=0 TK=1 OPM=0 OP=0 op=0 RI=1
+  [L] 25: begin_clip
+  [L] 26: fill_rect 0 x=0 y=0 w=793 h=1123
+  [L] 33: end_clip
+  [L] 34: put_fill_dcolor cmd_opv_ext_put_drawing_color
+  [L] 47: rmoveto (0,0) 0 0
+  [L] 52: vlineto 1123
+  [L] 56: hlineto 793
+  [L] 59: vlineto -1123
+  [L] 63: closepath
+  [L] 64: fill
+  [L] 65: end_page
+
+Then we repeat gathering the data for the next band:
+
+  [l]rendering bands (1,1)
+  [l]reading for bands (0,56) at bfile 16, cfile 0, length 19
+  [l]reading for bands (1,1) at bfile 48, cfile 66, length 46
+
+and so on.
+
+*/

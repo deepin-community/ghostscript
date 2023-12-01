@@ -15,7 +15,7 @@ static dev_proc_print_page(lbp310PrintPage);
 static dev_proc_print_page(lbp320PrintPage);
 
 gx_device_printer far_data gs_lbp310_device =
-        prn_device(prn_std_procs,
+        prn_device(gdev_prn_initialize_device_procs_mono,
         "lbp310",
         DEFAULT_WIDTH_10THS,
         DEFAULT_HEIGHT_10THS,
@@ -27,7 +27,7 @@ gx_device_printer far_data gs_lbp310_device =
         1, lbp310PrintPage);
 
 gx_device_printer far_data gs_lbp320_device =
-        prn_device(prn_std_procs,
+        prn_device(gdev_prn_initialize_device_procs_mono,
         "lbp320",
         DEFAULT_WIDTH_10THS,
         DEFAULT_HEIGHT_10THS,
@@ -81,7 +81,7 @@ lbp310PrintPage(gx_device_printer *pDev, gp_file *fp)
         DataSize = CompressImage(pDev, &Box, fp, "\x1b[1;%d;%d;11;%d;.r");
 
         /* ----==== Set size ====---- */
-        gs_sprintf(Buf, "0%ld", DataSize);
+        gs_snprintf(Buf, sizeof(Buf), "0%ld", DataSize);
         i = (DataSize+strlen(Buf)+1)&1;
         /* ----==== escape to LIPS ====---- */
         gp_fprintf(fp, "\x80%s\x80\x80\x80\x80\x0c",Buf+i);
@@ -110,7 +110,7 @@ lbp320PrintPage(gx_device_printer *pDev, gp_file *fp)
         DataSize = CompressImage(pDev, &Box, fp, "\x1b[1;%d;%d;11;%d;.&r");
 
         /* ----==== Set size ====---- */
-        gs_sprintf(Buf, "000%ld", DataSize);
+        gs_snprintf(Buf, sizeof(Buf), "000%ld", DataSize);
         i = (DataSize+strlen(Buf)+1)&3;
         /* ----==== escape to LIPS ====---- */
         gp_fprintf(fp, "\x80%s\x80\x80\x80\x80\x0c",Buf+i);

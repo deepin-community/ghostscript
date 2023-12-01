@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -307,6 +307,7 @@ zsetcolor(i_ctx_t * i_ctx_p)
         n_numeric_comps = n_comps;
 
     /* gather the numeric operands */
+    check_op(num_offset + n_numeric_comps);
     code = float_params(op - num_offset, n_numeric_comps, cc.paint.values);
     if (code < 0)
         return code;
@@ -688,7 +689,7 @@ zsettransfer(i_ctx_t * i_ctx_p)
     if ((code = gs_settransfer_remap(igs, gs_mapped_transfer, false)) < 0)
         return code;
     push_op_estack(zcolor_reset_transfer);
-    pop(1);
+    ref_stack_pop(&o_stack, 1);
     return zcolor_remap_one( i_ctx_p,
                              &istate->transfer_procs.gray,
                              igs->set_transfer.gray,
@@ -1051,7 +1052,7 @@ static int setgrayspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int CI
                     *stage = 1;
                     break;
                 }
-                pop(1);
+                ref_stack_pop(&o_stack, 1);
                 *cont = 1;
                 *stage = 3;
                 code = setcolorspace_nosubst(i_ctx_p);
@@ -1075,7 +1076,7 @@ static int setgrayspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int CI
                  */
                 if (!r_has_type(op, t_boolean))
                     return_error(gs_error_typecheck);
-                pop(1);
+                ref_stack_pop(&o_stack, 1);
                 *stage = 1;
                 *cont = 1;
                 if (op->value.boolval) {
@@ -1276,7 +1277,7 @@ static int setrgbspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int CIE
                     *stage = 1;
                     break;
                 }
-                pop(1);
+                ref_stack_pop(&o_stack, 1);
                 *stage = 3;
                 code = setcolorspace_nosubst(i_ctx_p);
                 if (code != 0)
@@ -1299,7 +1300,7 @@ static int setrgbspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int CIE
                  */
                 if (!r_has_type(op, t_boolean))
                     return_error(gs_error_typecheck);
-                pop(1);
+                ref_stack_pop(&o_stack, 1);
                 *stage = 1;
                 *cont = 1;
                 if (op->value.boolval) {
@@ -1391,7 +1392,7 @@ static int rgbbasecolor(i_ctx_t * i_ctx_p, ref *space, int base, int *stage, int
 
             switch (base) {
                 case 0:
-                    pop(2);
+                    ref_stack_pop(&o_stack, 2);
                     op = osp;
                     /* If R == G == B, then this is gray, so just use it. Avoids
                      * rounding errors.
@@ -1500,7 +1501,7 @@ static int rgbbasecolor(i_ctx_t * i_ctx_p, ref *space, int base, int *stage, int
                     return_error(gs_error_typecheck);
             } else
                 BG = (float)op->value.intval;
-            pop(1);
+            ref_stack_pop(&o_stack, 1);
             op = osp;
             if (BG < 0)
                 BG = 0;
@@ -1628,7 +1629,7 @@ static int setcmykspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int CI
                     *stage = 1;
                     break;
                 }
-                pop(1);
+                ref_stack_pop(&o_stack, 1);
                 *stage = 3;
                 code = setcolorspace_nosubst(i_ctx_p);
                 if (code != 0)
@@ -1651,7 +1652,7 @@ static int setcmykspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int CI
                  */
                 if (!r_has_type(op, t_boolean))
                     return_error(gs_error_typecheck);
-                pop(1);
+                ref_stack_pop(&o_stack, 1);
                 *stage = 1;
                 *cont = 1;
                 if (op->value.boolval) {
@@ -1741,7 +1742,7 @@ static int cmykbasecolor(i_ctx_t * i_ctx_p, ref *space, int base, int *stage, in
 
     switch (base) {
         case 0:
-            pop(3);
+            ref_stack_pop(&o_stack, 3);
             op = osp;
             Gray = (0.3 * CMYK[0]) + (0.59 * CMYK[1]) + (0.11 * CMYK[2]) + CMYK[3];
             if (Gray > 1.0)
@@ -1752,7 +1753,7 @@ static int cmykbasecolor(i_ctx_t * i_ctx_p, ref *space, int base, int *stage, in
             break;
         case 1:
         case 2:
-            pop(1);
+            ref_stack_pop(&o_stack, 1);
             op = osp;
             RGB[0] = 1.0 - (CMYK[0] + CMYK[3]);
             if (RGB[0] < 0)
@@ -3320,7 +3321,7 @@ static int ciebasecolor(i_ctx_t * i_ctx_p, ref *space, int base, int *stage, int
             break;
     }
     /* Remove teh requisite number of values */
-    pop(components);
+    ref_stack_pop(&o_stack, components);
     op = osp;
     /* Find out how many values we need to return, which
      * depends on the requested space.
@@ -3645,7 +3646,7 @@ static int sepbasecolor(i_ctx_t * i_ctx_p, ref *space, int base, int *stage, int
         if (!use) {
             *stage = 0;
             *cont = 0;
-            pop(1);
+            ref_stack_pop(&o_stack, 1);
             op = osp;
             switch(base) {
                 case 0:
@@ -4180,12 +4181,11 @@ static int setdevicenspace(i_ctx_t * i_ctx_p, ref *devicenspace, int *stage, int
                 return code;
             pcs->params.separation.sep_type = sep_type;
             pcs->params.separation.mem = imemory->non_gc_memory;
-            name_string_ref(imemory, &sname, &sname);
-            pcs->params.separation.sep_name = (char *)gs_alloc_bytes(pcs->params.separation.mem, r_size(&sname) + 1, "Separation name");
+            pcs->params.separation.sep_name = (char *)gs_alloc_bytes(pcs->params.separation.mem, r_size(&tname) + 1, "Separation name");
             if (pcs->params.separation.sep_name == NULL)
                 return_error(gs_error_VMerror);
-            memcpy(pcs->params.separation.sep_name, sname.value.bytes, r_size(&sname));
-            pcs->params.separation.sep_name[r_size(&sname)] = 0x00;
+            memcpy(pcs->params.separation.sep_name, tname.value.bytes, r_size(&tname));
+            pcs->params.separation.sep_name[r_size(&tname)] = 0x00;
             code = array_get(imemory, &namesarray, (long)0, &sname);
             if (code < 0)
                 return code;
@@ -4475,7 +4475,7 @@ static int devicenbasecolor(i_ctx_t * i_ctx_p, ref *space, int base, int *stage,
         if (code < 0)
             return code;
         n_comp = r_size(&narray);
-        pop(n_comp);
+        ref_stack_pop(&o_stack, n_comp);
         op = osp;
         switch(base) {
         case 0:
@@ -4618,7 +4618,7 @@ indexed_cont(i_ctx_t *i_ctx_p)
             esp -= num_csme;
             return code;
         }
-        pop(m);
+        ref_stack_pop(&o_stack, m);
         op -= m;
         if (i == (int)ep[csme_hival].value.intval) {	/* All done. */
             esp -= num_csme;
@@ -4878,7 +4878,7 @@ static int indexedbasecolor(i_ctx_t * i_ctx_p, ref *space, int base, int *stage,
                 return_error (gs_error_typecheck);
             index = op->value.intval;
             /* And remove it from the stack. */
-            pop(1);
+            ref_stack_pop(&o_stack, 1);
             op = osp;
 
             /* Make sure we have enough space on the op stack to hold
@@ -5094,7 +5094,7 @@ static int patternbasecolor(i_ctx_t * i_ctx_p, ref *space, int base, int *stage,
          */
     }
 
-    pop(1);
+    ref_stack_pop(&o_stack, 1);
     op = osp;
     switch(base) {
         case 0:
@@ -5428,7 +5428,7 @@ static int labbasecolor(i_ctx_t * i_ctx_p, ref *space, int base, int *stage, int
     int i, components=1;
 
     components = 3;
-    pop(components);
+    ref_stack_pop(&o_stack, components);
     op = osp;
     components = 3;
     push(components);
@@ -5519,6 +5519,60 @@ static int checkGamma(i_ctx_t * i_ctx_p, ref *CIEdict, int numvalues)
     return 0;
 }
 
+static int hashcalgrayspace(i_ctx_t *i_ctx_p, ref *space, gs_md5_state_t *md5)
+{
+    int code = 0;
+    ref cgdict1, spacename, *tempref;
+    static const int ncomps = 1;
+    float g = 1.0;
+    int i;
+
+    code = array_get(imemory, space, 0, &spacename);
+    if (code < 0)
+        return 0;
+    gs_md5_append(md5, (const gs_md5_byte_t *)&spacename.value.pname, sizeof(spacename.value.pname));
+
+    code = array_get(imemory, space, 1, &cgdict1);
+    if (code < 0)
+        return 0;
+    check_read_type(cgdict1, t_dictionary);
+
+    code = dict_find_string(&cgdict1, "WhitePoint", &tempref);
+    if (code > 0) {
+        code = hasharray(i_ctx_p, tempref, md5);
+    }
+    if (code <= 0) {
+        float WP = 0.0;
+        for (i = 0; i < 3; i++) {
+            gs_md5_append(md5, (const gs_md5_byte_t *)&WP, sizeof(WP));
+        }
+    }
+
+    code = dict_find_string(&cgdict1, "BlackPoint", &tempref);
+    if (code > 0) {
+        code = hasharray(i_ctx_p, tempref, md5);
+    }
+    if (code <= 0) {
+        float BP = 0.0;
+        for (i = 0; i < 3; i++) {
+            gs_md5_append(md5, (const gs_md5_byte_t *)&BP, sizeof(BP));
+        }
+    }
+
+    code = dict_find_string(&cgdict1, "Gamma", &tempref);
+    if (code > 0) {
+        if (r_has_type(tempref, t_real))
+            g = tempref->value.realval;
+        else if (r_has_type(tempref, t_integer))
+            g = (float)tempref->value.intval;
+    }
+
+    gs_md5_append(md5, (const gs_md5_byte_t *)&g, sizeof(g));
+
+    gs_md5_append(md5, (const gs_md5_byte_t *)&ncomps, sizeof(ncomps));
+    return 1;
+}
+
 /* Here we set up an equivalent ICC form for the CalGray color space */
 static int setcalgrayspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int CIESubst)
 {
@@ -5528,6 +5582,9 @@ static int setcalgrayspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int
     double                  dflt_gamma = 1.0;
     static const float      dflt_black[3] = {0,0,0}, dflt_white[3] = {0,0,0};
     gs_client_color cc;
+    uint64_t dictkey = 0;
+    gs_md5_state_t md5;
+    byte key[16];
 
     *cont = 0;
     code = array_get(imemory, r, 1, &graydict);
@@ -5558,8 +5615,15 @@ static int setcalgrayspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int
         return code;
     if (white[0] <= 0 || white[1] != 1.0 || white[2] <= 0)
         return_error(gs_error_rangecheck);
-    code = seticc_cal(i_ctx_p, white, black, &gamma, NULL, 1,
-                        graydict.value.saveid);
+
+    gs_md5_init(&md5);
+    hashcalgrayspace(i_ctx_p, r, &md5);
+    gs_md5_finish(&md5, key);
+    if (code > 0) {
+        dictkey = *(uint64_t *)&key[sizeof(key) - sizeof(uint64_t)];
+    }
+
+    code = seticc_cal(i_ctx_p, white, black, &gamma, NULL, 1, dictkey);
     if ( code < 0)
         return gs_rethrow(code, "setting CalGray  color space");
     cc.pattern = 0x00;
@@ -5601,6 +5665,72 @@ static int validatecalgrayspace(i_ctx_t * i_ctx_p, ref **r)
     return 0;
 }
 
+static int hashcalrgbspace(i_ctx_t *i_ctx_p, ref *space, gs_md5_state_t *md5)
+{
+    int code = 0;
+    ref crgbdict1, spacename, *tempref;
+    static const int ncomps = 3;
+    int i;
+
+    code = array_get(imemory, space, 0, &spacename);
+    if (code < 0)
+        return 0;
+    gs_md5_append(md5, (const gs_md5_byte_t *)&spacename.value.pname, sizeof(spacename.value.pname));
+
+    code = array_get(imemory, space, 1, &crgbdict1);
+    if (code < 0)
+        return 0;
+    check_read_type(crgbdict1, t_dictionary);
+
+    code = dict_find_string(&crgbdict1, "WhitePoint", &tempref);
+    if (code > 0) {
+        code = hasharray(i_ctx_p, tempref, md5);
+    }
+    if (code <= 0) {
+        float WP = 0.0;
+        for (i = 0; i < 3; i++) {
+            gs_md5_append(md5, (const gs_md5_byte_t *)&WP, sizeof(WP));
+        }
+    }
+
+    code = dict_find_string(&crgbdict1, "BlackPoint", &tempref);
+    if (code > 0) {
+        code = hasharray(i_ctx_p, tempref, md5);
+    }
+    if (code <= 0) {
+        float BP = 0.0;
+        for (i = 0; i < 3; i++) {
+            gs_md5_append(md5, (const gs_md5_byte_t *)&BP, sizeof(BP));
+        }
+    }
+
+    code = dict_find_string(&crgbdict1, "Matrix", &tempref);
+    if (code > 0) {
+        code = hasharray(i_ctx_p, tempref, md5);
+    }
+    if (code <= 0) {
+        static const float mt[9] = {1,0,0,0,1,0,0,0,1};
+
+        for (i = 0; i < 9; i++) {
+            gs_md5_append(md5, (const gs_md5_byte_t *)&(mt[i]), sizeof(mt[i]));
+        }
+    }
+
+    code = dict_find_string(&crgbdict1, "Gamma", &tempref);
+    if (code > 0) {
+        code = hasharray(i_ctx_p, tempref, md5);
+    }
+    if (code <= 0) {
+        static const float g[3] = { 1.0, 1.0, 1.0 };
+        for (i = 0; i < 3; i++) {
+            gs_md5_append(md5, (const gs_md5_byte_t *)&(g[i]), sizeof(g[i]));
+        }
+    }
+
+    gs_md5_append(md5, (const gs_md5_byte_t *)&ncomps, sizeof(ncomps));
+    return 1;
+}
+
 /* Here we set up an equivalent ICC form for the CalRGB color space */
 static int setcalrgbspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int CIESubst)
 {
@@ -5612,6 +5742,9 @@ static int setcalrgbspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int 
     static const float      dflt_matrix[9] = {1,0,0,0,1,0,0,0,1};
     int i;
     gs_client_color cc;
+    uint64_t dictkey = 0;
+    gs_md5_state_t md5;
+    byte key[16];
 
     *cont = 0;
     code = array_get(imemory, r, 1, &rgbdict);
@@ -5654,7 +5787,13 @@ static int setcalrgbspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int 
                               dflt_matrix );
     if (code < 0)
         return code;
-    code = seticc_cal(i_ctx_p, white, black, gamma, matrix, 3, rgbdict.value.saveid);
+    gs_md5_init(&md5);
+    hashcalrgbspace(i_ctx_p, r, &md5);
+    gs_md5_finish(&md5, key);
+    if (code > 0) {
+        dictkey = *(uint64_t *)&key[sizeof(key) - sizeof(uint64_t)];
+    }
+    code = seticc_cal(i_ctx_p, white, black, gamma, matrix, 3, dictkey);
     if ( code < 0)
         return gs_rethrow(code, "setting CalRGB  color space");
     cc.pattern = 0x00;
@@ -5814,7 +5953,7 @@ static int seticcspace(i_ctx_t * i_ctx_p, ref *r, int *stage, int *cont, int CIE
                                 return code;
                             *stage = 0;
                         }
-                        pop(1);
+                        ref_stack_pop(&o_stack, 1);
                     }
                     if (code != 0)
                         return code;
@@ -6283,6 +6422,7 @@ static int validate_spaces(i_ctx_t *i_ctx_p, ref *arr, int *depth)
 static int
 setcolor_cont(i_ctx_t *i_ctx_p)
 {
+    os_ptr  op = osp;
     ref arr, *parr = &arr;
     es_ptr ep = esp;
     int i=0, code = 0, usealternate, stage, stack_depth, CIESubst = 0, IsICC = 0;
@@ -6357,6 +6497,8 @@ setcolor_cont(i_ctx_t *i_ctx_p)
 
     /* Remove our next continuation and our data */
     obj->numcomponents(i_ctx_p, parr, &i);
+    /* This would be better done sooner, but we need the color space object first */
+    check_op(i);
     pop(i);
     esp -= 5;
     return o_pop_estack;

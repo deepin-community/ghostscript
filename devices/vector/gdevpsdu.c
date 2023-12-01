@@ -468,23 +468,14 @@ psdf_end_binary(psdf_binary_writer * pbw)
 /* ---------------- Overprint, Get Bits ---------------- */
 
 /*
- * High level devices cannot perform get_bits or get_bits_rectangle
+ * High level devices cannot perform get_bits_rectangle
  * operations, for obvious reasons.
  */
-int
-psdf_get_bits(gx_device * dev, int y, byte * data, byte ** actual_data)
-{
-    emprintf(dev->memory,
-                  "Can't set GraphicsAlphaBits or TextAlphaBits with a vector device.\n");
-    return_error(gs_error_unregistered);
-}
-
 int
 psdf_get_bits_rectangle(
     gx_device *             dev,
     const gs_int_rect *     prect,
-    gs_get_bits_params_t *  params,
-    gs_int_rect **          unread )
+    gs_get_bits_params_t *  params )
 {
     emprintf(dev->memory,
                   "Can't set GraphicsAlphaBits or TextAlphaBits with a vector device.\n");
@@ -499,7 +490,7 @@ psdf_get_bits_rectangle(
  * compositor.
  */
 int
-psdf_create_compositor(
+psdf_composite(
     gx_device *             dev,
     gx_device **            pcdev,
     const gs_composite_t *  pct,
@@ -511,5 +502,5 @@ psdf_create_compositor(
         *pcdev = dev;
         return 0;
     }
-    return gx_default_create_compositor(dev, pcdev, pct, pgs, mem, cdev);
+    return gx_default_composite(dev, pcdev, pct, pgs, mem, cdev);
 }

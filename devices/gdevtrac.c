@@ -260,33 +260,6 @@ trace_draw_thin_line(gx_device * dev,
 }
 
 static int
-trace_strip_tile_rectangle(gx_device * dev, const gx_strip_bitmap * tiles,
-                           int x, int y, int w, int h,
-                           gx_color_index color0, gx_color_index color1,
-                           int px, int py)
-{
-    dmprintf6(dev->memory,"strip_tile_rectangle(x=%d, y=%d, w=%d, h=%d, colors=(0x%lx,0x%lx),\n",
-             x, y, w, h, (ulong)color0, (ulong)color1);
-    dmprintf8(dev->memory,"    size=(%d,%d) shift %u, rep=(%u,%u) shift %u, phase=(%d,%d))\n",
-             tiles->size.x, tiles->size.y, tiles->shift,
-             tiles->rep_width, tiles->rep_height, tiles->rep_shift, px, py);
-    return 0;
-}
-
-static int
-trace_strip_copy_rop(gx_device * dev, const byte * sdata, int sourcex,
-                     uint sraster, gx_bitmap_id id,
-                     const gx_color_index * scolors,
-                     const gx_strip_bitmap * textures,
-                     const gx_color_index * tcolors,
-                     int x, int y, int width, int height,
-                     int phase_x, int phase_y, gs_logical_operation_t lop)
-{
-    dmputs(dev->memory,"**strip_copy_rop**\n");
-    return 0;
-}
-
-static int
 trace_strip_copy_rop2(gx_device * dev, const byte * sdata, int sourcex,
                       uint sraster, gx_bitmap_id id,
                       const gx_color_index * scolors,
@@ -447,8 +420,7 @@ static const gs_text_enum_procs_t trace_text_procs = {
 static int
 trace_text_begin(gx_device * dev, gs_gstate * pgs,
                  const gs_text_params_t * text, gs_font * font,
-                 gx_path * path, const gx_device_color * pdcolor,
-                 const gx_clip_path * pcpath, gs_memory_t * memory,
+                 const gx_clip_path * pcpath,
                  gs_text_enum_t ** ppenum)
 {
     static const char *const tags[sizeof(text->operation) * 8] = {
@@ -463,6 +435,8 @@ trace_text_begin(gx_device * dev, gs_gstate * pgs,
     int i;
     gs_text_enum_t *pte;
     int code;
+    const gx_device_color * pdcolor = gs_currentdevicecolor_inline(pgs);
+    gx_path * path = pgs->path;
 
     dmputs(dev->memory,"text_begin(");
     for (i = 0; i < countof(tags); ++i)
@@ -526,7 +500,7 @@ trace_text_begin(gx_device * dev, gs_gstate * pgs,
     rc_alloc_struct_1(pte, gs_text_enum_t, &st_gs_text_enum, memory,
                       goto dflt, "trace_text_begin");
     code = gs_text_enum_init(pte, &trace_text_procs, dev, pgs, text, font,
-                             path, pdcolor, pcpath, memory);
+                             path, pcpath, memory);
     if (code < 0)
         goto dfree;
     if ((text->operation & (TEXT_DO_CHARWIDTH | TEXT_RETURN_WIDTH)) &&
@@ -596,14 +570,41 @@ trace_text_begin(gx_device * dev, gs_gstate * pgs,
     gs_free_object(memory, pte, "trace_text_begin");
  dflt:
     dmputs(dev->memory,") DEFAULTED\n");
-    return gx_default_text_begin(dev, pgs, text, font, path, pdcolor,
-                                 pcpath, memory, ppenum);
+    return gx_default_text_begin(dev, pgs, text, font,
+                                 pcpath, ppenum);
 }
 
 /* ---------------- The device definition ---------------- */
 
-#define TRACE_DEVICE_BODY(dname, ncomp, depth, map_rgb_color, map_color_rgb, map_cmyk_color, map_rgb_alpha_color)\
-    std_device_dci_body(gx_device, 0, dname,\
+static void
+tr_base_initialize_device_procs(gx_device *dev,
+                   dev_proc_map_rgb_color((*map_rgb_color)),
+                   dev_proc_map_color_rgb((*map_color_rgb)),
+                   dev_proc_map_cmyk_color((*map_cmyk_color)))
+{
+    set_dev_proc(dev, map_rgb_color, map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, trace_fill_rectangle);
+    set_dev_proc(dev, copy_mono, trace_copy_mono);
+    set_dev_proc(dev, copy_color, trace_copy_color);
+    set_dev_proc(dev, map_cmyk_color, map_cmyk_color);
+    set_dev_proc(dev, get_page_device, gx_page_device_get_page_device);
+    set_dev_proc(dev, copy_alpha, trace_copy_alpha);
+    set_dev_proc(dev, fill_path, trace_fill_path);
+    set_dev_proc(dev, stroke_path, trace_stroke_path);
+    set_dev_proc(dev, fill_mask, trace_fill_mask);
+    set_dev_proc(dev, fill_trapezoid, trace_fill_trapezoid);
+    set_dev_proc(dev, fill_parallelogram, trace_fill_parallelogram);
+    set_dev_proc(dev, fill_triangle, trace_fill_triangle);
+    set_dev_proc(dev, draw_thin_line, trace_draw_thin_line);
+    set_dev_proc(dev, strip_tile_rectangle, trace_strip_tile_rectangle);
+    set_dev_proc(dev, begin_typed_image, trace_begin_typed_image);
+    set_dev_proc(dev, text_begin, trace_text_begin);
+    set_dev_proc(dev, strip_copy_rop2, trace_strip_copy_rop2);
+}
+
+#define TRACE_DEVICE_BODY(dname, ncomp, depth, init)\
+    std_device_dci_body(gx_device, init, dname,\
                         DEFAULT_WIDTH_10THS * X_DPI / 10,\
                         DEFAULT_HEIGHT_10THS * Y_DPI / 10,\
                         X_DPI, Y_DPI, ncomp, depth,\
@@ -611,93 +612,41 @@ trace_text_begin(gx_device * dev, gs_gstate * pgs,
                         (ncomp > 1 ? (1 << (depth / ncomp)) - 1 : 0),\
                         1 << (depth / ncomp),\
                         (ncomp > 1 ? 1 << (depth / ncomp) : 1)),\
-{\
-     NULL,			/* open_device */\
-     NULL,			/* get_initial_matrix */\
-     NULL,			/* sync_output */\
-     NULL,			/* output_page */\
-     NULL,			/* close_device */\
-     map_rgb_color,		/* differs */\
-     map_color_rgb,		/* differs */\
-     trace_fill_rectangle,\
-     NULL,			/* tile_rectangle */\
-     trace_copy_mono,\
-     trace_copy_color,\
-     NULL,			/* draw_line */\
-     NULL,			/* get_bits */\
-     NULL,			/* get_params */\
-     NULL,			/* put_params */\
-     map_cmyk_color,		/* differs */\
-     NULL,			/* get_xfont_procs */\
-     NULL,			/* get_xfont_device */\
-     map_rgb_alpha_color,	/* differs */\
-     gx_page_device_get_page_device,\
-     NULL,			/* get_alpha_bits */\
-     trace_copy_alpha,\
-     NULL,			/* get_band */\
-     NULL,			/* copy_rop */\
-     trace_fill_path,\
-     trace_stroke_path,\
-     trace_fill_mask,\
-     trace_fill_trapezoid,\
-     trace_fill_parallelogram,\
-     trace_fill_triangle,\
-     trace_draw_thin_line,\
-     NULL,			/* begin_image */\
-     NULL,			/* image_data */\
-     NULL,			/* end_image */\
-     trace_strip_tile_rectangle,\
-     trace_strip_copy_rop,\
-     NULL,			/* get_clipping_box */\
-     trace_begin_typed_image,\
-     NULL,			/* get_bits_rectangle */\
-     NULL,			/* map_color_rgb_alpha */\
-     NULL,			/* create_compositor */\
-     NULL,			/* get_hardware_params */\
-     trace_text_begin,\
-     NULL,			/* finish_copydevice */\
-     NULL,			/* begin_transparency_group */\
-     NULL,			/* end_transparency_group */\
-     NULL,			/* begin_transparency_mask */\
-     NULL,			/* end_transparency_mask */\
-     NULL,			/* discard_transparency_layer */\
-     NULL,			/* get_color_mapping_procs */\
-     NULL,			/* get_color_comp_index */\
-     NULL,			/* encode_color */\
-     NULL,			/* decode_color */\
-     NULL,			/* pattern_manage */\
-     NULL,			/* fill_rectangle_hl_color */\
-     NULL,			/* include_color_space */\
-     NULL,			/* fill_linear_color_scanline */\
-     NULL,			/* fill_linear_color_trapezoid */\
-     NULL,			/* fill_linear_color_triangle */\
-     NULL,			/* update_spot_equivalent_colors */\
-     NULL,			/* ret_devn_params */\
-     NULL,			/* fillpage */\
-     NULL,			/* push_transparency_state */\
-     NULL,			/* pop_transparency_state */\
-     NULL,			/* put_image */\
-     NULL,			/* dev_spec_op */\
-     NULL,			/* copy_planes */\
-     NULL,			/* get_profile */\
-     NULL,			/* set_graphics_type_tag */\
-     trace_strip_copy_rop2\
+}
+
+static void
+tr_mono_initialize_device_procs(gx_device *dev)
+{
+    tr_base_initialize_device_procs(dev,
+                              gx_default_b_w_map_rgb_color,
+                              gx_default_b_w_map_color_rgb, NULL);
+
 }
 
 const gx_device gs_tr_mono_device = {
-    TRACE_DEVICE_BODY("tr_mono", 1, 1,
-                      gx_default_b_w_map_rgb_color,
-                      gx_default_b_w_map_color_rgb, NULL, NULL)
+    TRACE_DEVICE_BODY("tr_mono", 1, 1, tr_mono_initialize_device_procs)
 };
+
+static void
+tr_rgb_initialize_device_procs(gx_device *dev)
+{
+    tr_base_initialize_device_procs(dev,
+                              gx_default_rgb_map_rgb_color,
+                              gx_default_rgb_map_color_rgb, NULL);
+}
 
 const gx_device gs_tr_rgb_device = {
-    TRACE_DEVICE_BODY("tr_rgb", 3, 24,
-                      gx_default_rgb_map_rgb_color,
-                      gx_default_rgb_map_color_rgb, NULL, NULL)
+    TRACE_DEVICE_BODY("tr_rgb", 3, 24, tr_rgb_initialize_device_procs)
 };
 
+static void
+tr_cmyk_initialize_device_procs(gx_device *dev)
+{
+    tr_base_initialize_device_procs(dev,
+                              NULL, cmyk_1bit_map_color_rgb,
+                              cmyk_1bit_map_cmyk_color);
+}
+
 const gx_device gs_tr_cmyk_device = {
-    TRACE_DEVICE_BODY("tr_cmyk", 4, 4,
-                      NULL, cmyk_1bit_map_color_rgb,
-                      cmyk_1bit_map_cmyk_color, NULL)
+    TRACE_DEVICE_BODY("tr_cmyk", 4, 4, tr_cmyk_initialize_device_procs)
 };

@@ -27,11 +27,14 @@
 static dev_proc_print_page(miff24_print_page);
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs miff24_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                gx_default_rgb_map_rgb_color, gx_default_rgb_map_color_rgb);
+static void
+miff24_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb_bg(dev);
+}
+
 const gx_device_printer gs_miff24_device =
-prn_device(miff24_procs, "miff24",
+prn_device(miff24_initialize_device_procs, "miff24",
            DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
            X_DPI, Y_DPI,
            0, 0, 0, 0,		/* margins */

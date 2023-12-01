@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -81,7 +81,7 @@ pl_free_font(gs_memory_t * mem, void *plf, client_name_t cname)
     gs_free_object(mem, (void *)plfont->glyphs.table, cname);
     if (plfont->pfont) {        /* might be only partially constructed */
         gs_purge_font_from_char_caches_completely(plfont->pfont);
-        gs_purge_font(plfont->pfont);
+        (void)gs_purge_font(plfont->pfont);
         gs_free_object(mem, plfont->pfont, cname);
     }
     if (plfont->font_file) {
@@ -465,15 +465,21 @@ pl_glyph_name(gs_font * pfont, gs_glyph glyph, gs_const_string * pstr)
 static int
 pl_decode_glyph(gs_font * font, gs_glyph glyph, int ch, ushort *unicode_return, unsigned int length)
 {
+    unsigned char *ucode = (unsigned char *)unicode_return;
 
     if (ch < 0 || ch > 255)
         return (int) GS_NO_CHAR;
 
     if (length == 0)
-        return 1;
+        return 2;
 
+#if ARCH_IS_BIG_ENDIAN
     *unicode_return = (ushort)ch;
-    return 1;
+#else
+    ucode[0] = 0x00;
+    ucode[1] = ch & 0xff;
+#endif
+    return 2;
 }
 
 /* ---------------- Width cache ---------------- */
@@ -1142,9 +1148,7 @@ pl_load_tt_font(stream * in, gs_font_dir * pdir, gs_memory_t * mem,
     if (code < 0)
         goto error;
 
-    code =
-        pl_fapi_passfont(plfont, 0, NULL, NULL, plfont->header + 6,
-                         plfont->header_size - 6);
+    code = pl_fapi_passfont(plfont, 0, NULL, (char *)file_name, NULL, 0);
     if (code < 0)
         goto error;
     if (file_name)

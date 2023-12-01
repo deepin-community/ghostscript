@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -13,6 +13,27 @@
    CA 94945, U.S.A., +1(415)492-9861, for further information.
 */
 
+/*
+        Some notes on the structure here:
+
+        At the top level, we have 'instances' of Ghostscript (or GPL).
+        Here, 'instance' is short for 'instance of the Ghostscript API'.
+        Each instance is returned by 'gsapi_new_instance'. Every new
+        instance gets a unique gs_lib_ctx_core_t. Each instance can be
+        called from any number of threads, but only from one thread at
+        a time!
+
+        Each instance of Ghostscript owns one or more interpreters.
+        Each interpreter gets a unique gs_lib_ctx_t, that shares the
+        instance's gs_lib_ctx_core_t.
+
+        Each interpreter (by which we include the graphics library
+        called by that interpreter) can make multiple gs_memory_t's.
+        Certainly, every simultaneous (rendering) thread created by by
+        the interpreter will get a unique gs_memory_t. These
+        gs_memory_t's share the same gs_lib_ctx_t (and hence the same
+        gs_lib_ctx_core_t).
+*/
 
 
 /* library context functionality for ghostscript
@@ -32,6 +53,7 @@
 #include "cal.h"
 #endif
 #include "gsargs.h"
+#include "globals.h"
 
 /* Include the extern for the device list. */
 extern_gs_lib_device_list();
@@ -46,16 +68,6 @@ gs_lib_ctx_get_real_stdio(FILE **in, FILE **out, FILE **err)
 
 #include "gslibctx.h"
 #include "gsmemory.h"
-
-#ifndef GS_THREADSAFE
-static gs_memory_t *mem_err_print = NULL;
-
-gs_memory_t *
-gs_lib_ctx_get_non_gc_memory_t()
-{
-    return mem_err_print ? mem_err_print : NULL;
-}
-#endif
 
 /*  This sets the directory to prepend to the ICC profile names specified for
     defaultgray, defaultrgb, defaultcmyk, proofing, linking, named color and device */
@@ -204,7 +216,9 @@ fs_file_open_printer(const gs_memory_t *mem, void *secret, const char *fname, in
         *file = NULL;
         return gs_error_invalidfileaccess;
     }
-    gp_setmode_binary_impl(f, binary_mode);
+    /* The lgtm comment below is required because on some platforms that function
+     * does nothing. */
+    gp_setmode_binary_impl(f, binary_mode); /* lgtm [cpp/useless-expression] */
 
     return 0;
 }
@@ -242,14 +256,19 @@ static cal_allocators cal_allocs =
 int gs_lib_ctx_init(gs_lib_ctx_t *ctx, gs_memory_t *mem)
 {
     gs_lib_ctx_t *pio = NULL;
+    gs_globals *globals;
 
     /* Check the non gc allocator is being passed in */
     if (mem == 0 || mem != mem->non_gc_memory)
         return_error(gs_error_Fatal);
 
-#ifndef GS_THREADSAFE
-    mem_err_print = mem;
-#endif
+    /* Get globals here, earlier than it seems we might need it
+     * because a side effect of this is ensuring that the thread
+     * local storage for the malloc pointer is set up. */
+    globals = gp_get_globals();
+
+    /* Now it's safe to set this. */
+    gp_set_debug_mem_ptr(mem);
 
     if (mem->gs_lib_ctx) /* one time initialization */
         return 0;
@@ -278,6 +297,7 @@ int gs_lib_ctx_init(gs_lib_ctx_t *ctx, gs_memory_t *mem)
             return -1;
         }
         memset(pio->core, 0, sizeof(*pio->core));
+        pio->core->globals = globals;
         pio->core->fs = (gs_fs_list_t *)gs_alloc_bytes_immovable(mem,
                                                                  sizeof(gs_fs_list_t),
                                                                  "gs_lib_ctx_init(gs_fs_list_t)");
@@ -305,15 +325,8 @@ int gs_lib_ctx_init(gs_lib_ctx_t *ctx, gs_memory_t *mem)
         pio->core->fs->next   = NULL;
 
         pio->core->monitor = gx_monitor_alloc(mem);
-        if (pio->core->monitor == NULL) {
-#ifdef WITH_CAL
-            cal_fin(pio->core->cal_ctx, mem);
-#endif
-            gs_free_object(mem, pio->core->fs, "gs_lib_ctx_init");
-            gs_free_object(mem, pio->core, "gs_lib_ctx_init");
-            gs_free_object(mem, pio, "gs_lib_ctx_init");
-            return -1;
-        }
+        if (pio->core->monitor == NULL)
+            goto core_create_failed;
         pio->core->refs = 1;
         pio->core->memory = mem;
 
@@ -324,6 +337,19 @@ int gs_lib_ctx_init(gs_lib_ctx_t *ctx, gs_memory_t *mem)
         pio->core->gs_next_id = 5; /* Cloned contexts share the state */
         /* Set scanconverter to 1 (default) */
         pio->core->scanconverter = GS_SCANCONVERTER_DEFAULT;
+        /* Initialise the underlying CMS. */
+        pio->core->cms_context = gscms_create(mem);
+        if (pio->core->cms_context == NULL) {
+            gx_monitor_free((gx_monitor_t *)(pio->core->monitor));
+core_create_failed:
+#ifdef WITH_CAL
+            cal_fin(pio->core->cal_ctx, mem);
+#endif
+            gs_free_object(mem, pio->core->fs, "gs_lib_ctx_init");
+            gs_free_object(mem, pio->core, "gs_lib_ctx_init");
+            gs_free_object(mem, pio, "gs_lib_ctx_init");
+            return -1;
+        }
     }
 
     /* Now set the non zero/false/NULL things */
@@ -340,10 +366,6 @@ int gs_lib_ctx_init(gs_lib_ctx_t *ctx, gs_memory_t *mem)
 
     if (gs_lib_ctx_set_default_device_list(mem, gs_dev_defaults,
                                            strlen(gs_dev_defaults)) < 0)
-        goto Failure;
-
-    /* Initialise the underlying CMS. */
-    if (gscms_create(mem))
         goto Failure;
 
     /* Initialise any lock required for the jpx codec */
@@ -397,7 +419,6 @@ void gs_lib_ctx_fin(gs_memory_t *mem)
     ctx_mem = ctx->memory;
 
     sjpxd_destroy(mem);
-    gscms_destroy(ctx_mem);
     gs_free_object(ctx_mem, ctx->profiledir,
         "gs_lib_ctx_fin");
 
@@ -408,14 +429,11 @@ void gs_lib_ctx_fin(gs_memory_t *mem)
     gs_free_object(ctx_mem, ctx->io_device_table_root, "gs_lib_ctx_fin");
     gs_free_object(ctx_mem, ctx->font_dir_root, "gs_lib_ctx_fin");
 
-#ifndef GS_THREADSAFE
-    mem_err_print = NULL;
-#endif
-
     gx_monitor_enter((gx_monitor_t *)(ctx->core->monitor));
     refs = --ctx->core->refs;
     gx_monitor_leave((gx_monitor_t *)(ctx->core->monitor));
     if (refs == 0) {
+        gscms_destroy(ctx->core->cms_context);
         gx_monitor_free((gx_monitor_t *)(ctx->core->monitor));
 #ifdef WITH_CAL
         cal_fin(ctx->core->cal_ctx, ctx->core->memory);
@@ -461,14 +479,7 @@ void *gs_lib_ctx_get_cms_context( const gs_memory_t *mem )
 {
     if (mem == NULL)
         return NULL;
-    return mem->gs_lib_ctx->cms_context;
-}
-
-void gs_lib_ctx_set_cms_context( const gs_memory_t *mem, void *cms_context )
-{
-    if (mem == NULL)
-        return;
-    mem->gs_lib_ctx->cms_context = cms_context;
+    return mem->gs_lib_ctx->core->cms_context;
 }
 
 int gs_lib_ctx_get_act_on_uel( const gs_memory_t *mem )
@@ -503,13 +514,6 @@ int outwrite(const gs_memory_t *mem, const char *str, int len)
     return code;
 }
 
-#ifndef GS_THREADSAFE
-int errwrite_nomem(const char *str, int len)
-{
-    return errwrite(mem_err_print, str, len);
-}
-#endif
-
 int errwrite(const gs_memory_t *mem, const char *str, int len)
 {
     int code;
@@ -518,13 +522,11 @@ int errwrite(const gs_memory_t *mem, const char *str, int len)
     if (len == 0)
         return 0;
     if (mem == NULL) {
-#ifdef GS_THREADSAFE
-        return 0;
-#else
-        mem = mem_err_print;
+#ifdef DEBUG
+        mem = gp_get_debug_mem_ptr();
         if (mem == NULL)
-            return 0;
 #endif
+            return 0;
     }
     ctx = mem->gs_lib_ctx;
     if (ctx == NULL)
@@ -552,13 +554,6 @@ void outflush(const gs_memory_t *mem)
     else if (!core->stdout_fn)
         fflush(core->fstdout);
 }
-
-#ifndef GS_THREADSAFE
-void errflush_nomem(void)
-{
-    errflush(mem_err_print);
-}
-#endif
 
 void errflush(const gs_memory_t *mem)
 {
@@ -655,82 +650,39 @@ rewrite_percent_specifiers(char *s)
 int
 gs_add_outputfile_control_path(gs_memory_t *mem, const char *fname)
 {
-    char *fp, f[gp_file_name_sizeof];
-    const int pipe = 124; /* ASCII code for '|' */
-    const int len = strlen(fname);
-    int i, code;
+    char f[gp_file_name_sizeof];
+    int code;
 
     /* Be sure the string copy will fit */
-    if (len >= gp_file_name_sizeof)
+    if (strlen(fname) >= gp_file_name_sizeof)
         return gs_error_rangecheck;
     strcpy(f, fname);
-    fp = f;
     /* Try to rewrite any %d (or similar) in the string */
     rewrite_percent_specifiers(f);
-    for (i = 0; i < len; i++) {
-        if (f[i] == pipe) {
-           fp = &f[i + 1];
-           /* Because we potentially have to check file permissions at two levels
-              for the output file (gx_device_open_output_file and the low level
-              fopen API, if we're using a pipe, we have to add both the full string,
-              (including the '|', and just the command to which we pipe - since at
-              the pipe_fopen(), the leading '|' has been stripped.
-            */
-           code = gs_add_control_path(mem, gs_permit_file_writing, f);
-           if (code < 0)
-               return code;
-           code = gs_add_control_path(mem, gs_permit_file_control, f);
-           if (code < 0)
-               return code;
-           break;
-        }
-        if (!IS_WHITESPACE(f[i]))
-            break;
-    }
-    code = gs_add_control_path(mem, gs_permit_file_control, fp);
+
+    code = gs_add_control_path(mem, gs_permit_file_control, f);
     if (code < 0)
         return code;
-    return gs_add_control_path(mem, gs_permit_file_writing, fp);
+    return gs_add_control_path(mem, gs_permit_file_writing, f);
 }
 
 int
 gs_remove_outputfile_control_path(gs_memory_t *mem, const char *fname)
 {
-    char *fp, f[gp_file_name_sizeof];
-    const int pipe = 124; /* ASCII code for '|' */
-    const int len = strlen(fname);
-    int i, code;
+    char f[gp_file_name_sizeof];
+    int code;
 
     /* Be sure the string copy will fit */
-    if (len >= gp_file_name_sizeof)
+    if (strlen(fname) >= gp_file_name_sizeof)
         return gs_error_rangecheck;
     strcpy(f, fname);
-    fp = f;
     /* Try to rewrite any %d (or similar) in the string */
-    for (i = 0; i < len; i++) {
-        if (f[i] == pipe) {
-           fp = &f[i + 1];
-           /* Because we potentially have to check file permissions at two levels
-              for the output file (gx_device_open_output_file and the low level
-              fopen API, if we're using a pipe, we have to add both the full string,
-              (including the '|', and just the command to which we pipe - since at
-              the pipe_fopen(), the leading '|' has been stripped.
-            */
-           code = gs_remove_control_path(mem, gs_permit_file_writing, f);
-           if (code < 0)
-               return code;
-           code = gs_remove_control_path(mem, gs_permit_file_control, f);
-           if (code < 0)
-               return code;
-           break;
-        }
-        if (!IS_WHITESPACE(f[i]))
-            break;
-    }
-    code = gs_remove_control_path(mem, gs_permit_file_control, fp);
+    rewrite_percent_specifiers(f);
+
+    code = gs_remove_control_path(mem, gs_permit_file_control, f);
     if (code < 0)
         return code;
-    return gs_remove_control_path(mem, gs_permit_file_writing, fp);
+    return gs_remove_control_path(mem, gs_permit_file_writing, f);
 }
 
 int
@@ -788,14 +740,28 @@ gs_add_control_path_len_flags(const gs_memory_t *mem, gs_path_control_t type, co
             return gs_error_rangecheck;
     }
 
-    rlen = len+1;
-    buffer = (char *)gs_alloc_bytes(core->memory, rlen, "gp_validate_path");
-    if (buffer == NULL)
-        return gs_error_VMerror;
+    /* "%pipe%" do not follow the normal rules for path definitions, so we
+       don't "reduce" them to avoid unexpected results
+     */
+    if (path[0] == '|' || (len > 5 && memcmp(path, "%pipe", 5) == 0)) {
+        buffer = (char *)gs_alloc_bytes(core->memory, len + 1, "gs_add_control_path_len");
+        if (buffer == NULL)
+            return gs_error_VMerror;
+        memcpy(buffer, path, len);
+        buffer[len] = 0;
+        rlen = len;
+    }
+    else {
+        rlen = len + 1;
 
-    if (gp_file_name_reduce(path, (uint)len, buffer, &rlen) != gp_combine_success)
-        return gs_error_invalidfileaccess;
-    buffer[rlen] = 0;
+        buffer = (char *)gs_alloc_bytes(core->memory, rlen, "gs_add_control_path_len");
+        if (buffer == NULL)
+            return gs_error_VMerror;
+
+        if (gp_file_name_reduce(path, (uint)len, buffer, &rlen) != gp_combine_success)
+            return gs_error_invalidfileaccess;
+        buffer[rlen] = 0;
+    }
 
     n = control->num;
     for (i = 0; i < n; i++)
@@ -881,14 +847,28 @@ gs_remove_control_path_len_flags(const gs_memory_t *mem, gs_path_control_t type,
             return gs_error_rangecheck;
     }
 
-    rlen = len+1;
-    buffer = (char *)gs_alloc_bytes(core->memory, rlen, "gp_validate_path");
-    if (buffer == NULL)
-        return gs_error_VMerror;
+    /* "%pipe%" do not follow the normal rules for path definitions, so we
+       don't "reduce" them to avoid unexpected results
+     */
+    if (path[0] == '|' || (len > 5 && memcmp(path, "%pipe", 5) == 0)) {
+        buffer = (char *)gs_alloc_bytes(core->memory, len + 1, "gs_remove_control_path_len");
+        if (buffer == NULL)
+            return gs_error_VMerror;
+        memcpy(buffer, path, len);
+        buffer[len] = 0;
+        rlen = len;
+    }
+    else {
+        rlen = len+1;
 
-    if (gp_file_name_reduce(path, (uint)len, buffer, &rlen) != gp_combine_success)
-        return gs_error_invalidfileaccess;
-    buffer[rlen] = 0;
+        buffer = (char *)gs_alloc_bytes(core->memory, rlen, "gs_remove_control_path_len");
+        if (buffer == NULL)
+            return gs_error_VMerror;
+
+        if (gp_file_name_reduce(path, (uint)len, buffer, &rlen) != gp_combine_success)
+            return gs_error_invalidfileaccess;
+        buffer[rlen] = 0;
+    }
 
     n = control->num;
     for (i = 0; i < n; i++) {
@@ -1381,4 +1361,40 @@ int gs_lib_ctx_callout(gs_memory_t *mem, const char *dev_name,
         entry = entry->next;
     }
     return -1;
+}
+
+int gs_lib_ctx_nts_adjust(gs_memory_t *mem, int adjust)
+{
+    gs_lib_ctx_core_t *core;
+    int ret = 0;
+    gs_globals *globals;
+
+    if (adjust == 0)
+        return 0;
+
+    if (mem == NULL || mem->gs_lib_ctx == NULL || mem->gs_lib_ctx->core == NULL)
+        return_error(gs_error_unknownerror);
+
+    core = mem->gs_lib_ctx->core;
+    globals = core->globals;
+    if (globals == NULL)
+        return 0; /* No globals means just once instance. Adjustment is pointless. */
+
+    gp_global_lock(globals);
+    if (adjust > 0 && globals->non_threadsafe_count != 0)
+        ret = gs_error_unknownerror; /* We already have one non threadsafe device running. */
+    else if (adjust < 0 && globals->non_threadsafe_count == 0)
+        ret = gs_error_unknownerror; /* This indicates something has gone very wrong! */
+    else
+        globals->non_threadsafe_count += adjust;
+    gp_global_unlock(globals);
+
+    if (ret)
+        ret = gs_note_error(ret);
+    return ret;
+}
+
+void gs_globals_init(gs_globals *globals)
+{
+    memset(globals, 0, sizeof(*globals));
 }

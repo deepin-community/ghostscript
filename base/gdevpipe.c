@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -57,7 +57,7 @@ fs_file_open_pipe(const gs_memory_t *mem, void *secret, const char *fname, char 
         return_error(gs_fopen_errno_to_code(errno));
     }
 
-    if (rfname != NULL)
+    if (rfname != NULL && rfname != fname)
         strcpy(rfname, fname);
 
     return 0;
@@ -72,8 +72,28 @@ pipe_fopen(gx_io_device * iodev, const char *fname, const char *access,
 #else
     gs_lib_ctx_t *ctx = mem->gs_lib_ctx;
     gs_fs_list_t *fs = ctx->core->fs;
+    /* The pipe device can be reached in two ways, explicltly with %pipe%
+       or implicitly with "|", so we have to check for both
+     */
+    char f[gp_file_name_sizeof];
+    const char *pipestr = "|";
+    const size_t pipestrlen = strlen(pipestr);
+    const size_t preflen = strlen(iodev->dname);
+    const size_t nlen = strlen(fname);
+    int code1;
 
-    if (gp_validate_path(mem, fname, access) != 0)
+    if (preflen + nlen >= gp_file_name_sizeof)
+        return_error(gs_error_invalidaccess);
+
+    memcpy(f, iodev->dname, preflen);
+    memcpy(f + preflen, fname, nlen + 1);
+
+    code1 = gp_validate_path(mem, f, access);
+
+    memcpy(f, pipestr, pipestrlen);
+    memcpy(f + pipestrlen, fname, nlen + 1);
+
+    if (code1 != 0 && gp_validate_path(mem, f, access) != 0 )
         return gs_error_invalidfileaccess;
 
     /*

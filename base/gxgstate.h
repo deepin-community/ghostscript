@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -81,7 +81,7 @@ typedef struct gx_transfer_s {
         gs_halftone *halftone;			/* (RC) */\
         gs_int_point screen_phase[gs_color_select_count];\
                 /* dev_ht depends on halftone and device resolution. */\
-        gx_device_halftone *dev_ht;		/* (RC) */\
+        gx_device_halftone *dev_ht[HT_OBJTYPE_COUNT];		/* (RC) */\
 \
                 /* Color (device-dependent): */\
 \
@@ -139,7 +139,10 @@ typedef struct gs_gstate_color_s {
  */
 #define gs_cr_state_do_rc_ptrs(m)\
   m(halftone) \
-  m(dev_ht) \
+  m(dev_ht[HT_OBJTYPE_DEFAULT]) \
+  m(dev_ht[HT_OBJTYPE_VECTOR]) \
+  m(dev_ht[HT_OBJTYPE_IMAGE]) \
+  m(dev_ht[HT_OBJTYPE_TEXT]) \
   m(cie_render) \
   m(black_generation) \
   m(undercolor_removal) \
@@ -155,19 +158,22 @@ typedef struct gs_gstate_color_s {
 /* Enumerate the pointers in a c.r. state. */
 #define gs_cr_state_do_ptrs(m)\
   m(0,halftone) \
-  m(1,dev_ht) \
-  m(2,cie_render) \
-  m(3,black_generation) \
-  m(4,undercolor_removal) \
-  m(5,set_transfer.red) \
-  m(6,set_transfer.green) \
-  m(7,set_transfer.blue) \
-  m(8,set_transfer.gray)\
-  m(9,cie_joint_caches) \
-  m(10,pattern_cache) \
-  m(11,devicergb_cs) \
-  m(12,devicecmyk_cs)\
-  m(13,cie_joint_caches_alt)
+  m(1,dev_ht[HT_OBJTYPE_DEFAULT]) \
+  m(2, dev_ht[HT_OBJTYPE_VECTOR]) \
+  m(3, dev_ht[HT_OBJTYPE_IMAGE]) \
+  m(4, dev_ht[HT_OBJTYPE_TEXT]) \
+  m(5,cie_render) \
+  m(6,black_generation) \
+  m(7,undercolor_removal) \
+  m(8,set_transfer.red) \
+  m(9,set_transfer.green) \
+  m(10,set_transfer.blue) \
+  m(11,set_transfer.gray)\
+  m(12,cie_joint_caches) \
+  m(13,pattern_cache) \
+  m(14,devicergb_cs) \
+  m(15,devicecmyk_cs)\
+  m(16,cie_joint_caches_alt)
   /*
    * We handle effective_transfer specially in gsistate.c since its pointers
    * are not enumerated for garbage collection but they are are relocated.
@@ -176,7 +182,7 @@ typedef struct gs_gstate_color_s {
  * This count does not include the effective_transfer pointers since they
  * are not enumerated for GC.
  */
-#define st_cr_state_num_ptrs 14
+#define st_cr_state_num_ptrs 17
 
 struct gs_devicen_color_map_s {
     bool use_alt_cspace;
@@ -264,7 +270,7 @@ struct gs_gstate_s {
     gsicc_manager_t *icc_manager; /* ICC color manager, profile */
     gsicc_link_cache_t *icc_link_cache; /* ICC linked transforms */
     gsicc_profile_cache_t *icc_profile_cache;  /* ICC profiles from PS. */
-    gsicc_blacktext_state_t *black_text_state;  /* Used to store and restore cs for black text */
+    gsicc_blacktextvec_state_t *black_textvec_state;  /* Used to store and restore cs for black text */
 
     CUSTOM_COLOR_PTR        /* Pointer to custom color callback struct */
     const gx_color_map_procs *
@@ -279,6 +285,9 @@ struct gs_gstate_s {
     gs_matrix ctm_default;
     bool ctm_default_set;       /* if true, use ctm_default; */
                                 /* if false, ask device */
+    gs_matrix ctm_initial;  /* The value of the device initial matrix at the time the default was set. */
+    bool ctm_initial_set;   /* if true, modification set. If not, assume identity. */
+
     /* Paths: */
 
     gx_path *path;
@@ -369,7 +378,7 @@ struct gs_gstate_s {
     s->icc_link_cache = __state_init.icc_link_cache; \
     s->icc_profile_cache = __state_init.icc_profile_cache; \
     s->get_cmap_procs = __state_init.get_cmap_procs; \
-    s->black_text_state = NULL; \
+    s->black_textvec_state = NULL; \
     s->show_gstate = NULL; \
     s->is_fill_color = 1; \
     s->strokeconstantalpha = 1.0; \
@@ -413,7 +422,7 @@ struct_proc_finalize(gs_gstate_finalize);
   m(17, font) \
   m(18, root_font) \
   m(19, show_gstate) \
-  m(20, black_text_state)
+  m(20, black_textvec_state)
 
 #define gs_gstate_num_ptrs 21
 
@@ -468,5 +477,25 @@ static inline void ensure_tag_is_set(gs_gstate *pgs, gx_device *dev, gs_graphics
     }
 }
 
+/* Adjust the color reference counts for the current space. */
+static inline void
+cs_adjust_color_count(gs_gstate *pgs, int delta)
+{
+    gs_color_space *pcs = gs_currentcolorspace_inline(pgs);
+
+    (pcs->type->adjust_color_count)(gs_currentcolor_inline(pgs),
+                                    pcs, delta);
+}
+
+/* Adjust the color reference counts for the swapped space (i.e.
+ * the one that is not current). */
+static inline void
+cs_adjust_swappedcolor_count(gs_gstate *pgs, int delta)
+{
+    gs_color_space *pcs = gs_swappedcolorspace_inline(pgs);
+
+    (pcs->type->adjust_color_count)(gs_swappedcolor_inline(pgs),
+                                    pcs, delta);
+}
 
 #endif /* gxistate_INCLUDED */

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -45,7 +45,13 @@
  * Acrobat 4 is now more than 20 years old, lets just drop support for it. The
  * PDF specification never had this limit, just Adobe's software.
  */
-/* #define MAX_USER_COORD 16300 */
+/* 31/05/2021 However, it transpires that the PDF/A-1 specification adopted the
+ * implementation limits of Acrobat 5 as part of the specification. So we need
+ * to handle that, but we don't need to limit ourselves to the more restrictive
+ * Acrobat 4 limit of 16384 ( MAX_USER_COORD 16300), we can use 32767. THis is only
+ * used when creating PDF/A-1 files.
+ */
+#define MAX_USER_COORD 32700
 
 /* ---------------- Statically allocated sizes ---------------- */
 /* These should really be dynamic.... */
@@ -497,7 +503,7 @@ typedef struct pdf_viewer_state_s {
     bool text_knockout; /* state.text_knockout */
     bool fill_overprint;
     bool stroke_overprint;
-    bool stroke_adjust; /* state.stroke_adjust */
+    int stroke_adjust; /* state.stroke_adjust */
     bool fill_used_process_color;
     bool stroke_used_process_color;
     gx_hl_saved_color saved_fill_color;
@@ -635,7 +641,7 @@ struct gx_device_pdf_s {
     gs_param_string OwnerPassword;
     gs_param_string UserPassword;
     uint KeyLength;
-    uint Permissions;
+    int32_t Permissions;
     uint EncryptionR;
     gs_param_string NoEncrypt;
     bool EncryptMetadata;
@@ -850,6 +856,7 @@ struct gx_device_pdf_s {
                         Used only with uncached charprocs. */
     bool PS_accumulator; /* A flag to determine whether a given
                          accumulator is for a PostScript type 3 font or not. */
+    bool Scaled_accumulator; /* We scale teh CTM when accumulating type 3 fonts */
     bool accumulating_a_global_object; /* ps2write only.
                         Accumulating a global object (such as a named Form,
                         so that resources used in it must also be global.
@@ -939,13 +946,19 @@ struct gx_device_pdf_s {
                                      * anything in the image processing routines.
                                      */
     float UserUnit;
-    pdf_OCR_usage UseOCR;                     /* Never, AsNeeded or Always */
+    pdf_OCR_usage UseOCR;           /* Never, AsNeeded or Always */
     gs_text_enum_t* OCRSaved;       /* Saved state of the text enumerator before rendering glyph bitmaps for later OCR */
     pdf_OCR_stage OCRStage;         /* Used to control a (sort of) state machine when using OCR to get a Unicode value for a glyph */
     int *OCRUnicode;                /* Used to pass back the Unicode value from the OCR engine to the text processing */
     gs_char OCR_char_code;          /* Passes the current character code from text processing to the image processing code when rendering glyph bitmaps for OCR */
     gs_glyph OCR_glyph;             /* Passes the current glyph code from text processing to the image processing code when rendering glyph bitmaps for OCR */
     ocr_glyph_t *ocr_glyphs;        /* Records bitmaps and other data from text processing when doing OCR */
+    gs_gstate **initial_pattern_states;
+    bool OmitInfoDate;              /* If true, do not emit CreationDate and ModDate in the Info dictionary and XMP Metadata (must not be true for PDF/X support) */
+    bool OmitXMP;                   /* If true, do not emit an XMP /Metadata block and do not reference it from the Catalog (must not be true for PDF/A output) */
+    bool OmitID;                    /* If true, do not emit a /ID array in the trailer dicionary (must not be true for encrypted files or PDF 2.0) */
+    bool ModifiesPageSize;          /* If true, the new PDF interpreter will not preserve *Box values (the media size has been modified, they will be incorrect) */
+    bool ModifiesPageOrder;         /* If true, the new PDF interpreter will not preserve Outlines or Dests, because they will refer to the wrong page number */
 };
 
 #define is_in_page(pdev)\
@@ -1019,7 +1032,7 @@ dev_proc_fill_rectangle_hl_color(gdev_pdf_fill_rectangle_hl_color);
     /* In gdevpdfv.c */
 dev_proc_include_color_space(gdev_pdf_include_color_space);
     /* In gdevpdft.c */
-dev_proc_create_compositor(gdev_pdf_create_compositor);
+dev_proc_composite(gdev_pdf_composite);
 dev_proc_begin_transparency_group(gdev_pdf_begin_transparency_group);
 dev_proc_end_transparency_group(gdev_pdf_end_transparency_group);
 dev_proc_begin_transparency_mask(gdev_pdf_begin_transparency_mask);
@@ -1261,6 +1274,7 @@ typedef struct pdf_lcvd_s {
     gx_device_memory *mask;
     gx_device_pdf *pdev;
     dev_t_proc_copy_color((*std_copy_color), gx_device);
+    dev_t_proc_copy_mono((*std_copy_mono), gx_device);
     dev_t_proc_fill_rectangle((*std_fill_rectangle), gx_device);
     dev_t_proc_close_device((*std_close_device), gx_device);
     dev_t_proc_get_clipping_box((*std_get_clipping_box), gx_device);
@@ -1282,7 +1296,7 @@ typedef struct pdf_lcvd_s {
 
 int pdf_setup_masked_image_converter(gx_device_pdf *pdev, gs_memory_t *mem, const gs_matrix *m, pdf_lcvd_t **pcvd,
                                  bool need_mask, int x, int y, int w, int h, bool write_on_close);
-int pdf_dump_converted_image(gx_device_pdf *pdev, pdf_lcvd_t *cvd);
+int pdf_dump_converted_image(gx_device_pdf *pdev, pdf_lcvd_t *cvd, int for_pattern);
 void pdf_remove_masked_image_converter(gx_device_pdf *pdev, pdf_lcvd_t *cvd, bool need_mask);
 
 /* ------ Miscellaneous output ------ */

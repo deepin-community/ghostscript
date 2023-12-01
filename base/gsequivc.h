@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -61,7 +61,8 @@ typedef struct equivalent_cmyk_color_params_s {
  * If possible, update the equivalent CMYK color for spot colors.
  */
 int update_spot_equivalent_cmyk_colors(gx_device * pdev,
-                const gs_gstate * pgs, gs_devn_params * pdevn_params,
+                const gs_gstate * pgs, const gs_color_space * pcs,
+                gs_devn_params * pdevn_params,
                 equivalent_cmyk_color_params * pparams);
 
 /*

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -198,8 +198,8 @@ gs_public_st_suffix_add1_final(st_device_xps, gx_device_xps,
     "gx_device_xps", device_xps_enum_ptrs, device_xps_reloc_ptrs,
     gx_device_finalize, st_device_vector, xps_pie);
 
-#define xps_device_body(dname, depth)\
-  std_device_dci_type_body(gx_device_xps, 0, dname, &st_device_xps, \
+#define xps_device_body(dname, depth, init)\
+  std_device_dci_type_body(gx_device_xps, init, dname, &st_device_xps, \
                            DEFAULT_WIDTH_10THS * X_DPI / 10, \
                            DEFAULT_HEIGHT_10THS * Y_DPI / 10, \
                            X_DPI, Y_DPI, \
@@ -214,62 +214,40 @@ static dev_proc_get_params(xps_get_params);
 static dev_proc_put_params(xps_put_params);
 static dev_proc_fill_path(gdev_xps_fill_path);
 static dev_proc_stroke_path(gdev_xps_stroke_path);
-static dev_proc_finish_copydevice(xps_finish_copydevice);
-static dev_proc_begin_image(xps_begin_image);
-
-#define xps_device_procs \
-{ \
-        xps_open_device, \
-        NULL,                   /* get_initial_matrix */\
-        NULL,                   /* sync_output */\
-        xps_output_page,\
-        xps_close_device,\
-        gx_default_rgb_map_rgb_color,\
-        gx_default_rgb_map_color_rgb,\
-        gdev_vector_fill_rectangle,\
-        NULL,                   /* tile_rectangle */\
-        NULL,                   /* copy_mono */\
-        NULL,                   /* copy_color */\
-        NULL,                   /* draw_line */\
-        NULL,                   /* get_bits */\
-        xps_get_params,\
-        xps_put_params,\
-        NULL,                   /* map_cmyk_color */\
-        NULL,                   /* get_xfont_procs */\
-        NULL,                   /* get_xfont_device */\
-        NULL,                   /* map_rgb_alpha_color */\
-        gx_page_device_get_page_device,\
-        NULL,                   /* get_alpha_bits */\
-        NULL,                   /* copy_alpha */\
-        NULL,                   /* get_band */\
-        NULL,                   /* copy_rop */\
-        gdev_xps_fill_path,\
-        gdev_xps_stroke_path,\
-        NULL,                   /* fill_mask */\
-        NULL,                   /* gdev_vector_fill_trapezoid, */     \
-        NULL,                   /* gdev_vector_fill_parallelogram */        \
-        NULL,                   /* gdev_vector_fill_triangle */           \
-        NULL,                   /* draw_thin_line */\
-        xps_begin_image,        /* begin_image */   \
-        NULL,                   /* image_data */\
-        NULL,                   /* end_image */\
-        NULL,                   /* strip_tile_rectangle */\
-        NULL,                    /* strip_copy_rop */\
-        NULL,                   /* get_clipping_box */\
-        NULL,                   /* begin_typed_image */\
-        NULL,                   /* get_bits_rectangle */\
-        NULL,                   /* map_color_rgb_alpha */\
-        NULL,                   /* create_compositor */\
-        NULL,                   /* get_hardware_params */\
-        NULL,                   /* text_begin */\
-        xps_finish_copydevice,\
-        NULL,\
-}
+static dev_proc_initialize_device_procs(xps_initialize_device_procs);
+static dev_proc_begin_typed_image(xps_begin_typed_image);
 
 const gx_device_xps gs_xpswrite_device = {
-    xps_device_body("xpswrite", 24),
-    xps_device_procs
+    xps_device_body("xpswrite", 24, xps_initialize_device_procs),
 };
+
+static int
+xps_initialize_device(gx_device *dev)
+{
+    gx_device_xps *xps = (gx_device_xps*)dev;
+
+    memset(xps->PrinterName, 0x00, MAXPRINTERNAME);
+
+    return 0;
+}
+
+static void
+xps_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, initialize_device, xps_initialize_device);
+    set_dev_proc(dev, open_device, xps_open_device);
+    set_dev_proc(dev, output_page, xps_output_page);
+    set_dev_proc(dev, close_device, xps_close_device);
+    set_dev_proc(dev, map_rgb_color, gx_default_rgb_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gx_default_rgb_map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, gdev_vector_fill_rectangle);
+    set_dev_proc(dev, get_params, xps_get_params);
+    set_dev_proc(dev, put_params, xps_put_params);
+    set_dev_proc(dev, get_page_device, gx_page_device_get_page_device);
+    set_dev_proc(dev, fill_path, gdev_xps_fill_path);
+    set_dev_proc(dev, stroke_path, gdev_xps_stroke_path);
+    set_dev_proc(dev, begin_typed_image, xps_begin_typed_image);
+}
 
 /* Vector device procedures */
 static int
@@ -982,7 +960,7 @@ write_str_to_current_page(gx_device_xps *xps, const char *str)
     char buf[128]; /* easily enough to accommodate the string and a page number */
 
     /* we're one ahead of the page count */
-    int code = gs_sprintf(buf, page_template, xps->page_count+1);
+    int code = gs_snprintf(buf, sizeof(buf), page_template, xps->page_count+1);
     if (code < 0)
         return gs_rethrow_code(code);
 
@@ -1033,7 +1011,7 @@ close_page_relationship(gx_device_xps *xps)
     const char *rels_template = "Documents/1/Pages/_rels/%d.fpage.rels";
     char buf[128]; /* easily enough to accommodate the string and a page number */
 
-    int code = gs_sprintf(buf, rels_template, xps->page_count + 1);
+    int code = gs_snprintf(buf, sizeof(buf), rels_template, xps->page_count + 1);
     if (code < 0)
         return gs_rethrow_code(code);
 
@@ -1051,7 +1029,7 @@ write_page_relationship(gx_device_xps* xps)
     int count = 0;
     xps_relations_t *rel = xps->relations_head;
 
-    int code = gs_sprintf(buf, rels_template, xps->page_count + 1);
+    int code = gs_snprintf(buf, sizeof(buf), rels_template, xps->page_count + 1);
     if (code < 0)
         return gs_rethrow_code(code);
 
@@ -1059,7 +1037,7 @@ write_page_relationship(gx_device_xps* xps)
     fmt = "<Relationship Target = \"/%s\" Id = \"R%d\" Type = %s/>\n";
 
     while (rel) {
-        gs_sprintf(line, fmt, rel->relation, count, rels_req_type);
+        gs_snprintf(line, sizeof(line), fmt, rel->relation, count, rels_req_type);
         write_str_to_zip_file(xps, buf, line);
         rel = rel->next;
         count++;
@@ -1321,14 +1299,6 @@ xps_put_params(gx_device *dev, gs_param_list *plist)
     return code;
 }
 
-static int xps_finish_copydevice(gx_device *dev, const gx_device *from_dev)
-{
-    gx_device_xps *xps = (gx_device_xps*)dev;
-
-    memset(xps->PrinterName, 0x00, MAXPRINTERNAME);
-    return 0;
-}
-
 static int
 set_state_color(gx_device_vector *vdev, const gx_drawing_color *pdc, gx_color_index *color)
 {
@@ -1380,7 +1350,7 @@ xps_beginpage(gx_device_vector *vdev)
     {
         const char *template = "<PageContent Source=\"Pages/%d.fpage\" />";
         /* Note page count is 1 less than the current page */
-        code = gs_sprintf(buf, template, xps->page_count + 1);
+        code = gs_snprintf(buf, sizeof(buf), template, xps->page_count + 1);
         if (code < 0)
             return gs_rethrow_code(code);
 
@@ -1394,7 +1364,7 @@ xps_beginpage(gx_device_vector *vdev)
     {
         const char *page_size_template = "<FixedPage Width=\"%d\" Height=\"%d\" "
             "xmlns=\"http://schemas.microsoft.com/xps/2005/06\" xml:lang=\"en-US\">\n";
-        code = gs_sprintf(buf, page_size_template,
+        code = gs_snprintf(buf, sizeof(buf), page_size_template,
                        (int)(xps->MediaSize[0] * 4.0/3.0),  /* pts -> 1/96 inch */
                        (int)(xps->MediaSize[1] * 4.0/3.0));
         if (code < 0)
@@ -1405,7 +1375,7 @@ xps_beginpage(gx_device_vector *vdev)
     }
     {
         const char *canvas_template = "<Canvas RenderTransform=\"%g,%g,%g,%g,%g,%g\">\n";
-        code = gs_sprintf(buf, canvas_template,
+        code = gs_snprintf(buf, sizeof(buf), canvas_template,
                        96.0/xps->HWResolution[0], 0.0, 0.0,
                        96.0/xps->HWResolution[1], 0.0, 0.0);
         if (code < 0)
@@ -1537,7 +1507,7 @@ xps_finish_image_path(gx_device_vector *vdev)
     write_str_to_current_page(xps, "\t<Path.Fill>\n");
     write_str_to_current_page(xps, "\t\t<ImageBrush ");
     fmt = "ImageSource = \"{ColorConvertedBitmap /%s /%s}\" Viewbox=\"%d, %d, %d, %d\" ViewboxUnits = \"Absolute\" Viewport = \"%d, %d, %d, %d\" ViewportUnits = \"Absolute\" TileMode = \"None\" >\n";
-    gs_sprintf(line, fmt, xps->xps_pie->file_name, xps->xps_pie->icc_name,
+    gs_snprintf(line, sizeof(line), fmt, xps->xps_pie->file_name, xps->xps_pie->icc_name,
         0, 0, xps->xps_pie->width, xps->xps_pie->height, 0, 0,
         xps->xps_pie->width, xps->xps_pie->height);
     write_str_to_current_page(xps, line);
@@ -1547,7 +1517,7 @@ xps_finish_image_path(gx_device_vector *vdev)
     write_str_to_current_page(xps, "\t\t\t<ImageBrush.Transform>\n");
     fmt = "\t\t\t\t<MatrixTransform Matrix = \"%g,%g,%g,%g,%g,%g\" />\n";
     matrix = xps->xps_pie->mat;
-    gs_sprintf(line, fmt,
+    gs_snprintf(line, sizeof(line), fmt,
         matrix.xx, matrix.xy, matrix.yx, matrix.yy, matrix.tx, matrix.ty);
     write_str_to_current_page(xps, line);
     write_str_to_current_page(xps, "\t\t\t</ImageBrush.Transform>\n");
@@ -1589,7 +1559,7 @@ xps_dorect(gx_device_vector *vdev, fixed x0, fixed y0,
     if (image_brush_fill(type, xps->filltype)) {
         /* Do the path data  */
         fmt = "<Path Data=\"M %g, %g L %g, %g %g, %g %g, %g Z\" >\n";
-        gs_sprintf(line, fmt,
+        gs_snprintf(line, sizeof(line), fmt,
             fixed2float(x0), fixed2float(y0),
             fixed2float(x0), fixed2float(y1),
             fixed2float(x1), fixed2float(y1),
@@ -1603,7 +1573,7 @@ xps_dorect(gx_device_vector *vdev, fixed x0, fixed y0,
         /* NB - F0 should be changed for a different winding type */
         fmt = "Fill=\"#%06X\" Data=\"M %g,%g V %g H %g V %g Z\" ";
         c = xps->fillcolor & 0xffffffL;
-        gs_sprintf(line, fmt, c,
+        gs_snprintf(line, sizeof(line), fmt, c,
                    fixed2float(x0), fixed2float(y0),
                    fixed2float(y1), fixed2float(x1),
                    fixed2float(y0));
@@ -1614,7 +1584,7 @@ xps_dorect(gx_device_vector *vdev, fixed x0, fixed y0,
         write_str_to_current_page(xps, "<Path ");
         fmt = "Stroke=\"#%06X\" Data=\"M %g,%g V %g H %g V %g Z\" ";
         c = xps->strokecolor & 0xffffffL;
-        gs_sprintf(line, fmt, c,
+        gs_snprintf(line, sizeof(line), fmt, c,
                    fixed2float(x0), fixed2float(y0),
                    fixed2float(y1), fixed2float(x1),
                    fixed2float(y0));
@@ -1623,7 +1593,7 @@ xps_dorect(gx_device_vector *vdev, fixed x0, fixed y0,
         if (type & gx_path_type_stroke) {
             /* NB format width. */
             fmt = "StrokeThickness=\"%g\" ";
-            gs_sprintf(line, fmt, xps->linewidth);
+            gs_snprintf(line, sizeof(line), fmt, xps->linewidth);
             write_str_to_current_page(xps, line);
         }
         write_str_to_current_page(xps, "/>\n");
@@ -1683,7 +1653,7 @@ xps_beginpath(gx_device_vector *vdev, gx_path_type_t type)
             fmt = "Fill=\"#%06X\" Data=\"";
         else
             fmt = "Stroke=\"#%06X\" Data=\"";
-        gs_sprintf(line, fmt, c);
+        gs_snprintf(line, sizeof(line), fmt, c);
         write_str_to_current_page(xps, line);
     }
     else {
@@ -1710,7 +1680,7 @@ xps_moveto(gx_device_vector *vdev, double x0, double y0,
         return 0;
     }
 
-    gs_sprintf(line, " M %g,%g", x, y);
+    gs_snprintf(line, sizeof(line), " M %g,%g", x, y);
     write_str_to_current_page(xps, line);
     if_debug1m('_', xps->memory, "xps_moveto %s", line);
     return 0;
@@ -1730,7 +1700,7 @@ xps_lineto(gx_device_vector *vdev, double x0, double y0,
         if_debug1m('_', xps->memory, "xps_lineto: type not supported %x\n", type);
         return 0;
     }
-    gs_sprintf(line, " L %g,%g", x, y);
+    gs_snprintf(line, sizeof(line), " L %g,%g", x, y);
     write_str_to_current_page(xps, line);
     if_debug1m('_', xps->memory, "xps_lineto %s\n", line);
     return 0;
@@ -1750,7 +1720,7 @@ xps_curveto(gx_device_vector *vdev, double x0, double y0,
         return 0;
     }
 
-    gs_sprintf(line, " C %g,%g %g,%g %g,%g", x1, y1,
+    gs_snprintf(line, sizeof(line), " C %g,%g %g,%g %g,%g", x1, y1,
             x2,y2,x3,y3);
     write_str_to_current_page(xps,line);
     if_debug1m('_', xps->memory, "xps_curveto %s\n", line);
@@ -1796,7 +1766,7 @@ xps_endpath(gx_device_vector *vdev, gx_path_type_t type)
     } else if (type & gx_path_type_stroke) {
         /* NB format width. */
         fmt = "\" StrokeThickness=\"%g\" />\n";
-        gs_sprintf(line, fmt, xps->linewidth);
+        gs_snprintf(line, sizeof(line), fmt, xps->linewidth);
         write_str_to_current_page(xps, line);
     } else { /* fill */
         /* close the path data attribute */
@@ -1820,7 +1790,7 @@ static TIFF* tiff_from_name(gx_device_xps *dev, const char *name, int big_endian
 static int tiff_set_values(xps_image_enum_t *pie, TIFF *tif,
                             cmm_profile_t *profile, bool force8bit);
 static void xps_tiff_set_handlers(void);
-static void tiff_client_release(gx_device_xps* dev, TIFF* t);
+static void xps_tiff_cleanup(xps_image_enum_t *xpie);
 
 /* Check if we have the ICC profile in the package */
 static xps_icc_data_t*
@@ -1898,15 +1868,20 @@ xps_write_profile(const gs_gstate *pgs, char *name, cmm_profile_t *profile, gx_d
 }
 
 static int
-xps_begin_image(gx_device *dev, const gs_gstate *pgs,
-                const gs_image_t *pim, gs_image_format_t format,
-                const gs_int_rect *prect, const gx_drawing_color *pdcolor,
-                const gx_clip_path *pcpath, gs_memory_t *mem,
-                gx_image_enum_common_t **pinfo)
+xps_begin_typed_image(gx_device               *dev,
+                const gs_gstate               *pgs,
+                const gs_matrix               *pmat,
+                const gs_image_common_t       *pic,
+                const gs_int_rect             *prect,
+                const gx_drawing_color        *pdcolor,
+                const gx_clip_path            *pcpath,
+                      gs_memory_t             *mem,
+                      gx_image_enum_common_t **pinfo)
 {
     gx_device_vector *vdev = (gx_device_vector *)dev;
     gx_device_xps *xdev = (gx_device_xps *)dev;
-    gs_color_space *pcs = pim->ColorSpace;
+    const gs_image_t *pim = (const gs_image_t *)pic;
+    gs_color_space *pcs;
     xps_image_enum_t *pie = NULL;
     xps_icc_data_t *icc_data;
     gs_matrix mat;
@@ -1922,6 +1897,10 @@ xps_begin_image(gx_device *dev, const gs_gstate *pgs,
     gsicc_rendering_param_t rendering_params;
     bool force8bit = false;
 
+    if (pic->type->index != 1)
+        goto use_default;
+
+    pcs = pim->ColorSpace;
     /* No image mask yet.  Also, need a color space */
     if (pcs == NULL || ((const gs_image1_t *)pim)->ImageMask)
         goto use_default;
@@ -1939,8 +1918,10 @@ xps_begin_image(gx_device *dev, const gs_gstate *pgs,
 
     if (gs_matrix_invert(&pim->ImageMatrix, &mat) < 0)
         goto use_default;
+    if (pmat == NULL)
+        pmat = &ctm_only(pgs);
     if (pgs)
-        gs_matrix_multiply(&mat, &ctm_only(pgs), &mat);
+        gs_matrix_multiply(&mat, pmat, &mat);
 
     pie = gs_alloc_struct(mem, xps_image_enum_t, &st_xps_image_enum,
                           "xps_begin_image");
@@ -1949,6 +1930,7 @@ xps_begin_image(gx_device *dev, const gs_gstate *pgs,
     pie->buffer = NULL;
     pie->devc_buffer = NULL;
     pie->pgs = NULL;
+    pie->tif = NULL;
 
     /* Set the brush types to image */
     xps_setstrokebrush(xdev, xps_imagebrush);
@@ -1979,8 +1961,10 @@ xps_begin_image(gx_device *dev, const gs_gstate *pgs,
         if (gs_color_space_is_PSCIE(pcs)) {
             if (pcs->icc_equivalent == NULL) {
                 bool is_lab;
-                if (pgs == NULL)
-                    return(gs_error_invalidaccess);
+                if (pgs == NULL) {
+                    gs_free_object(mem, *pinfo, "xps_begin_image");
+                    return_error(gs_error_invalidaccess);
+                }
                 gs_colorspace_set_icc_equivalent(pcs, &is_lab, pgs->memory);
             }
             icc_profile = pcs->icc_equivalent->cmm_icc_profile_data;
@@ -1999,8 +1983,10 @@ xps_begin_image(gx_device *dev, const gs_gstate *pgs,
         rendering_params.preserve_black = gsBKPRESNOTSPECIFIED;
         rendering_params.rendering_intent = gsPERCEPTUAL;
         rendering_params.cmm = gsCMM_DEFAULT;
-        if (pgs == NULL)
-            return(gs_error_invalidaccess);
+        if (pgs == NULL) {
+            gs_free_object(mem, *pinfo, "xps_begin_image");
+            return_error(gs_error_invalidaccess);
+        }
         pie->icc_link = gsicc_get_link_profile(pgs, dev, icc_profile,
             pgs->icc_manager->default_rgb, &rendering_params, pgs->memory, false);
         icc_profile = pgs->icc_manager->default_rgb;
@@ -2014,8 +2000,9 @@ xps_begin_image(gx_device *dev, const gs_gstate *pgs,
         icc_data = (xps_icc_data_t*)gs_alloc_bytes(dev->memory->non_gc_memory,
             sizeof(xps_icc_data_t), "xps_begin_image");
         if (icc_data == NULL) {
+            gs_free_object(mem, *pinfo, "xps_begin_image");
             gs_throw(gs_error_VMerror, "Allocation of icc_data failed");
-            return(gs_error_VMerror);
+            return_error(gs_error_VMerror);
         }
 
         icc_data->hash = gsicc_get_hash(icc_profile);
@@ -2032,24 +2019,32 @@ xps_begin_image(gx_device *dev, const gs_gstate *pgs,
         /* Get name for mark up and for relationship. Have to wait and do
            this after it is added to the package */
         code = xps_create_icc_name(xdev, icc_profile, &(pie->icc_name[0]));
-        if (code < 0)
-            return gs_rethrow_code(code);
+        if (code < 0) {
+            gs_free_object(mem, *pinfo, "xps_begin_image");
+            return_error(gs_rethrow_code(code));
+        }
 
         /* Add profile to the package. Here like images we are going to write
            the data now.  Rather than later. */
-        if (pgs == NULL)
-            return(gs_error_invalidaccess);
+        if (pgs == NULL) {
+            gs_free_object(mem, *pinfo, "xps_begin_image");
+            return_error(gs_error_invalidaccess);
+        }
         code = xps_write_profile(pgs, &(pie->icc_name[0]), icc_profile, xdev);
-        if (code < 0)
-            return gs_rethrow_code(code);
+        if (code < 0) {
+            gs_free_object(mem, *pinfo, "xps_begin_image");
+            return_error(gs_rethrow_code(code));
+        }
 
         /* Add ICC relationship */
         xps_add_icc_relationship(pie);
     } else {
         /* Get name for mark up.  We already have it in the resource list */
         code = xps_create_icc_name(xdev, icc_profile, &(pie->icc_name[0]));
-        if (code < 0)
-            return gs_rethrow_code(code);
+        if (code < 0) {
+            gs_free_object(mem, *pinfo, "xps_begin_image");
+            return_error(gs_rethrow_code(code));
+        }
 
         /* Add ICC relationship.  It may not yet be present for this page. */
         xps_add_icc_relationship(pie);
@@ -2065,8 +2060,10 @@ xps_begin_image(gx_device *dev, const gs_gstate *pgs,
         (*dev_proc(dev, get_clipping_box)) (dev, &bbox);
         gx_cpath_init_local(&cpath, dev->memory);
         code = gx_cpath_from_rectangle(&cpath, &bbox);
-        if (code < 0)
-            return gs_rethrow_code(code);
+        if (code < 0) {
+            gs_free_object(mem, *pinfo, "xps_begin_image");
+            return_error(gs_rethrow_code(code));
+        }
         pcpath = &cpath;
     } else {
         /* Force vector device to do new path as the clip path is the image
@@ -2076,33 +2073,74 @@ xps_begin_image(gx_device *dev, const gs_gstate *pgs,
         ((gx_device_vector*) vdev)->clip_path_id = vdev->no_clip_path_id;
     }
 
-    if (pgs == NULL)
-        return(gs_error_invalidaccess);
-    code = gdev_vector_begin_image(vdev, pgs, pim, format, prect,
+    if (pgs == NULL) {
+        gs_free_object(mem, *pinfo, "xps_begin_image");
+        return_error(gs_error_invalidaccess);
+    }
+    code = gdev_vector_begin_image(vdev, pgs, pim, pim->format, prect,
         pdcolor, pcpath, mem, &xps_image_enum_procs,
         (gdev_vector_image_enum_t *)pie);
-    if (code < 0)
-        return code;
+    if (code < 0) {
+        gs_free_object(mem, pie, "xps_begin_image");
+        return_error(gs_rethrow_code(code));
+    }
 
-    if ((pie->tif = tiff_from_name(xdev, pie->file_name, false, false)) == NULL)
+    if ((pie->tif = tiff_from_name(xdev, pie->file_name, false, false)) == NULL) {
+        gs_free_object(mem, pie, "xps_begin_image");
         return_error(gs_error_VMerror);
+    }
 
     /* Null out pie.  Only needed for the above vector command and tiff set up */
     xdev->xps_pie = NULL;
     xps_tiff_set_handlers();
     code = tiff_set_values(pie, pie->tif, icc_profile, force8bit);
-    if (code < 0)
-        return gs_rethrow_code(code);
+    if (code < 0) {
+        gs_free_object(mem, pie, "xps_begin_image");
+        return_error(gs_rethrow_code(code));
+    }
     code = TIFFCheckpointDirectory(pie->tif);
 
     num_components = gs_color_space_num_components(pcs);
     bits_per_pixel = pim->BitsPerComponent * num_components;
+
+    {
+        /* This is a really hacky attempt to avoid running out of memory. This is
+         * inspired by various OSS-fuzz bugs but in particular 53398. This device
+         * uses the libtiff library to write images into the XPS file, libtiff won't
+         * let us use our own memory manager and have rejected patches to allow it
+         * to do so, so it uses system memory. If we have a badly broken file we
+         * might end up asking it to write a ridiculously large image which will
+         * cause it to eat all system memory. So here we try to limit it to any pre-defined
+         * limit. Also, if the width * height * 24 bits (RGB) goes negative then we know
+         * we've exceeded 2^(64 - 1) bytes, which is unreasonable too.
+         */
+        int64_t memory_needed = (int64_t)pim->Width * (int64_t)pim->Height * 3;
+        gs_memory_status_t status;
+
+        if (memory_needed < 0) {
+            gs_free_object(mem, pie, "xps_begin_image");
+            return_error(gs_error_VMerror);
+        }
+
+        gs_memory_status(dev->memory->gs_lib_ctx->memory, &status);
+        if (status.limit < (size_t)~1) {
+            if ( memory_needed > status.limit) {
+                gs_free_object(mem, pie, "xps_begin_image");
+                return_error(gs_error_VMerror);
+            }
+        }
+    }
+
     pie->decode_st.bps = bits_per_pixel / num_components;
     pie->bytes_comp = (pie->decode_st.bps > 8 ? 2 : 1);
     pie->decode_st.spp = num_components;
     pie->decode_st.unpack = NULL;
     get_unpack_proc((gx_image_enum_common_t*)pie, &(pie->decode_st), pim->format,
         pim->Decode);
+    if (pie->decode_st.unpack == NULL){
+        gs_free_object(mem, pie, "xps_begin_image");
+        return_error(gs_rethrow_code(gs_error_rangecheck));
+    }
 
     /* The decode mapping for index colors needs an adjustment */
     if (csindex == gs_color_space_index_Indexed) {
@@ -2147,8 +2185,8 @@ xps_begin_image(gx_device *dev, const gs_gstate *pgs,
     return 0;
 
 use_default:
-    return gx_default_begin_image(dev, pgs, pim, format, prect,
-        pdcolor, pcpath, mem, pinfo);
+    return gx_default_begin_typed_image(dev, pgs, pmat, pic, prect,
+                                        pdcolor, pcpath, mem, pinfo);
 }
 
 /* Handles conversion from decoded DeviceN, Sep or Indexed space to Device color
@@ -2314,8 +2352,7 @@ xps_image_end_image(gx_image_enum_common_t * info, bool draw_last)
     /* N.B. Write the final strip, if any. */
 
     code = TIFFWriteDirectory(pie->tif);
-    tiff_client_release((gx_device_xps*)(pie->dev), pie->tif);
-    TIFFCleanup(pie->tif);
+    xps_tiff_cleanup(pie);
 
     /* Stuff the image into the zip archive and close the file */
     code = xps_add_tiff_image(pie);
@@ -2329,6 +2366,7 @@ xps_image_end_image(gx_image_enum_common_t * info, bool draw_last)
     /* Add the image relationship */
     code = xps_add_image_relationship(pie);
 
+    gs_free_object(pie->memory, pie, "xps_image_end_image");
 exit:
     return code;
 }
@@ -2591,11 +2629,14 @@ tiff_from_name(gx_device_xps *dev, const char *name, int big_endian, bool usebig
     return t;
 }
 
-static void
-tiff_client_release(gx_device_xps *dev, TIFF *t)
+static void xps_tiff_cleanup(xps_image_enum_t *xpie)
 {
-    gs_free_object(dev->memory->non_gc_memory, TIFFClientdata(t),
-        "tiff_client_release");
+    if (xpie->tif != NULL) {
+        void *t = TIFFClientdata(xpie->tif);
+        TIFFCleanup(xpie->tif);
+        xpie->tif = NULL;
+        gs_free_object(xpie->dev->memory->non_gc_memory, t, "xps_image_enum_finalize");
+    }
 }
 
 static void
@@ -2603,6 +2644,8 @@ xps_image_enum_finalize(const gs_memory_t *cmem, void *vptr)
 {
     xps_image_enum_t *xpie = (xps_image_enum_t *)vptr;
     gx_device_xps *xdev = (gx_device_xps *)xpie->dev;
+
+    xps_tiff_cleanup(xpie);
 
     xpie->dev = NULL;
     if (xpie->pcs != NULL)

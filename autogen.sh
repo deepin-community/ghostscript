@@ -1,6 +1,10 @@
 #!/bin/sh
 # Run this to set up the build system: configure, makefiles, etc.
-
+#
+# NOCONFIGURE
+#  If set to any value it will generate all files but not invoke the
+#  generated configure script.
+#   e.g. NOCONFIGURE=1 ./autogen.sh
 
 package="ghostscript"
 
@@ -29,9 +33,6 @@ rm -rf autom4te.cache
 
 echo "Generating configuration files for $package, please wait...."
 
-echo "  running autoreconf"
-autoreconf || exit 1
-
 if test ! -x config.guess -o ! -x config.sub ; then
   rm -f config.guess config.sub
   cp `automake --print-libdir`/config.guess . || exit 1
@@ -43,11 +44,17 @@ if test ! -x install-sh ; then
   cp `automake --print-libdir`/install-sh . || exit 1
 fi
 
-if test -z "$*"; then
+echo "  running autoreconf"
+autoreconf || exit 1
+
+
+if test x"$NOCONFIGURE" = x""; then
+  if test -z "$*"; then
         echo "I am going to run ./configure with no arguments - if you wish "
         echo "to pass any to it, please specify them on the $0 command line."
-else
+  else
 	echo "running ./configure $@"
-fi
+  fi
 
-$srcdir/configure "$@" && echo
+  $srcdir/configure "$@" && echo
+fi

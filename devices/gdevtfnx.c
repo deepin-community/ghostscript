@@ -39,17 +39,32 @@ static dev_proc_print_page(tiff_rgb_print_page);
 
 /* FIXME: From initial analysis this is NOT safe for bg_printing, but might be fixable */
 
-static const gx_device_procs tiff12_procs =
-prn_color_params_procs(tiff_open, gdev_prn_output_page_seekable, tiff_close,
-                gx_default_rgb_map_rgb_color, gx_default_rgb_map_color_rgb,
-                tiff_get_params, tiff_put_params);
-static const gx_device_procs tiff24_procs =
-prn_color_params_procs(tiff_open, gdev_prn_output_page_seekable, tiff_close,
-                gx_default_rgb_map_rgb_color, gx_default_rgb_map_color_rgb,
-                tiff_get_params, tiff_put_params);
+static void
+tiff12_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb(dev);
+
+    set_dev_proc(dev, open_device, tiff_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page_seekable);
+    set_dev_proc(dev, close_device, tiff_close);
+    set_dev_proc(dev, get_params, tiff_get_params);
+    set_dev_proc(dev, put_params, tiff_put_params);
+}
+
+static void
+tiff24_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb(dev);
+
+    set_dev_proc(dev, open_device, tiff_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page_seekable);
+    set_dev_proc(dev, close_device, tiff_close);
+    set_dev_proc(dev, get_params, tiff_get_params);
+    set_dev_proc(dev, put_params, tiff_put_params);
+}
 
 const gx_device_tiff gs_tiff12nc_device = {
-    prn_device_std_body(gx_device_tiff, tiff12_procs, "tiff12nc",
+    prn_device_std_body(gx_device_tiff, tiff12_initialize_device_procs, "tiff12nc",
                         DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                         X_DPI, Y_DPI,
                         0, 0, 0, 0,
@@ -65,7 +80,7 @@ const gx_device_tiff gs_tiff12nc_device = {
 };
 
 const gx_device_tiff gs_tiff24nc_device = {
-    prn_device_std_body(gx_device_tiff, tiff24_procs, "tiff24nc",
+    prn_device_std_body(gx_device_tiff, tiff24_initialize_device_procs, "tiff24nc",
                         DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                         X_DPI, Y_DPI,
                         0, 0, 0, 0,
@@ -81,7 +96,7 @@ const gx_device_tiff gs_tiff24nc_device = {
 };
 
 const gx_device_tiff gs_tiff48nc_device = {
-    prn_device_std_body(gx_device_tiff, tiff24_procs, "tiff48nc",
+    prn_device_std_body(gx_device_tiff, tiff24_initialize_device_procs, "tiff48nc",
                         DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                         X_DPI, Y_DPI,
                         0, 0, 0, 0,

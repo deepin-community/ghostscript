@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -29,6 +29,8 @@
 #include "gdevdsp.h"
 #include "plwimg.h"
 #include "plapi.h"
+
+#define PJL_UEL "\033%-12345X"
 
 #if 0
 /* FIXME: this is purely because the gsdll.h requires psi/iapi.h and
@@ -341,6 +343,8 @@ main_utf8(int argc, char *argv[])
     char **nargv;
     char dformat[64];
     char ddpi[64];
+    size_t uel_len = strlen(PJL_UEL);
+    int dummy;
 
     /* Mark us as being 'system dpi aware' to avoid horrid scaling */
     avoid_windows_scale();
@@ -421,6 +425,14 @@ main_utf8(int argc, char *argv[])
         memcpy(&nargv[3], &argv[1], argc * sizeof(char *));
 #endif
         code = gsapi_init_with_args(instance, nargc, nargv);
+        if (code >= 0)
+            code = gsapi_run_string_begin(instance, 0, &dummy);
+        if (code >= 0)
+            code = gsapi_run_string_continue(instance, PJL_UEL, uel_len, 0, &dummy);
+        if (code >= 0)
+            code = gsapi_run_string_end(instance, 0, &dummy);
+        if (code == gs_error_InterpreterExit)
+            code = 0;
         code1 = gsapi_exit(instance);
         if (code == 0 || (code == gs_error_Quit && code1 != 0))
             code = code1;
@@ -462,10 +474,10 @@ int wmain(int argc, wchar_t *argv[], wchar_t *envp[]) {
     if (nargv == NULL)
         goto err;
     for (i=0; i < argc; i++) {
-        nargv[i] = malloc(wchar_to_utf8(NULL, argv[i]));
+        nargv[i] = malloc(gp_uint16_to_utf8(NULL, argv[i]));
         if (nargv[i] == NULL)
             goto err;
-        (void)wchar_to_utf8(nargv[i], argv[i]);
+        (void)gp_uint16_to_utf8(nargv[i], argv[i]);
     }
 
     /* Switch console code page to CP_UTF8 (65001) as we may send utf8 strings

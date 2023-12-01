@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -22,6 +22,7 @@
 #include "gdevmem.h"		/* private definitions */
 #include "gzstate.h"
 #include "gxdevcli.h"
+#include "gxdevsop.h"
 
 /* ================ Alpha devices ================ */
 
@@ -31,100 +32,6 @@
  * Currently, we only use them for character rasterizing, but they might be
  * useful for other things someday.
  */
-
-/* We can't initialize the device descriptor statically very well, */
-/* so we patch up the image2 or image4 descriptor. */
-static dev_proc_map_rgb_color(mem_alpha_map_rgb_color);
-static dev_proc_map_color_rgb(mem_alpha_map_color_rgb);
-static dev_proc_map_rgb_alpha_color(mem_alpha_map_rgb_alpha_color);
-static dev_proc_copy_alpha(mem_alpha_copy_alpha);
-
-void
-gs_make_mem_alpha_device(gx_device_memory * adev, gs_memory_t * mem,
-                         gx_device * target, int alpha_bits)
-{
-    gs_make_mem_device(adev, gdev_mem_device_for_bits(alpha_bits),
-                       mem, 0, target);
-    /* This is a black-and-white device ... */
-    adev->color_info = gdev_mem_device_for_bits(1)->color_info;
-    /* ... but it has multiple bits per pixel ... */
-    adev->color_info.depth = alpha_bits;
-    adev->graphics_type_tag = target->graphics_type_tag;
-    /* ... and different color mapping. */
-    set_dev_proc(adev, map_rgb_color, mem_alpha_map_rgb_color);
-    set_dev_proc(adev, map_color_rgb, mem_alpha_map_color_rgb);
-    set_dev_proc(adev, map_rgb_alpha_color, mem_alpha_map_rgb_alpha_color);
-    set_dev_proc(adev, copy_alpha, mem_alpha_copy_alpha);
-}
-
-/* Reimplement color mapping. */
-static gx_color_index
-mem_alpha_map_rgb_color(gx_device * dev, const gx_color_value cv[])
-{
-    gx_device_memory * const mdev = (gx_device_memory *)dev;
-    gx_color_index color = gx_forward_map_rgb_color(dev, cv);
-
-    return (color == 0 || color == gx_no_color_index ? color :
-            (((gx_color_index)1 << mdev->log2_alpha_bits) - 1));
-}
-static int
-mem_alpha_map_color_rgb(gx_device * dev, gx_color_index color,
-                        gx_color_value prgb[3])
-{
-    return
-        gx_forward_map_color_rgb(dev,
-                                 (color == 0 ? color : (gx_color_index) 1),
-                                 prgb);
-}
-static gx_color_index
-mem_alpha_map_rgb_alpha_color(gx_device * dev, gx_color_value r,
-                   gx_color_value g, gx_color_value b, gx_color_value alpha)
-{
-    gx_device_memory * const mdev = (gx_device_memory *)dev;
-    gx_color_index color;
-    gx_color_value cv[3];
-
-    cv[0] = r; cv[1] = g; cv[2] = b;
-    color = gx_forward_map_rgb_color(dev, cv);
-
-    return (color == 0 || color == gx_no_color_index ? color :
-            (gx_color_index) (alpha >> (gx_color_value_bits -
-                                        mdev->log2_alpha_bits)));
-}
-/* Implement alpha copying. */
-static int
-mem_alpha_copy_alpha(gx_device * dev, const byte * data, int data_x,
-           int raster, gx_bitmap_id id, int x, int y, int width, int height,
-                     gx_color_index color, int depth)
-{				/* Just use copy_color. */
-    if (depth == 8) {
-        /* We don't support depth=8 in this function, but this doesn't
-         * matter, because:
-         * 1) This code is only called for dTextAlphaBits > 0, when
-         *    DisableFAPI=true. And we don't support DisableFAPI.
-         * 2) Even if we did support DisableFAPI, this can never actually
-         *    be called because gx_compute_text_oversampling arranges that
-         *    log2_scale.{x,y} sum to <= alpha_bits, and this code is only
-         *    called if it sums to MORE than alpha_bits.
-         * 3) Even if copy_alpha DID somehow manage to be called, the
-         *    only place that uses depth==8 is the imagemask interpolation
-         *    code, and that can never hit this code. (Type 3 fonts might
-         *    include Imagemasks, but those don't go through FAPI).
-         *
-         * If in the future we ever rearrange the conditions under which
-         * this code is called (so that it CAN be called with depth == 8)
-         * then this will probably be best implemented by decimating the
-         * input alpha values to either 2 or 4 bits as appropriate and
-         * then recursively calling us back.
-         */
-        return_error(gs_error_unknownerror);
-    }
-    return (color == 0 ?
-            (*dev_proc(dev, fill_rectangle)) (dev, x, y, width, height,
-                                              color) :
-            (*dev_proc(dev, copy_color)) (dev, data, data_x, raster, id,
-                                          x, y, width, height));
-}
 
 /* ================ Alpha-buffer device ================ */
 
@@ -168,13 +75,26 @@ static dev_proc_copy_mono(mem_abuf_copy_mono);
 static dev_proc_fill_rectangle(mem_abuf_fill_rectangle);
 static dev_proc_get_clipping_box(mem_abuf_get_clipping_box);
 static dev_proc_fill_rectangle_hl_color(mem_abuf_fill_rectangle_hl_color);
+static dev_proc_fill_stroke_path(mem_abuf_fill_stroke_path);
 
 /* The device descriptor. */
+static void
+mem_alpha_initialize_device_procs(gx_device *dev)
+{
+    mem_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, gx_forward_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gx_forward_map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, mem_abuf_fill_rectangle);
+    set_dev_proc(dev, copy_mono, mem_abuf_copy_mono);
+    set_dev_proc(dev, copy_color, gx_default_copy_color);
+    set_dev_proc(dev, strip_copy_rop2, gx_no_strip_copy_rop2);
+    set_dev_proc(dev, fill_rectangle_hl_color, mem_abuf_fill_rectangle_hl_color);
+    set_dev_proc(dev, fill_stroke_path, mem_abuf_fill_stroke_path);
+}
+
 static const gx_device_memory mem_alpha_buffer_device =
-mem_device_hl("image(alpha buffer)", 0, 1,
-           gx_forward_map_rgb_color, gx_forward_map_color_rgb,
-           mem_abuf_copy_mono, gx_default_copy_color, mem_abuf_fill_rectangle,
-           gx_no_strip_copy_rop, mem_abuf_fill_rectangle_hl_color);
+   mem_device("image(alpha buffer)", 0, 1, mem_alpha_initialize_device_procs);
 
 /* Make an alpha-buffer memory device. */
 /* We use abuf instead of alpha_buffer because */
@@ -406,11 +326,13 @@ mem_abuf_copy_mono(gx_device * dev,
         code = y_transfer_next(&yt, dev);
         if (code < 0)
             return code;
-        (*dev_proc(&mem_mono_device, copy_mono)) (dev,
-                                           base + (yt.y_next - y) * sraster,
-                                          sourcex, sraster, gx_no_bitmap_id,
-                                    x, yt.transfer_y, w, yt.transfer_height,
-                                     gx_no_color_index, (gx_color_index) 1);
+        code = mem_mono_copy_mono(dev,
+                                  base + (yt.y_next - y) * sraster,
+                                  sourcex, sraster, gx_no_bitmap_id,
+                                  x, yt.transfer_y, w, yt.transfer_height,
+                                  gx_no_color_index, (gx_color_index) 1);
+        if (code < 0)
+            return code;
     }
     return 0;
 }
@@ -442,9 +364,11 @@ mem_abuf_fill_rectangle(gx_device * dev, int x, int y, int w, int h,
         code = y_transfer_next(&yt, dev);
         if (code < 0)
             return code;
-        (*dev_proc(&mem_mono_device, fill_rectangle)) (dev,
-                                    x, yt.transfer_y, w, yt.transfer_height,
-                                                       (gx_color_index) 1);
+        code = mem_mono_fill_rectangle(dev, x, yt.transfer_y,
+                                       w, yt.transfer_height,
+                                       (gx_color_index) 1);
+        if (code < 0)
+            return code;
     }
     return 0;
 }
@@ -484,11 +408,84 @@ mem_abuf_fill_rectangle_hl_color(gx_device * dev, const gs_fixed_rect *rect,
         code = y_transfer_next(&yt, dev);
         if (code < 0)
             return code;
-        (*dev_proc(&mem_mono_device, fill_rectangle)) (dev,
-                                    x, yt.transfer_y, w, yt.transfer_height,
-                                                       (gx_color_index) 1);
+        code = mem_mono_fill_rectangle(dev, x, yt.transfer_y,
+                                       w, yt.transfer_height,
+                                       (gx_color_index) 1);
+        if (code < 0)
+            return code;
     }
     return 0;
+}
+
+/*
+ * Fill/Stroke a path.  This is the default implementation of the driver
+ * fill_path procedure.
+ */
+int
+mem_abuf_fill_stroke_path(gx_device * pdev, const gs_gstate * pgs,
+                          gx_path * ppath,
+                          const gx_fill_params * params_fill,
+                          const gx_device_color * pdevc_fill,
+                          const gx_stroke_params * params_stroke,
+                          const gx_device_color * pdevc_stroke,
+                          const gx_clip_path * pcpath)
+{
+    int code = 0;
+    int code1;
+    int has_comp = 1;
+    overprint_abuf_state_t param;
+    gx_device_memory* const mdev = (gx_device_memory*)pdev;
+
+    param.op_trans = OP_FS_TRANS_PREFILL;
+    param.pgs = pgs;
+    param.pcpath = pcpath;
+    param.ppath = ppath;
+    param.alpha_buf_path_scale = mdev->log2_scale;
+
+    /* Tell any overprint compositor (maybe a pdf14 device) that's listening to get ready for a fill/stroke. */
+    code = dev_proc(pdev, dev_spec_op)(pdev, gxdso_abuf_optrans, &param, sizeof(param));
+    if (code == gs_error_undefined)
+        has_comp = false; /* No compositor listening. */
+    else if (code < 0)
+        return code; /* Any other error is real. */
+
+    /* Do the fill. */
+    code = dev_proc(pdev, fill_path)(pdev, pgs, ppath, params_fill, pdevc_fill, pcpath);
+    if (code < 0) {
+        /* If the fill failed do any tidy up necessary. */
+        if (has_comp) {
+            param.op_trans = OP_FS_TRANS_CLEANUP;
+            code1 = dev_proc(pdev, dev_spec_op)(pdev, gxdso_abuf_optrans, &param, sizeof(param));
+            if (code1 < 0)
+                code = code1; /* If the pdf14 cleanup failed that is (more) fatal! */
+        }
+        return code;
+    }
+    abuf_flush(mdev);
+
+    /* Handle stroke */
+    gs_swapcolors_quick(pgs);
+    if (has_comp) {
+        param.op_trans = OP_FS_TRANS_PRESTROKE;
+        code = dev_proc(pdev, dev_spec_op)(pdev, gxdso_abuf_optrans, &param, sizeof(param));
+        if (code < 0)
+        {
+            gs_swapcolors_quick(pgs);
+            return code;
+        }
+    }
+    code = dev_proc(pdev, stroke_path)(pdev, pgs, ppath, params_stroke, pdevc_stroke, pcpath);
+    abuf_flush(mdev);
+    gs_swapcolors_quick(pgs);
+
+    /* Tell the compositors we're done. */
+    if (has_comp) {
+        param.op_trans = OP_FS_TRANS_POSTSTROKE;
+        code1 = dev_proc(pdev, dev_spec_op)(pdev, gxdso_abuf_optrans, &param, sizeof(param));
+        if (code >= 0)
+            code = code1;
+    }
+    return code;
 }
 
 /* Get the clipping box.  We must scale this up by the number of alpha bits. */

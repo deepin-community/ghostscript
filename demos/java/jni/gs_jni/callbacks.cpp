@@ -1,8 +1,11 @@
 #include "callbacks.h"
 
 #include "jni_util.h"
+#include "instance_data.h"
 
 #include <string.h>
+#include <unordered_map>
+#include <assert.h>
 
 #define STDIN_SIG "(J[BI)I"
 #define STDOUT_SIG "(J[BI)I"
@@ -31,134 +34,150 @@ Lcom/artifex/gsjava/IntReference;)I"
 
 using namespace util;
 
-static JNIEnv *g_env = NULL;
-
-static jobject g_stdIn = NULL;
-static jobject g_stdOut = NULL;
-static jobject g_stdErr = NULL;
-
-static jobject g_poll = NULL;
-
-static jobject g_displayCallback = NULL;
-
-static jobject g_callout = NULL;
-
-void callbacks::setJNIEnv(JNIEnv *env)
+void callbacks::setJNIEnv(GSInstanceData *idata, JNIEnv *env)
 {
-	g_env = env;
+	idata->env = env;
 }
 
-void callbacks::setIOCallbacks(jobject stdIn, jobject stdOut, jobject stdErr)
+void callbacks::setIOCallbacks(GSInstanceData *idata, jobject stdIn, jobject stdOut, jobject stdErr)
 {
-	if (g_env)
+	if (idata->env)
 	{
-		if (g_stdIn)
-			g_env->DeleteGlobalRef(g_stdIn);
+		if (idata->stdIn)
+			idata->env->DeleteGlobalRef(idata->stdIn);
 
-		if (g_stdOut)
-			g_env->DeleteGlobalRef(g_stdOut);
+		if (idata->stdOut)
+			idata->env->DeleteGlobalRef(idata->stdOut);
 
-		if (g_stdErr)
-			g_env->DeleteGlobalRef(g_stdErr);
+		if (idata->stdErr)
+			idata->env->DeleteGlobalRef(idata->stdErr);
 
-		g_stdIn = g_env->NewGlobalRef(stdIn);
-		g_stdOut = g_env->NewGlobalRef(stdOut);
-		g_stdErr = g_env->NewGlobalRef(stdErr);
+		idata->stdIn = idata->env->NewGlobalRef(stdIn);
+		idata->stdOut = idata->env->NewGlobalRef(stdOut);
+		idata->stdErr = idata->env->NewGlobalRef(stdErr);
 	}
 }
 
 int callbacks::stdInFunction(void *callerHandle, char *buf, int len)
 {
-	int code = 0;
-	if (g_env && g_stdIn)
-	{
-		jbyteArray byteArray = g_env->NewByteArray(len);
-		g_env->SetByteArrayRegion(byteArray, 0, len, (jbyte *)buf);
-		code = callIntMethod(g_env, g_stdIn, "onStdIn", STDIN_SIG, (jlong)callerHandle, byteArray, (jint)len);
-	}
-	return code;
+	GSInstanceData *gsdata = (GSInstanceData *)callerHandle;
+	assert(gsdata);
+
+	if (!gsdata->env || !gsdata->stdErr) return 0;
+
+	jbyteArray byteArray = gsdata->env->NewByteArray(len);
+	gsdata->env->SetByteArrayRegion(byteArray, 0, len, (jbyte *)buf);
+
+	jint result = callIntMethod(gsdata->env, gsdata->stdIn, "onStdIn", STDIN_SIG, (jlong)gsdata->stdioHandle, byteArray, (jint)len);
+	if (gsdata->env->ExceptionCheck()) return 0;
+
+	jboolean isCopy = JNI_FALSE;
+	jbyte *arr = gsdata->env->GetByteArrayElements(byteArray, &isCopy);
+
+	jsize copySize = result < len ? result : len;
+	memcpy(buf, arr, copySize);
+
+	return copySize;
 }
 
 int callbacks::stdOutFunction(void *callerHandle, const char *str, int len)
 {
-	int code = 0;
-	if (g_env && g_stdOut)
-	{
-		jbyteArray byteArray = g_env->NewByteArray(len);
-		g_env->SetByteArrayRegion(byteArray, 0, len, (const jbyte *)str);
-		code = callIntMethod(g_env, g_stdOut, "onStdOut", STDOUT_SIG, (jlong)callerHandle, byteArray, (jint)len);
-	}
-	return code;
+	GSInstanceData *gsdata = (GSInstanceData *)callerHandle;
+	assert(gsdata);
+
+	if (!gsdata->env || !gsdata->stdOut) return len;
+
+	jbyteArray byteArray = gsdata->env->NewByteArray(len);
+	gsdata->env->SetByteArrayRegion(byteArray, 0, len, (const jbyte *)str);
+
+	jint result = callIntMethod(gsdata->env, gsdata->stdOut, "onStdOut", STDOUT_SIG, (jlong)gsdata->stdioHandle, byteArray, (jint)len);
+	if (gsdata->env->ExceptionCheck()) return 0;
+
+	return result;
 }
 
 int callbacks::stdErrFunction(void *callerHandle, const char *str, int len)
 {
-	int code = 0;
-	if (g_env && g_stdErr)
-	{
-		jbyteArray byteArray = g_env->NewByteArray(len);
-		g_env->SetByteArrayRegion(byteArray, 0, len, (const jbyte *)str);
-		code = callIntMethod(g_env, g_stdErr, "onStdErr", STDERR_SIG, (jlong)callerHandle, byteArray, (jint)len);
-	}
-	return code;
+	GSInstanceData *gsdata = (GSInstanceData *)callerHandle;
+	assert(gsdata);
+
+	if (!gsdata->env || !gsdata->stdErr) return len;
+
+	jbyteArray byteArray = gsdata->env->NewByteArray(len);
+	gsdata->env->SetByteArrayRegion(byteArray, 0, len, (const jbyte *)str);
+
+	jint result = callIntMethod(gsdata->env, gsdata->stdErr, "onStdErr", STDERR_SIG, (jlong)gsdata->stdioHandle, byteArray, (jint)len);
+	if (gsdata->env->ExceptionCheck()) return 0;
+
+	return result;
 }
 
-void callbacks::setPollCallback(jobject poll)
+void callbacks::setPollCallback(GSInstanceData *idata, jobject poll)
 {
-	if (g_env)
+	if (idata->env)
 	{
-		if (g_poll)
-			g_env->DeleteGlobalRef(g_poll);
+		if (idata->poll)
+			idata->env->DeleteGlobalRef(idata->poll);
 
-		g_poll = g_env->NewGlobalRef(poll);
+		idata->poll = idata->env->NewGlobalRef(poll);
 	}
 }
 
 int callbacks::pollFunction(void *callerHandle)
 {
 	int code = 0;
-	if (g_env && g_poll)
+
+	GSInstanceData *gsdata = (GSInstanceData *)callerHandle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->poll)
 	{
-		code = callIntMethod(g_env, g_poll, "onPoll", POLL_SIG, (jlong)callerHandle);
+		code = callIntMethod(gsdata->env, gsdata->poll, "onPoll", POLL_SIG, (jlong)gsdata->callerHandle);
 	}
 	return code;
 }
 
-void callbacks::setDisplayCallback(jobject displayCallback)
+void callbacks::setDisplayCallback(GSInstanceData *idata, jobject displayCallback)
 {
-	if (g_env)
+	if (idata->env)
 	{
-		if (g_displayCallback)
+		if (idata->displayCallback)
 		{
-			g_env->DeleteGlobalRef(g_displayCallback);
-			g_displayCallback = NULL;
+			idata->env->DeleteGlobalRef(idata->displayCallback);
+			idata->displayCallback = NULL;
 		}
 
-		g_displayCallback = g_env->NewGlobalRef(displayCallback);
+		idata->displayCallback = idata->env->NewGlobalRef(displayCallback);
 		//g_displayCallback = displayCallback;
 	}
 }
 
-void callbacks::setCalloutCallback(jobject callout)
+void callbacks::setCalloutCallback(GSInstanceData *idata, jobject callout)
 {
-	if (g_env)
+	if (idata->env)
 	{
-		if (g_callout)
-			g_env->DeleteGlobalRef(g_callout);
+		if (idata->callout)
+			idata->env->DeleteGlobalRef(idata->callout);
 
-		g_callout = g_env->NewGlobalRef(callout);
+		idata->callout = idata->env->NewGlobalRef(callout);
 	}
 }
 
 int callbacks::calloutFunction(void *instance, void *handle, const char *deviceName, int id, int size, void *data)
 {
 	int code = 0;
-	if (g_env && g_callout)
+
+	GSInstanceData *gsdata = findDataFromInstance(instance);
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->callout)
 	{
-		jsize len = strlen(deviceName);
-		jbyteArray array = g_env->NewByteArray(len);
-		g_env->SetByteArrayRegion(array, 0, len, (const jbyte *)deviceName);
-		code = callIntMethod(g_env, g_callout, "onCallout", "(JJ[BIIJ)I", (jlong)instance, (jlong)handle, array, id, size, (jlong)data);
+		jsize len = (jsize)strlen(deviceName);
+		jbyteArray array = gsdata->env->NewByteArray(len);
+		gsdata->env->SetByteArrayRegion(array, 0, len, (const jbyte *)deviceName);
+
+		// TODO: gsdata->callerHandle is not consistent with the specification for a callout
+		code = callIntMethod(gsdata->env, gsdata->callout, "onCallout", "(JJ[BIIJ)I", (jlong)instance, (jlong)gsdata->callerHandle, array, id, size, (jlong)data);
 	}
 	return code;
 }
@@ -166,24 +185,32 @@ int callbacks::calloutFunction(void *instance, void *handle, const char *deviceN
 int callbacks::display::displayOpenFunction(void *handle, void *device)
 {
 	int code = 0;
-	if (g_env && g_displayCallback)
+
+	GSInstanceData *gsdata = (GSInstanceData *)handle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->displayCallback)
 	{
-		jclass clazz = g_env->GetObjectClass(g_displayCallback);
-		const char *name = getClassName(g_env, clazz);
+		jclass clazz = gsdata->env->GetObjectClass(gsdata->displayCallback);
+		const char *name = getClassName(gsdata->env, clazz);
 		freeClassName(name);
-		code = callIntMethod(g_env, g_displayCallback, "onDisplayOpen", DISPLAY_OPEN_SIG, (jlong)handle, (jlong)device);
-		CHECK_AND_RETURN(g_env);
+		code = callIntMethod(gsdata->env, gsdata->displayCallback, "onDisplayOpen", DISPLAY_OPEN_SIG, (jlong)gsdata->displayHandle, (jlong)device);
+		CHECK_AND_RETURN(gsdata->env);
 	}
-	return 0;
+	return code;
 }
 
 int callbacks::display::displayPrecloseFunction(void *handle, void *device)
 {
 	int code = 0;
-	if (g_env && g_displayCallback)
+
+	GSInstanceData *gsdata = (GSInstanceData *)handle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->displayCallback)
 	{
-		code = callIntMethod(g_env, g_displayCallback, "onDisplayPreclose", DISPLAY_PRECLOSE_SIG, (jlong)handle, (jlong)device);
-		CHECK_AND_RETURN(g_env);
+		code = callIntMethod(gsdata->env, gsdata->displayCallback, "onDisplayPreclose", DISPLAY_PRECLOSE_SIG, (jlong)gsdata->displayHandle, (jlong)device);
+		CHECK_AND_RETURN(gsdata->env);
 	}
 	return code;
 }
@@ -191,10 +218,14 @@ int callbacks::display::displayPrecloseFunction(void *handle, void *device)
 int callbacks::display::displayCloseFunction(void *handle, void *device)
 {
 	int code = 0;
-	if (g_env && g_displayCallback)
+
+	GSInstanceData *gsdata = (GSInstanceData *)handle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->displayCallback)
 	{
-		code = callIntMethod(g_env, g_displayCallback, "onDisplayClose", DISPLAY_CLOSE_SIG, (jlong)handle, (jlong)device);
-		CHECK_AND_RETURN(g_env);
+		code = callIntMethod(gsdata->env, gsdata->displayCallback, "onDisplayClose", DISPLAY_CLOSE_SIG, (jlong)gsdata->displayHandle, (jlong)device);
+		CHECK_AND_RETURN(gsdata->env);
 	}
 	return code;
 }
@@ -202,11 +233,15 @@ int callbacks::display::displayCloseFunction(void *handle, void *device)
 int callbacks::display::displayPresizeFunction(void *handle, void *device, int width, int height, int raster, unsigned int format)
 {
 	int code = 0;
-	if (g_env && g_displayCallback)
+
+	GSInstanceData *gsdata = (GSInstanceData *)handle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->displayCallback)
 	{
-		code = callIntMethod(g_env, g_displayCallback, "onDisplayPresize", DISPLAY_PRESIZE_SIG, (jlong)handle,
+		code = callIntMethod(gsdata->env, gsdata->displayCallback, "onDisplayPresize", DISPLAY_PRESIZE_SIG, (jlong)gsdata->displayHandle,
 			(jlong)device, width, height, raster, (jint)format);
-		CHECK_AND_RETURN(g_env);
+		CHECK_AND_RETURN(gsdata->env);
 	}
 	return code;
 }
@@ -215,57 +250,61 @@ int callbacks::display::displaySizeFunction(void *handle, void *device, int widt
 	unsigned int format, unsigned char *pimage)
 {
 	int code = 0;
-	if (g_env && g_displayCallback)
+
+	GSInstanceData *gsdata = (GSInstanceData *)handle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->displayCallback)
 	{
 		jsize len = height * raster;
-		jbyteArray byteArray = g_env->NewByteArray(len);
-		g_env->SetByteArrayRegion(byteArray, 0, len, (signed char *)pimage);
+		jbyteArray byteArray = gsdata->env->NewByteArray(len);
+		gsdata->env->SetByteArrayRegion(byteArray, 0, len, (signed char *)pimage);
 
 		static const char *const bytePointerClassName = "com/artifex/gsjava/util/BytePointer";
 		static const char *const nativePointerClassName = "com/artifex/gsjava/util/NativePointer";
 
-		jclass bytePointerClass = g_env->FindClass(bytePointerClassName);
+		jclass bytePointerClass = gsdata->env->FindClass(bytePointerClassName);
 		if (bytePointerClass == NULL)
 		{
-			throwNoClassDefError(g_env, bytePointerClassName);
+			throwNoClassDefError(gsdata->env, bytePointerClassName);
 			return -21;
 		}
 
-		jclass nativePointerClass = g_env->FindClass(nativePointerClassName);
+		jclass nativePointerClass = gsdata->env->FindClass(nativePointerClassName);
 		if (nativePointerClass == NULL)
 		{
-			throwNoClassDefError(g_env, nativePointerClassName);
+			throwNoClassDefError(gsdata->env, nativePointerClassName);
 			return -21;
 		}
 
-		jmethodID constructor = g_env->GetMethodID(bytePointerClass, "<init>", "()V");
+		jmethodID constructor = gsdata->env->GetMethodID(bytePointerClass, "<init>", "()V");
 		if (constructor == NULL)
 		{
-			throwNoSuchMethodError(g_env, "com.artifex.gsjava.util.BytePointer.<init>()V");
+			throwNoSuchMethodError(gsdata->env, "com.artifex.gsjava.util.BytePointer.<init>()V");
 			return -21;
 		}
-		jobject bytePointer = g_env->NewObject(bytePointerClass, constructor);
+		jobject bytePointer = gsdata->env->NewObject(bytePointerClass, constructor);
 
-		jfieldID dataPtrID = g_env->GetFieldID(nativePointerClass, "address", "J");
+		jfieldID dataPtrID = gsdata->env->GetFieldID(nativePointerClass, "address", "J");
 		if (dataPtrID == NULL)
 		{
-			throwNoSuchFieldError(g_env, "address");
+			throwNoSuchFieldError(gsdata->env, "address");
 			return -21;
 		}
 
-		jfieldID lengthID = g_env->GetFieldID(bytePointerClass, "length", "J");
+		jfieldID lengthID = gsdata->env->GetFieldID(bytePointerClass, "length", "J");
 		if (lengthID == NULL)
 		{
-			throwNoSuchFieldError(g_env, "length");
+			throwNoSuchFieldError(gsdata->env, "length");
 			return -21;
 		}
 
-		g_env->SetLongField(bytePointer, dataPtrID, (jlong)pimage);
-		g_env->SetLongField(bytePointer, lengthID, len);
+		gsdata->env->SetLongField(bytePointer, dataPtrID, (jlong)pimage);
+		gsdata->env->SetLongField(bytePointer, lengthID, len);
 
-		code = callIntMethod(g_env, g_displayCallback, "onDisplaySize", DISPLAY_SIZE_SIG, (jlong)handle,
+		code = callIntMethod(gsdata->env, gsdata->displayCallback, "onDisplaySize", DISPLAY_SIZE_SIG, (jlong)gsdata->displayHandle,
 			(jlong)device, width, height, raster, (jint)format, bytePointer);
-		CHECK_AND_RETURN(g_env);
+		CHECK_AND_RETURN(gsdata->env);
 	}
 	return code;
 }
@@ -273,10 +312,14 @@ int callbacks::display::displaySizeFunction(void *handle, void *device, int widt
 int callbacks::display::displaySyncFunction(void *handle, void *device)
 {
 	int code = 0;
-	if (g_env && g_displayCallback)
+
+	GSInstanceData *gsdata = (GSInstanceData *)handle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->displayCallback)
 	{
-		code = callIntMethod(g_env, g_displayCallback, "onDisplaySync", DISPLAY_SYNC_SIG, (jlong)handle, (jlong)device);
-		CHECK_AND_RETURN(g_env);
+		code = callIntMethod(gsdata->env, gsdata->displayCallback, "onDisplaySync", DISPLAY_SYNC_SIG, (jlong)gsdata->displayHandle, (jlong)device);
+		CHECK_AND_RETURN(gsdata->env);
 	}
 	return code;
 }
@@ -284,11 +327,15 @@ int callbacks::display::displaySyncFunction(void *handle, void *device)
 int callbacks::display::displayPageFunction(void *handle, void *device, int copies, int flush)
 {
 	int code = 0;
-	if (g_env && g_displayCallback)
+
+	GSInstanceData *gsdata = (GSInstanceData *)handle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->displayCallback)
 	{
-		code = callIntMethod(g_env, g_displayCallback, "onDisplayPage", DISPLAY_PAGE_SIG, (jlong)handle,
+		code = callIntMethod(gsdata->env, gsdata->displayCallback, "onDisplayPage", DISPLAY_PAGE_SIG, (jlong)gsdata->displayHandle,
 			(jlong)device, copies, flush);
-		CHECK_AND_RETURN(g_env);
+		CHECK_AND_RETURN(gsdata->env);
 	}
 	return code;
 }
@@ -296,11 +343,15 @@ int callbacks::display::displayPageFunction(void *handle, void *device, int copi
 int callbacks::display::displayUpdateFunction(void *handle, void *device, int x, int y, int w, int h)
 {
 	int code = 0;
-	if (g_env && g_displayCallback)
+
+	GSInstanceData *gsdata = (GSInstanceData *)handle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->displayCallback)
 	{
-		code = callIntMethod(g_env, g_displayCallback, "onDisplayUpdate", DISPLAY_UPDATE_SIG, (jlong)handle,
+		code = callIntMethod(gsdata->env, gsdata->displayCallback, "onDisplayUpdate", DISPLAY_UPDATE_SIG, (jlong)gsdata->displayHandle,
 			(jlong)device, x, y, w, h);
-		CHECK_AND_RETURN(g_env);
+		CHECK_AND_RETURN(gsdata->env);
 	}
 	return code;
 }
@@ -309,14 +360,18 @@ int callbacks::display::displaySeparationFunction(void *handle, void *device, in
 	unsigned short c, unsigned short m, unsigned short y, unsigned short k)
 {
 	int code = 0;
-	if (g_env && g_displayCallback)
+
+	GSInstanceData *gsdata = (GSInstanceData *)handle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->displayCallback)
 	{
-		jsize len = strlen(componentName);
-		jbyteArray byteArray = g_env->NewByteArray(len);
-		g_env->SetByteArrayRegion(byteArray, 0, len, (const jbyte *)componentName);
-		code = callIntMethod(g_env, g_displayCallback, "onDisplaySeparation", DISPLAY_SEPARATION_SIG, (jlong)handle,
+		jsize len = (jsize)strlen(componentName);
+		jbyteArray byteArray = gsdata->env->NewByteArray(len);
+		gsdata->env->SetByteArrayRegion(byteArray, 0, len, (const jbyte *)componentName);
+		code = callIntMethod(gsdata->env, gsdata->displayCallback, "onDisplaySeparation", DISPLAY_SEPARATION_SIG, (jlong)gsdata->displayHandle,
 			(jlong)device, component, byteArray, c, m, y, k);
-		CHECK_AND_RETURN(g_env);
+		CHECK_AND_RETURN(gsdata->env);
 	}
 	return code;
 }
@@ -324,11 +379,15 @@ int callbacks::display::displaySeparationFunction(void *handle, void *device, in
 int callbacks::display::displayAdjustBandHeightFunction(void *handle, void *device, int bandHeight)
 {
 	int code = 0;
-	if (g_env && g_displayCallback)
+
+	GSInstanceData *gsdata = (GSInstanceData *)handle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->displayCallback)
 	{
-		code = callIntMethod(g_env, g_displayCallback, "onDisplayAdjustBandHeght", DISPLAY_ADJUST_BAND_HEIGHT_SIG,
-			(jlong)handle, (jlong)device, bandHeight);
-		CHECK_AND_RETURN(g_env);
+		code = callIntMethod(gsdata->env, gsdata->displayCallback, "onDisplayAdjustBandHeght", DISPLAY_ADJUST_BAND_HEIGHT_SIG,
+			(jlong)gsdata->displayHandle, (jlong)device, bandHeight);
+		CHECK_AND_RETURN(gsdata->env);
 	}
 	return code;
 }
@@ -337,20 +396,35 @@ int callbacks::display::displayRectangleRequestFunction(void *handle, void *devi
 	int *raster, int *plane_raster, int *x, int *y, int *w, int *h)
 {
 	int code = 0;
-	if (g_env && g_displayCallback)
-	{
-		Reference memoryRef = Reference(g_env, toWrapperType(g_env, (jlong)*memory));
-		Reference oxRef = Reference(g_env, toWrapperType(g_env, (jint)*ox));
-		Reference oyRef = Reference(g_env, toWrapperType(g_env, (jint)*oy));
-		Reference rasterRef = Reference(g_env, toWrapperType(g_env, (jint)*raster));
-		Reference planeRasterRef = Reference(g_env, toWrapperType(g_env, (jint)*plane_raster));
-		Reference xRef = Reference(g_env, toWrapperType(g_env, (jint)*x));
-		Reference yRef = Reference(g_env, toWrapperType(g_env, (jint)*y));
-		Reference wRef = Reference(g_env, toWrapperType(g_env, (jint)*w));
-		Reference hRef = Reference(g_env, toWrapperType(g_env, (jint)*h));
 
-		code = callIntMethod(g_env, g_displayCallback, "onDisplayRectangleRequest", DISPLAY_RECTANGLE_REQUEST,
-			(jlong)handle, (jlong)device, memoryRef, oxRef, oyRef, rasterRef, planeRasterRef, xRef, yRef, wRef, hRef);
+	GSInstanceData *gsdata = (GSInstanceData *)handle;
+	assert(gsdata);
+
+	if (gsdata->env && gsdata->displayCallback)
+	{
+		Reference memoryRef = Reference(gsdata->env, toWrapperType(gsdata->env, (jlong)*memory));
+		Reference oxRef = Reference(gsdata->env, toWrapperType(gsdata->env, (jint)*ox));
+		Reference oyRef = Reference(gsdata->env, toWrapperType(gsdata->env, (jint)*oy));
+		Reference rasterRef = Reference(gsdata->env, toWrapperType(gsdata->env, (jint)*raster));
+		Reference planeRasterRef = Reference(gsdata->env, toWrapperType(gsdata->env, (jint)*plane_raster));
+		Reference xRef = Reference(gsdata->env, toWrapperType(gsdata->env, (jint)*x));
+		Reference yRef = Reference(gsdata->env, toWrapperType(gsdata->env, (jint)*y));
+		Reference wRef = Reference(gsdata->env, toWrapperType(gsdata->env, (jint)*w));
+		Reference hRef = Reference(gsdata->env, toWrapperType(gsdata->env, (jint)*h));
+
+		code = callIntMethod(gsdata->env, gsdata->displayCallback, "onDisplayRectangleRequest", DISPLAY_RECTANGLE_REQUEST,
+			(jlong)gsdata->displayHandle,
+			(jlong)device,
+			memoryRef.object(),
+			oxRef.object(),
+			oyRef.object(),
+			rasterRef.object(),
+			planeRasterRef.object(),
+			xRef.object(),
+			yRef.object(),
+			wRef.object(),
+			hRef.object()
+		);
 
 		*memory = (void *)memoryRef.longValue();
 		*ox = oxRef.intValue();
@@ -362,7 +436,7 @@ int callbacks::display::displayRectangleRequestFunction(void *handle, void *devi
 		*w = wRef.intValue();
 		*h = hRef.intValue();
 
-		CHECK_AND_RETURN(g_env);
+		CHECK_AND_RETURN(gsdata->env);
 	}
 	return code;
 }

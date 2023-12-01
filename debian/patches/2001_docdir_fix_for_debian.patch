@@ -5,7 +5,7 @@ Last-Update: 2009-04-15
 This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
 --- a/Makefile.in
 +++ b/Makefile.in
-@@ -95,7 +95,7 @@
+@@ -103,7 +103,7 @@
  man1ext = 1
  man1dir = $(mandir)/man$(man1ext)
  datadir = @datadir@
@@ -14,7 +14,7 @@ This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
  
  # The following must be substituted using @datadir@ and @libdir@
  # to avoid adding RPM generation paths (CUPS STR #1112)
-@@ -104,7 +104,7 @@
+@@ -112,7 +112,7 @@
  gssharedir = @libdir@/ghostscript@VERSIONED_PATH@
  gsincludedir = @includedir@/ghostscript/
  
