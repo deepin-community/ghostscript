@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -184,6 +184,7 @@ const op_def zpcolor_l2_op_defs[] =
 
 /* Render the pattern by calling the PaintProc. */
 static int pattern_paint_cleanup(i_ctx_t *);
+static int pattern_paint_cleanup_core(i_ctx_t *, bool);
 static int
 zPaintProc(const gs_client_color * pcc, gs_gstate * pgs)
 {
@@ -244,7 +245,7 @@ pattern_paint_prepare(i_ctx_t *i_ctx_p)
         gs_setdevice_no_init(pgs, (gx_device *)pdev);
         if (pinst->templat.uses_transparency) {
             if_debug0m('v', imemory, "   pushing the pdf14 compositor device into this graphics state\n");
-            if ((code = gs_push_pdf14trans_device(pgs, true, true, 0, 0)) < 0)  /* FIXME: do we need spot_color_count ??? */
+            if ((code = gs_push_pdf14trans_device(pgs, true, true, 0, 0)) < 0)  /* spot color count found from pdf14 target */
                 return code;
         } else { /* not transparent */
             if (pinst->templat.PaintType == 1 && !(pinst->is_clist)
@@ -387,16 +388,25 @@ pattern_paint_finish(i_ctx_t *i_ctx_p)
 #if 0
         dmlprintf1(imemory, "PaintProc left %d extra on operator stack!\n", o_stack_adjust);
 #endif
+        /* Take care here: if anything is added after this that may access the op stack,
+           this needs to be ref_stack_pop() rather than pop().
+         */
         pop(o_stack_adjust);
     }
     esp -= 5;
-    pattern_paint_cleanup(i_ctx_p);
+    pattern_paint_cleanup_core(i_ctx_p, 0);
     return o_pop_estack;
 }
 /* Clean up after rendering a pattern.  Note that iff the rendering */
 /* succeeded, closing the accumulator won't free the bits. */
 static int
 pattern_paint_cleanup(i_ctx_t *i_ctx_p)
+{
+    return pattern_paint_cleanup_core(i_ctx_p, 1);
+}
+
+static int
+pattern_paint_cleanup_core(i_ctx_t *i_ctx_p, bool is_error)
 {
     gx_device_pattern_accum *const pdev =
         r_ptr(esp + 4, gx_device_pattern_accum);
@@ -423,6 +433,16 @@ pattern_paint_cleanup(i_ctx_t *i_ctx_p)
     if (pdev != NULL) {
         /* grestore will free the device, so close it first. */
         (*dev_proc(pdev, close_device)) ((gx_device *) pdev);
+        /* The accumulator device is allocated in "system" memory
+           but the target device may be allocated in the prevailing
+           VM mode (local/global) of the input file, and thus potentially
+           subject to save/restore - which may cause bad things if the
+           accumator hangs around until the end of job restore, which can
+           happen in the even of an error during the PaintProc, so
+           null that pointer for that case.
+         */
+        if (is_error)
+            pdev->target = NULL;
     }
     if (pdev == NULL) {
         gx_device *cdev = r_ptr(esp + 2, gx_device);

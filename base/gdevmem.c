@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -34,11 +34,12 @@ public_st_device_memory();
 static
 ENUM_PTRS_WITH(device_memory_enum_ptrs, gx_device_memory *mptr)
 {
-    return ENUM_USING(st_device_forward, vptr, sizeof(gx_device_forward), index - 3);
+    return ENUM_USING(st_device_forward, vptr, sizeof(gx_device_forward), index - 4);
 }
 case 0: ENUM_RETURN((mptr->foreign_bits ? NULL : (void *)mptr->base));
 case 1: ENUM_RETURN((mptr->foreign_line_pointers ? NULL : (void *)mptr->line_ptrs));
 ENUM_STRING_PTR(2, gx_device_memory, palette);
+case 3: ENUM_RETURN(mptr->owner);
 ENUM_PTRS_END
 static
 RELOC_PTRS_WITH(device_memory_reloc_ptrs, gx_device_memory *mptr)
@@ -62,6 +63,7 @@ RELOC_PTRS_WITH(device_memory_reloc_ptrs, gx_device_memory *mptr)
         RELOC_PTR(gx_device_memory, line_ptrs);
     }
     RELOC_CONST_STRING_PTR(gx_device_memory, palette);
+    RELOC_PTR(gx_device_memory, owner);
     RELOC_USING(st_device_forward, vptr, sizeof(gx_device_forward));
 }
 RELOC_PTRS_END
@@ -122,6 +124,44 @@ gdev_mem_word_device_for_bits(int bits_per_pixel)
             mem_word_devices[bits_per_pixel]);
 }
 
+static const gdev_mem_functions *mem_fns[65] = {
+    NULL, &gdev_mem_fns_1, &gdev_mem_fns_2, NULL,
+                            &gdev_mem_fns_4, NULL, NULL, NULL,
+    &gdev_mem_fns_8, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_16, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_24, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_32, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_40, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_48, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_56, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_64
+};
+
+const gdev_mem_functions *
+gdev_mem_functions_for_bits(int bits_per_pixel)
+{
+    return ((uint)bits_per_pixel > 64 ? NULL : mem_fns[bits_per_pixel]);
+}
+
+static const gdev_mem_functions *mem_word_fns[65] = {
+    NULL, &gdev_mem_fns_1, &gdev_mem_fns_2w, NULL,
+                            &gdev_mem_fns_4w, NULL, NULL, NULL,
+    &gdev_mem_fns_8w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_24w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_32w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_40w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_48w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_56w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_64w
+};
+
+const gdev_mem_functions *
+gdev_mem_word_functions_for_bits(int bits_per_pixel)
+{
+    return ((uint)bits_per_pixel > 64 ? NULL : mem_word_fns[bits_per_pixel]);
+}
+
 /* Test whether a device is a memory device */
 bool
 gs_device_is_memory(const gx_device * dev)
@@ -130,17 +170,7 @@ gs_device_is_memory(const gx_device * dev)
      * We use the draw_thin_line procedure to mark memory devices.
      * See gdevmem.h.
      */
-    int bits_per_pixel = dev->color_info.depth;
-    const gx_device_memory *mdproto;
-
-    if (dev->is_planar)
-        bits_per_pixel /= dev->color_info.num_components;
-
-    mdproto = gdev_mem_device_for_bits(bits_per_pixel);
-    if (mdproto != 0 && dev_proc(dev, draw_thin_line) == dev_proc(mdproto, draw_thin_line))
-        return true;
-    mdproto = gdev_mem_word_device_for_bits(bits_per_pixel);
-    return (mdproto != 0 && dev_proc(dev, draw_thin_line) == dev_proc(mdproto, draw_thin_line));
+    return (dev_proc(dev, draw_thin_line) == mem_draw_thin_line);
 }
 
 /* Make a memory device. */
@@ -149,8 +179,9 @@ void
 gs_make_mem_device(gx_device_memory * dev, const gx_device_memory * mdproto,
                    gs_memory_t * mem, int page_device, gx_device * target)
 {
-    gx_device_init((gx_device *) dev, (const gx_device *)mdproto,
-                   mem, true);
+    /* Can never fail */
+    (void)gx_device_init((gx_device *) dev, (const gx_device *)mdproto,
+                         mem, true);
     dev->stype = &st_device_memory;
     switch (page_device) {
         case -1:
@@ -181,7 +212,6 @@ gs_make_mem_device(gx_device_memory * dev, const gx_device_memory * mdproto,
         dev->graphics_type_tag = target->graphics_type_tag;	/* initialize to same as target */
 
         set_dev_proc(dev, put_image, gx_forward_put_image);
-        set_dev_proc(dev, dev_spec_op, gx_default_dev_spec_op);
     }
     if (dev->color_info.depth == 1) {
         gx_color_value cv[GX_DEVICE_COLOR_MAX_COMPONENTS];
@@ -195,9 +225,11 @@ gs_make_mem_device(gx_device_memory * dev, const gx_device_memory * mdproto,
        gdev_mem_mono_set_inverted(dev, (target == NULL ||
                                    (*dev_proc(dev, encode_color))((gx_device *)dev, cv) != 0));
     }
+    set_dev_proc(dev, dev_spec_op, mem_spec_op);
     check_device_separable((gx_device *)dev);
     gx_device_fill_in_procs((gx_device *)dev);
     dev->band_y = 0;
+    dev->owner = target;
 }
 
 /* Make a memory device using copydevice, this should replace gs_make_mem_device. */
@@ -297,8 +329,10 @@ void
 gs_make_mem_mono_device(gx_device_memory * dev, gs_memory_t * mem,
                         gx_device * target)
 {
-    gx_device_init((gx_device *)dev, (const gx_device *)&mem_mono_device,
-                   mem, true);
+    /* Can never fail */
+    (void)gx_device_init((gx_device *)dev,
+                         (const gx_device *)&mem_mono_device,
+                         mem, true);
     set_dev_proc(dev, get_page_device, gx_default_get_page_device);
     gx_device_set_target((gx_device_forward *)dev, target);
     dev->raster = gx_device_raster((gx_device *)dev, 1);
@@ -308,7 +342,8 @@ gs_make_mem_mono_device(gx_device_memory * dev, gs_memory_t * mem,
     /* Should this be forwarding, monochrome profile, or not set? MJV */
     set_dev_proc(dev, get_profile, gx_forward_get_profile);
     set_dev_proc(dev, set_graphics_type_tag, gx_forward_set_graphics_type_tag);
-    set_dev_proc(dev, dev_spec_op, gx_default_dev_spec_op);
+    set_dev_proc(dev, dev_spec_op, mem_spec_op);
+    dev->owner = target;
     /* initialize to same tag as target */
     dev->graphics_type_tag = target ? target->graphics_type_tag : GS_UNKNOWN_TAG;
 }
@@ -344,13 +379,10 @@ gdev_mem_bits_size(const gx_device_memory * dev, int width, int height, ulong *p
     ulong size;
     int pi;
 
-    if (dev->is_planar)
-    {
-        int has_tags = device_encodes_tags((const gx_device *)dev);
-        num_planes = dev->color_info.num_components + has_tags;
+    if (dev->is_planar) {
+        num_planes = dev->color_info.num_components;
         planes = dev->planes;
-    }
-    else
+    } else
         planes = &plane1, plane1.depth = dev->color_info.depth, num_planes = 1;
     for (size = 0, pi = 0; pi < num_planes; ++pi)
         size += bitmap_raster_pad_align(width * planes[pi].depth, dev->pad, dev->log2_align_mod);
@@ -366,10 +398,9 @@ gdev_mem_bits_size(const gx_device_memory * dev, int width, int height, ulong *p
 ulong
 gdev_mem_line_ptrs_size(const gx_device_memory * dev, int width, int height)
 {
-    int has_tags = device_encodes_tags((const gx_device *)dev);
     int num_planes = 1;
     if (dev->is_planar)
-        num_planes = dev->color_info.num_components + has_tags;
+        num_planes = dev->color_info.num_components;
     return (ulong)height * sizeof(byte *) * num_planes;
 }
 int
@@ -619,12 +650,33 @@ mem_close(gx_device * dev)
     return 0;
 }
 
+/* Memory devices shouldn't allow their dimensions to change */
+static int
+mem_put_params(gx_device * dev, gs_param_list * plist)
+{
+    int code;
+    int width = dev->width, height = dev->height;
+    float xres = dev->HWResolution[0], yres = dev->HWResolution[1];
+    float medw = dev->MediaSize[0], medh = dev->MediaSize[1];
+
+    code = gx_default_put_params(dev, plist);
+
+    dev->width = width;
+    dev->height = height;
+    dev->HWResolution[0] = xres;
+    dev->HWResolution[1] = yres;
+    dev->MediaSize[0] = medw;
+    dev->MediaSize[1] = medh;
+
+    return code;
+}
+
 /* Copy bits to a client. */
 #undef chunk
 #define chunk byte
 int
 mem_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
-                       gs_get_bits_params_t * params, gs_int_rect ** unread)
+                       gs_get_bits_params_t * params)
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     gs_get_bits_options_t options = params->options;
@@ -720,7 +772,7 @@ mem_swap_byte_rect(byte * base, uint raster, int x, int w, int h, bool store)
 /* Copy a word-oriented rectangle to the client, swapping bytes as needed. */
 int
 mem_word_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
-                       gs_get_bits_params_t * params, gs_int_rect ** unread)
+                       gs_get_bits_params_t * params)
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     byte *src;
@@ -736,8 +788,7 @@ mem_word_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
     if (w <= 0 || h <= 0) {
         /*
          * It's easiest to just keep going with an empty rectangle.
-         * We pass the original rectangle to mem_get_bits_rectangle,
-         * so unread will be filled in correctly.
+         * We pass the original rectangle to mem_get_bits_rectangle.
          */
         x = y = w = h = 0;
     }
@@ -749,7 +800,7 @@ mem_word_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
 
     src = scan_line_base(mdev, y);
     mem_swap_byte_rect(src, dev_raster, bit_x, bit_w, h, false);
-    code = mem_get_bits_rectangle(dev, prect, params, unread);
+    code = mem_get_bits_rectangle(dev, prect, params);
     mem_swap_byte_rect(src, dev_raster, bit_x, bit_w, h, false);
     return code;
 }
@@ -827,11 +878,20 @@ mem_mapped_map_color_rgb(gx_device * dev, gx_color_index color,
                          gx_color_value prgb[3])
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
-    const byte *pptr = mdev->palette.data + (int)color * 3;
+    const byte *pptr = mdev->palette.data;
 
-    prgb[0] = gx_color_value_from_byte(pptr[0]);
-    prgb[1] = gx_color_value_from_byte(pptr[1]);
-    prgb[2] = gx_color_value_from_byte(pptr[2]);
+    if (pptr == NULL) {
+        color = color * gx_max_color_value / ((1<<mdev->color_info.depth)-1);
+        prgb[0] = color;
+        prgb[1] = color;
+        prgb[2] = color;
+    } else {
+        pptr += (int)color * 3;
+
+        prgb[0] = gx_color_value_from_byte(pptr[0]);
+        prgb[1] = gx_color_value_from_byte(pptr[1]);
+        prgb[2] = gx_color_value_from_byte(pptr[2]);
+    }
     return 0;
 }
 
@@ -847,4 +907,74 @@ mem_draw_thin_line(gx_device *dev, fixed fx0, fixed fy0, fixed fx1, fixed fy1,
 {
     return gx_default_draw_thin_line(dev, fx0, fy0, fx1, fy1, pdcolor, lop,
                                      adjustx, adjusty);
+}
+
+void mem_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, get_initial_matrix, mem_get_initial_matrix);
+    set_dev_proc(dev, sync_output, gx_default_sync_output);
+    set_dev_proc(dev, output_page, gx_default_output_page);
+    set_dev_proc(dev, close_device, mem_close);
+    set_dev_proc(dev, get_params, gx_default_get_params);
+    set_dev_proc(dev, put_params, mem_put_params);
+    set_dev_proc(dev, get_page_device, gx_forward_get_page_device);
+    set_dev_proc(dev, get_alpha_bits, gx_default_get_alpha_bits);
+    set_dev_proc(dev, fill_path, gx_default_fill_path);
+    set_dev_proc(dev, stroke_path, gx_default_stroke_path);
+    set_dev_proc(dev, fill_mask, gx_default_fill_mask);
+    set_dev_proc(dev, fill_trapezoid, gx_default_fill_trapezoid);
+    set_dev_proc(dev, fill_parallelogram, gx_default_fill_parallelogram);
+    set_dev_proc(dev, fill_triangle, gx_default_fill_triangle);
+    set_dev_proc(dev, draw_thin_line, mem_draw_thin_line);
+    set_dev_proc(dev, get_clipping_box, gx_default_get_clipping_box);
+    set_dev_proc(dev, begin_typed_image, gx_default_begin_typed_image);
+    set_dev_proc(dev, composite, gx_default_composite);
+    set_dev_proc(dev, get_hardware_params, gx_default_get_hardware_params);
+    set_dev_proc(dev, text_begin, gx_default_text_begin);
+    set_dev_proc(dev, transform_pixel_region, mem_transform_pixel_region);
+
+    /* Defaults that may well get overridden. */
+    set_dev_proc(dev, open_device, mem_open);
+    set_dev_proc(dev, copy_alpha, gx_default_copy_alpha);
+    set_dev_proc(dev, map_cmyk_color, gx_default_map_cmyk_color);
+    set_dev_proc(dev, strip_tile_rectangle, gx_default_strip_tile_rectangle);
+    set_dev_proc(dev, get_bits_rectangle, mem_get_bits_rectangle);
+}
+
+void mem_dev_initialize_device_procs(gx_device *dev)
+{
+    int depth = dev->color_info.depth;
+    const gdev_mem_functions *fns;
+
+    if (dev->is_planar)
+        depth /= dev->color_info.num_components;
+    fns = gdev_mem_functions_for_bits(depth);
+
+    mem_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, fns->map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, fns->map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, fns->fill_rectangle);
+    set_dev_proc(dev, copy_mono, fns->copy_mono);
+    set_dev_proc(dev, copy_color, fns->copy_color);
+    set_dev_proc(dev, copy_alpha, fns->copy_alpha);
+    set_dev_proc(dev, strip_copy_rop2, fns->strip_copy_rop2);
+    set_dev_proc(dev, strip_tile_rectangle, fns->strip_tile_rectangle);
+}
+
+void mem_word_dev_initialize_device_procs(gx_device *dev)
+{
+    const gdev_mem_functions *fns =
+                gdev_mem_word_functions_for_bits(dev->color_info.depth);
+
+    mem_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, fns->map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, fns->map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, fns->fill_rectangle);
+    set_dev_proc(dev, copy_mono, fns->copy_mono);
+    set_dev_proc(dev, copy_color, fns->copy_color);
+    set_dev_proc(dev, copy_alpha, fns->copy_alpha);
+    set_dev_proc(dev, strip_copy_rop2, fns->strip_copy_rop2);
+    set_dev_proc(dev, strip_tile_rectangle, fns->strip_tile_rectangle);
 }

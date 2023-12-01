@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -111,6 +111,8 @@ pcl_pattern_free_pattern(gs_memory_t * pmem,
 {
     pcl_pattern_t *pptrn = (pcl_pattern_t *) pvptrn;
 
+    if (pptrn == NULL)
+        return;
     free_pattern_rendering(pmem, pptrn);
     if (pptrn->ppat_data != 0)
         pcl_pattern_data_release(pptrn->ppat_data);
@@ -391,6 +393,7 @@ download_pcl_pattern(pcl_args_t * pargs, pcl_state_t * pcs)
     depth = puptrn0->depth & 0xf;
     pixinfo.pix_depth = depth;
     pixinfo.raster = (pixinfo.size.x * depth + 7) / 8;
+    pixinfo.id = gx_no_bitmap_id;
     rsize = pixinfo.raster * pixinfo.size.y;
     dsize = min(count - ndsize, rsize);
 

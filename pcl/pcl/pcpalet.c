@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -70,6 +70,11 @@ pcl_free_default_objects(gs_memory_t * mem, pcl_state_t * pcs)
         gs_free_object(mem, ppalette, "free_default_palette ppalette free");
         pcs->pdflt_palette = 0;
     }
+    /* We make similar calls here to frgrnd_do_reset(); probably need to keep
+    synced. */
+    rc_decrement(pcs->pfrgrnd, "free foreground");
+    rc_decrement(pcs->pdflt_frgrnd, "free default foreground");
+    rc_decrement(pcs->pwhite_cs, "foreground reset p_white_cs");
     /* what on earth is this? */
     rc_decrement(pcs->pdflt_ht, "free_default_palette pdflt_ht release");
     rc_decrement(pcs->pdflt_ht, "free_default_palette pdflt_ht release");

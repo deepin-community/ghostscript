@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -63,7 +63,7 @@ pdf_make_soft_mask_dict(gx_device_pdf * pdev, const gs_pdf14trans_params_t * ppa
         code = pdf_write_function(pdev, pparams->transfer_function, &id);
         if (code < 0)
             return code;
-        gs_sprintf(buf, " %ld 0 R", id);
+        gs_snprintf(buf, sizeof(buf), " %ld 0 R", id);
         code = cos_dict_put_c_key_string(soft_mask_dict, "/TR", (const byte *)buf, strlen(buf));
         if (code < 0)
             return code;
@@ -110,8 +110,12 @@ pdf_make_group_dict(gx_device_pdf * pdev, const gs_pdf14trans_params_t * pparams
     if (pgs != NULL && pparams->group_color_type != UNKNOWN) {
         const gs_color_space *cs = gs_currentcolorspace_inline(pgs);
 
-        code = pdf_color_space_named(pdev, pgs, &cs_value, NULL, cs,
-                &pdf_color_space_names, false, NULL, 0, false);
+        if (pparams->ColorSpace == NULL)
+            code = pdf_color_space_named(pdev, pgs, &cs_value, NULL, cs,
+                    &pdf_color_space_names, false, NULL, 0, false);
+        else
+            code = pdf_color_space_named(pdev, pgs, &cs_value, NULL, pparams->ColorSpace,
+                    &pdf_color_space_names, false, NULL, 0, false);
         if (code < 0)
             return code;
         code = cos_dict_put_c_key(group_dict, "/CS", &cs_value);
@@ -365,7 +369,7 @@ pdf_end_transparency_mask(gs_gstate * pgs, gx_device_pdf * pdev,
             return 0;
         /* We need to update the 'where_used' field, in case we substituted a resource */
         pres->where_used |= pdev->used_mask;
-        gs_sprintf(buf, "%ld 0 R", pdf_resource_id(pres));
+        gs_snprintf(buf, sizeof(buf), "%ld 0 R", pdf_resource_id(pres));
         if (pdev->pres_soft_mask_dict == 0L) {
             /* something went horribly wrong, we have an 'end' wihtout a matching 'begin'
              * Give up, throw an error.
@@ -401,7 +405,7 @@ pdf_set_blend_params(gs_gstate * pgs, gx_device_pdf * dev,
 }
 
 int
-gdev_pdf_create_compositor(gx_device *dev,
+gdev_pdf_composite(gx_device *dev,
     gx_device **pcdev, const gs_composite_t *pct,
     gs_gstate *pgs, gs_memory_t *memory, gx_device *cdev)
 {
@@ -451,7 +455,7 @@ gdev_pdf_create_compositor(gx_device *dev,
         }
         return 0;
     }
-    return psdf_create_compositor(dev, pcdev, pct, pgs, memory, cdev);
+    return psdf_composite(dev, pcdev, pct, pgs, memory, cdev);
 }
 
 /* We're not sure why the folllowing device methods are never called.

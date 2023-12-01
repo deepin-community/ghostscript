@@ -48,14 +48,15 @@
  * functions below. In this function, rop works in terms of device pixel
  * values, not RGB-space values. */
 int
-mem_mono_strip_copy_rop_dev(gx_device * dev, const byte * sdata,
-                            int sourcex,uint sraster, gx_bitmap_id id,
-                            const gx_color_index * scolors,
-                            const gx_strip_bitmap * textures,
-                            const gx_color_index * tcolors,
-                            int x, int y, int width, int height,
-                            int phase_x, int phase_y,
-                            gs_logical_operation_t lop)
+mem_mono_strip_copy_rop2_dev(gx_device * dev, const byte * sdata,
+                             int sourcex,uint sraster, gx_bitmap_id id,
+                             const gx_color_index * scolors,
+                             const gx_strip_bitmap * textures,
+                             const gx_color_index * tcolors,
+                             int x, int y, int width, int height,
+                             int phase_x, int phase_y,
+                             gs_logical_operation_t lop,
+                             uint planar_height)
 {
     gx_device_memory *mdev = (gx_device_memory *) dev;
     gs_rop3_t rop = (gs_rop3_t)lop;
@@ -66,6 +67,11 @@ mem_mono_strip_copy_rop_dev(gx_device * dev, const byte * sdata,
     const byte *srow;
     int ty;
     rop_run_op ropper;
+
+    if (planar_height != 0) {
+        dmlprintf(dev->memory, "mem_default_strip_copy_rop2 should never be called!\n");
+        return_error(gs_error_Fatal);
+    }
 
     /* Modify the raster operation according to the source palette. */
     if (scolors != 0) {		/* Source with palette. */
@@ -287,10 +293,10 @@ mem_mono_strip_copy_rop_dev(gx_device * dev, const byte * sdata,
                 int sx = sourcex;
                 int dx = x;
                 int w = width;
-                const byte *trow = textures->data + (ty % textures->rep_height) * traster;
+                const byte *trow = textures->data + imod(ty, textures->rep_height) * traster;
                 int xoff = x_offset(phase_x, ty, textures);
                 int nw;
-                int tx = (dx + xoff) % textures->rep_width;
+                int tx = imod(dx + xoff, textures->rep_width);
 
                 /* Loop over (horizontal) copies of the tile. */
                 for (; w > 0; sx += nw, dx += nw, w -= nw, tx = 0) {
@@ -316,10 +322,10 @@ mem_mono_strip_copy_rop_dev(gx_device * dev, const byte * sdata,
         for (; line_count-- > 0; drow += draster, ++ty) {
             int dx = x;
             int w = width;
-            const byte *trow = textures->data + (ty % textures->rep_height) * traster;
+            const byte *trow = textures->data + imod(ty, textures->rep_height) * traster;
             int xoff = x_offset(phase_x, ty, textures);
             int nw;
-            int tx = (dx + xoff) % textures->rep_width;
+            int tx = imod(dx + xoff, textures->rep_width);
 
             /* Loop over (horizontal) copies of the tile. */
             for (; w > 0; dx += nw, w -= nw, tx = 0) {
@@ -365,10 +371,10 @@ mem_mono_strip_copy_rop_dev(gx_device * dev, const byte * sdata,
             int sx = sourcex;
             int dx = x;
             int w = width;
-            const byte *trow = textures->data + (ty % textures->rep_height) * traster;
+            const byte *trow = textures->data + imod(ty, textures->rep_height) * traster;
             int xoff = x_offset(phase_x, ty, textures);
             int nw;
-            int tx = (dx + xoff) % textures->rep_width;
+            int tx = imod(dx + xoff, textures->rep_width);
 
             /* Loop over (horizontal) copies of the tile. */
             for (; w > 0; sx += nw, dx += nw, w -= nw, tx = 0) {
@@ -426,19 +432,25 @@ mem_mono_strip_copy_rop_dev(gx_device * dev, const byte * sdata,
 /* Procedures */
 static dev_proc_map_rgb_color(mem_mono_map_rgb_color);
 static dev_proc_map_color_rgb(mem_mono_map_color_rgb);
-static dev_proc_copy_mono(mem_mono_copy_mono);
-static dev_proc_fill_rectangle(mem_mono_fill_rectangle);
 static dev_proc_strip_tile_rectangle(mem_mono_strip_tile_rectangle);
 
 /* The device descriptor. */
 /* The instance is public. */
 const gx_device_memory mem_mono_device =
-mem_full_alpha_device("image1", 0, 1, mem_open,
-                      mem_mono_map_rgb_color, mem_mono_map_color_rgb,
-         mem_mono_copy_mono, gx_default_copy_color, mem_mono_fill_rectangle,
-                      gx_default_map_cmyk_color, gx_no_copy_alpha,
-                      mem_mono_strip_tile_rectangle, mem_mono_strip_copy_rop,
-                      mem_get_bits_rectangle);
+    mem_device("image1", 0, 1, mem_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_1 =
+{
+    mem_mono_map_rgb_color,
+    mem_mono_map_color_rgb,
+    mem_mono_fill_rectangle,
+    mem_mono_copy_mono,
+    gx_default_copy_color,
+    gx_default_copy_alpha,
+    mem_mono_strip_tile_rectangle,
+    mem_mono_strip_copy_rop2,
+    mem_get_bits_rectangle
+};
 
 /* Map color to/from RGB.  This may be inverted. */
 static gx_color_index
@@ -458,7 +470,7 @@ mem_mono_map_color_rgb(gx_device * dev, gx_color_index color,
 }
 
 /* Fill a rectangle with a color. */
-static int
+int
 mem_mono_fill_rectangle(gx_device * dev, int x, int y, int w, int h,
                         gx_color_index color)
 {
@@ -582,7 +594,7 @@ static const copy_mode copy_modes[16] = {
   (invert ? gs_note_error(-1) :\
    mem_mono_fill_rectangle(dev, x, y, w, h, color0))
 
-static int
+int
 mem_mono_copy_mono(gx_device * dev,
  const byte * source_data, int source_x, int source_raster, gx_bitmap_id id,
    int x, int y, int w, int h, gx_color_index color0, gx_color_index color1)
@@ -617,14 +629,15 @@ mem_mono_copy_mono(gx_device * dev,
     fit_copy(dev, source_data, source_x, source_raster, id, x, y, w, h);
 #ifdef DO_COPY_MONO_BY_COPY_ROP
     if (w >= 32) {
-        return mem_mono_strip_copy_rop_dev(dev, source_data, source_x,
-                                           source_raster,
-                                           id, NULL, NULL, NULL,
-                                           x, y, w, h, 0, 0,
-                                           ((color0 == gx_no_color_index ? rop3_D :
-                                             color0 == 0 ? rop3_0 : rop3_1) & ~rop3_S) |
-                                           ((color1 == gx_no_color_index ? rop3_D :
-                                             color1 == 0 ? rop3_0 : rop3_1) & rop3_S));
+        return mem_mono_strip_copy_rop2_dev(dev, source_data, source_x,
+                                            source_raster,
+                                            id, NULL, NULL, NULL,
+                                            x, y, w, h, 0, 0,
+                                            ((color0 == gx_no_color_index ? rop3_D :
+                                              color0 == 0 ? rop3_0 : rop3_1) & ~rop3_S) |
+                                            ((color1 == gx_no_color_index ? rop3_D :
+                                              color1 == 0 ? rop3_0 : rop3_1) & rop3_S),
+                                            0);
     }
 #endif /* !DO_COPY_MONO_BY_COPY_ROP */
 #if gx_no_color_index_value != -1       /* hokey! */
@@ -867,9 +880,9 @@ int tx, int y, int tw, int th, gx_color_index color0, gx_color_index color1,
     if (rop == 0xAA)
         return gx_default_strip_tile_rectangle(dev, tiles, tx, y, tw, th,
                                                color0, color1, px, py);
-    return mem_mono_strip_copy_rop_dev(dev, NULL, 0, 0, tiles->id, NULL,
-                                       tiles, NULL,
-                                       tx, y, tw, th, px, py, rop);
+    return mem_mono_strip_copy_rop2_dev(dev, NULL, 0, 0, tiles->id, NULL,
+                                        tiles, NULL,
+                                        tx, y, tw, th, px, py, rop, 0);
 #else /* !USE_COPY_ROP */
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     register uint invert;
@@ -894,7 +907,7 @@ int tx, int y, int tw, int th, gx_color_index color0, gx_color_index color1,
     fit_fill(dev, tx, y, tw, th);
     invert = (uint)(-(int) color0);
     source_raster = tiles->raster;
-    source_data = tiles->data + ((y + py) % tiles->rep_height) * source_raster;
+    source_data = tiles->data + (imod(y + py, tiles->rep_height) * source_raster;
     tile_bits_size = tiles->size.y * source_raster;
     end = tiles->data + tile_bits_size;
 #undef END_Y_LOOP
@@ -912,7 +925,7 @@ int tx, int y, int tw, int th, gx_color_index color0, gx_color_index color1,
      * have source_x = 0.
      */
     {
-        int source_x = (x + px) % tiles->rep_width;
+        int source_x = imod(x + px, tiles->rep_width;
 
         w = tiles->size.x - source_x;
         bptr = source_data + ((source_x & ~chunk_align_bit_mask) >> 3);
@@ -1074,6 +1087,8 @@ int tx, int y, int tw, int th, gx_color_index color0, gx_color_index color1,
 #endif /* !USE_COPY_ROP */
 }
 
+
+
 /* ================ "Word"-oriented device ================ */
 
 /* Note that on a big-endian machine, this is the same as the */
@@ -1089,12 +1104,20 @@ static dev_proc_fill_rectangle(mem1_word_fill_rectangle);
 
 /* Here is the device descriptor. */
 const gx_device_memory mem_mono_word_device =
-mem_full_alpha_device("image1w", 0, 1, mem_open,
-                      mem_mono_map_rgb_color, mem_mono_map_color_rgb,
-       mem1_word_copy_mono, gx_default_copy_color, mem1_word_fill_rectangle,
-                      gx_default_map_cmyk_color, gx_no_copy_alpha,
-                      mem1_word_strip_tile_rectangle, gx_no_strip_copy_rop,
-                      mem_word_get_bits_rectangle);
+    mem_device("image1w", 0, 1, mem_word_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_1w =
+{
+    mem_mono_map_rgb_color,
+    mem_mono_map_color_rgb,
+    mem1_word_fill_rectangle,
+    mem1_word_copy_mono,
+    gx_default_copy_color,
+    gx_default_copy_alpha,
+    mem1_word_strip_tile_rectangle,
+    gx_no_strip_copy_rop2,
+    mem_word_get_bits_rectangle
+};
 
 /* Fill a rectangle with a color. */
 static int

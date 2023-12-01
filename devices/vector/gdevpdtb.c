@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -46,8 +46,6 @@
 private_st_pdf_base_font();
 gs_private_st_basic(st_pdf_base_font, pdf_base_font_t, "pdf_base_font_t",\
                     pdf_base_font_ptrs, pdf_base_font_data);
-
-#define SUBSET_PREFIX_SIZE 7	/* XXXXXX+ */
 
 typedef struct pdf_base14_font_info_s {
     const char *urwname;
@@ -316,8 +314,10 @@ pdf_base_font_alloc(gx_device_pdf *pdev, pdf_base_font_t **ppbfont,
             complete = copied;
         else {
             code = gs_copy_font((gs_font *)font, &font->FontMatrix, mem, &complete, -1);
-            if (code < 0)
+            if (code < 0) {
+                gs_free_copied_font(copied);
                 goto fail;
+            }
         }
         code = gs_copy_font_complete((gs_font *)font, complete);
         if (code < 0 && pbfont->do_subset == DO_SUBSET_NO) {
@@ -329,6 +329,8 @@ pdf_base_font_alloc(gx_device_pdf *pdev, pdf_base_font_t **ppbfont,
             emprintf1(pdev->memory,
                       "Can't embed the complete font %s due to font error.\n",
                       buf);
+            gs_free_copied_font(copied);
+            copied = NULL;
             goto fail;
         }
         if (code < 0) {
@@ -349,7 +351,18 @@ pdf_base_font_alloc(gx_device_pdf *pdev, pdf_base_font_t **ppbfont,
      * this is required for PCL, see 'pdf_free_pdf_font_cache' in gdevpdf.c
      * for further details.
      */
+    pdev->pdf_font_dir->global_glyph_code = font->dir->global_glyph_code;
+
     pbfont->copied->dir = pbfont->complete->dir = pdev->pdf_font_dir;
+
+    if (pbfont->copied->FontType == ft_CID_encrypted) {
+        gs_font_cid0 *copied0 = (gs_font_cid0 *)pbfont->copied;
+        int i;
+        for (i = 0; i < copied0->cidata.FDArray_size; ++i) {
+            ((gs_font *)copied0->cidata.FDArray[i])->dir = pdev->pdf_font_dir;
+        }
+    }
+
     pbfont->is_standard = is_standard;
     if (pfname->size > 0) {
         font_name.data = pfname->chars;
@@ -360,7 +373,7 @@ pdf_base_font_alloc(gx_device_pdf *pdev, pdf_base_font_t **ppbfont,
             font_name.size -= SUBSET_PREFIX_SIZE;
         }
     } else {
-        gs_sprintf(fnbuf, ".F" PRI_INTPTR, (intptr_t)copied);
+        gs_snprintf(fnbuf, sizeof(fnbuf), ".F" PRI_INTPTR, (intptr_t)copied);
         font_name.data = (byte *)fnbuf;
         font_name.size = strlen(fnbuf);
     }
@@ -417,7 +430,8 @@ pdf_base_font_drop_complete(pdf_base_font_t *pbfont)
      * free the members which are common to both, so this cast is
      * (at the time of writing) safe.
      */
-    gs_free_copied_font((gs_font *)pbfont->complete);
+    if (pbfont->complete != pbfont->copied)
+        gs_free_copied_font((gs_font *)pbfont->complete);
     pbfont->complete = NULL;
 }
 
@@ -561,7 +575,7 @@ pdf_adjust_font_name(gx_device_pdf *pdev, long id, pdf_base_font_t *pbfont)
         size = i + 1;
     }
     /* Create a unique name. */
-    gs_sprintf(suffix, "%c%lx", SUFFIX_CHAR, id);
+    gs_snprintf(suffix, sizeof(suffix), "%c%lx", SUFFIX_CHAR, id);
     suffix_size = strlen(suffix);
     data = gs_resize_string(pdev->pdf_memory, chars, size,
                                   size + suffix_size,
@@ -732,10 +746,10 @@ pdf_write_embedded_font(gx_device_pdf *pdev, pdf_base_font_t *pbfont, font_type 
         swrite_position_only(&poss);
         code = psf_write_truetype_font(&poss, pfont, options, NULL, 0, &fnstr);
         if (code < 0)
-            return code;
+            goto finish;
         code = cos_dict_put_c_key_int((cos_dict_t *)writer.pres->object, "/Length1", stell(&poss));
         if (code < 0)
-            return code;
+            goto finish;
         code = psf_write_truetype_font(writer.binary.strm, pfont,
                                        options, NULL, 0, &fnstr);
         goto finish;

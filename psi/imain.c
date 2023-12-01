@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -530,8 +530,8 @@ gs_main_init2(gs_main_instance * minst)
 
     if (code >= 0) {
         if (gs_debug_c(':'))
-            print_resource_usage(minst, &gs_imemory, "Start");
-        gp_readline_init(&minst->readline_data, minst->heap);
+            print_resource_usage(minst, i_ctx_p ? &gs_imemory : NULL, "Start");
+        gp_readline_init(&minst->readline_data, minst->heap); /* lgtm [cpp/useless-expression] */
     }
 
 fail:
@@ -1278,6 +1278,18 @@ gs_main_finit(gs_main_instance * minst, int exit_status, int env_code)
         int code = 0;
 
         if (idmemory->reclaim != 0) {
+            /* In extreme error conditions, these references can persist, despite the
+             * arrays themselves having been restored away.
+             */
+            gs_main_run_string(minst,
+                "$error /dstack undef \
+                 $error /estack undef \
+                 $error /ostack undef \
+                 serverdict /.jobsavelevel get 0 eq {/quit} {/stop} ifelse \
+                 .systemvar exec",
+                 0 , &exit_code, &error_object);
+
+            ref_stack_clear(&o_stack);
             code = interp_reclaim(&minst->i_ctx_p, avm_global);
 
             /* We ignore gs_error_VMerror because it comes from gs_vmreclaim()
@@ -1378,7 +1390,7 @@ gs_main_finit(gs_main_instance * minst, int exit_status, int env_code)
     gs_free_object(minst->heap, minst->saved_pages_initial_arg, "gs_main_finit");
     i_ctx_p = minst->i_ctx_p;		/* get current interp context */
     if (gs_debug_c(':')) {
-        print_resource_usage(minst, &gs_imemory, "Final");
+        print_resource_usage(minst, i_ctx_p ? &gs_imemory : NULL, "Final");
         dmprintf1(minst->heap, "%% Exiting instance "PRI_INTPTR"\n", (intptr_t)minst);
     }
     /* Do the equivalent of a restore "past the bottom". */
@@ -1458,22 +1470,25 @@ print_resource_usage(const gs_main_instance * minst, gs_dual_memory_t * dmem,
     ulong used = 0;		/* this we accumulate for the PS memories */
     long utime[2];
     int i;
-    gs_memory_status_t status;
+    gs_memory_status_t status = { 0 };
 
     gp_get_realtime(utime);
 
-    for (i = 0; i < countof(dmem->spaces_indexed); ++i) {
-        gs_ref_memory_t *mem = dmem->spaces_indexed[i];
+    if (dmem)
+    {
+        for (i = 0; i < countof(dmem->spaces_indexed); ++i) {
+            gs_ref_memory_t *mem = dmem->spaces_indexed[i];
 
-        if (mem != 0 && (i == 0 || mem != dmem->spaces_indexed[i - 1])) {
-            gs_ref_memory_t *mem_stable =
-                (gs_ref_memory_t *)gs_memory_stable((gs_memory_t *)mem);
+            if (mem != 0 && (i == 0 || mem != dmem->spaces_indexed[i - 1])) {
+                gs_ref_memory_t *mem_stable =
+                    (gs_ref_memory_t *)gs_memory_stable((gs_memory_t *)mem);
 
-            gs_memory_status((gs_memory_t *)mem, &status);
-            used += status.used;
-            if (mem_stable != mem) {
-                gs_memory_status((gs_memory_t *)mem_stable, &status);
+                gs_memory_status((gs_memory_t *)mem, &status);
                 used += status.used;
+                if (mem_stable != mem) {
+                    gs_memory_status((gs_memory_t *)mem_stable, &status);
+                    used += status.used;
+                }
             }
         }
     }

@@ -26,6 +26,7 @@
 #include "gsdevice.h"		/* for gs_copydevice */
 #include "gdevx.h"
 #include "gsbitops.h"
+#include "gxgetbit.h"
 
 void
 gs_shared_init(void);
@@ -117,7 +118,9 @@ x_forward_output_page(gx_device * dev, int num_copies, int flush)
 
     if ((code = get_dev_target(&tdev, dev)) < 0)
         return code;
-    return (*dev_proc(tdev, output_page)) (tdev, num_copies, flush);
+    code = (*dev_proc(tdev, output_page)) (tdev, num_copies, flush);
+    dev->PageCount = tdev->PageCount;
+    return code;
 }
 
 static int
@@ -295,18 +298,20 @@ x_forward_copy_color(gx_device * dev, const byte * base, int sourcex,
 }
 
 static int
-x_forward_get_bits(gx_device * dev, int y, byte * str, byte ** actual_data)
+x_forward_get_bits_rectangle(gx_device * dev, const gs_int_rect *prect,
+                             gs_get_bits_params_t *params)
 {
     gx_device *tdev;
     int code;
 
     if ((code = get_dev_target(&tdev, dev)) < 0)
         return code;
-    return (*dev_proc(tdev, get_bits)) (tdev, y, str, actual_data);
+    return (*dev_proc(tdev, get_bits_rectangle)) (tdev, prect, params);
 }
 
 static int
-x_wrap_get_bits(gx_device * dev, int y, byte * str, byte ** actual_data)
+x_wrap_get_bits_rectangle(gx_device * dev, const gs_int_rect *prect,
+                          gs_get_bits_params_t *params)
 {
     int depth = dev->color_info.depth;
     gx_device *tdev;
@@ -330,9 +335,17 @@ x_wrap_get_bits(gx_device * dev, int y, byte * str, byte ** actual_data)
     int xi;
     int sbit;
 
-    byte *l_dptr = str;
+    byte *l_dptr = params->data[0];
     int l_dbit = 0;
     byte l_dbyte = 0;
+    gs_int_rect rect;
+    int y;
+
+    if ((~params->options & GB_RETURN_COPY) ||
+        !(params->options & (GB_OFFSET_0 | GB_OFFSET_SPECIFIED)) ||
+        !(params->options & (GB_RASTER_STANDARD | GB_RASTER_SPECIFIED))
+        )
+        return_error(gs_error_rangecheck);
 
     if ((code = get_dev_target(&tdev, dev)) < 0)
         return code;
@@ -343,53 +356,70 @@ x_wrap_get_bits(gx_device * dev, int y, byte * str, byte ** actual_data)
     row = gs_alloc_bytes(mem, dsize, "x_wrap_get_bits");
     if (row == 0)
         return_error(gs_error_VMerror);
-    code = (*dev_proc(tdev, get_bits)) (tdev, y, row, &base);
-    if (code < 0)
-        goto gx;
-    for (sbit = 0, xi = 0; xi < width; sbit += sdepth, ++xi) {
-        const byte *sptr = base + (sbit >> 3);
-        gx_color_index pixel;
-        gx_color_value rgb[3];
-        int i;
+    rect.p.x = prect->p.x;
+    rect.q.x = prect->q.x;
+    for (y = prect->p.y; y < prect->q.y; y++)
+    {
+        gs_get_bits_params_t lparams;
+        rect.p.y = y;
+        rect.q.y = y+1;
+        lparams.options = GB_ALIGN_ANY |
+                          GB_RETURN_COPY |
+                          GB_OFFSET_0 | GB_RASTER_STANDARD |
+                          GB_PACKING_CHUNKY |
+                          GB_COLORS_NATIVE | GB_ALPHA_NONE;
+        lparams.raster = 0;
+        lparams.data[0] = row;
+        lparams.x_offset = 0;
+        code = (*dev_proc(tdev, get_bits_rectangle))(tdev, &rect, &lparams);
+        if (code < 0)
+            break;
+        base = lparams.data[0];
+        for (sbit = 0, xi = 0; xi < width; sbit += sdepth, ++xi) {
+            const byte *sptr = base + (sbit >> 3);
+            gx_color_index pixel;
+            gx_color_value rgb[3];
+            int i;
 
-        if (sdepth <= 8)
-            pixel = (*sptr >> (8 - sdepth - (sbit & 7))) & smask;
-        else {
-            pixel = 0;
-            for (i = 0; i < sdepth; i += 8, ++sptr)
-                pixel = (pixel << 8) + *sptr;
-        }
-        if (pixel != pixel_in) {
-            (*dev_proc(tdev, map_color_rgb))(tdev, pixel, rgb);
-            pixel_in = pixel;
-            if (dev->color_info.num_components <= 3)
-                pixel_out = (*dev_proc(dev, map_rgb_color))(dev, rgb);
+            if (sdepth <= 8)
+                pixel = (*sptr >> (8 - sdepth - (sbit & 7))) & smask;
             else {
-                /* Convert RGB to CMYK. */
-                gx_color_value c = gx_max_color_value - rgb[0];
-                gx_color_value m = gx_max_color_value - rgb[1];
-                gx_color_value y = gx_max_color_value - rgb[2];
-                gx_color_value k = (c < m ? min(c, y) : min(m, y));
+                pixel = 0;
+                for (i = 0; i < sdepth; i += 8, ++sptr)
+                    pixel = (pixel << 8) + *sptr;
+            }
+            if (pixel != pixel_in) {
+                (*dev_proc(tdev, map_color_rgb))(tdev, pixel, rgb);
+                pixel_in = pixel;
+                if (dev->color_info.num_components <= 3)
+                    pixel_out = (*dev_proc(dev, map_rgb_color))(dev, rgb);
+                else {
+                    /* Convert RGB to CMYK. */
+                    gx_color_value c = gx_max_color_value - rgb[0];
+                    gx_color_value m = gx_max_color_value - rgb[1];
+                    gx_color_value y = gx_max_color_value - rgb[2];
+                    gx_color_value k = (c < m ? min(c, y) : min(m, y));
 
-                gx_color_value cmyk[4];
-                cmyk[0] = c - k; cmyk[1] = m - k; cmyk[2] = y - k; cmyk[3] = k;
-                pixel_out = (*dev_proc(dev, map_cmyk_color))(dev, cmyk);
+                    gx_color_value cmyk[4];
+                    cmyk[0] = c - k; cmyk[1] = m - k; cmyk[2] = y - k; cmyk[3] = k;
+                    pixel_out = (*dev_proc(dev, map_cmyk_color))(dev, cmyk);
+                }
+            }
+            if (sizeof(pixel_out) > 4) {
+                if (sample_store_next64(pixel_out, &l_dptr,
+                                        &l_dbit, depth, &l_dbyte) < 0)
+                    return_error(gs_error_rangecheck);
+            }
+            else {
+                if (sample_store_next32(pixel_out, &l_dptr,
+                                        &l_dbit, depth, &l_dbyte) < 0)
+                    return_error(gs_error_rangecheck);
             }
         }
-        if (sizeof(pixel_out) > 4) {
-            if (sample_store_next64(pixel_out, &l_dptr, &l_dbit, depth, &l_dbyte) < 0)
-                return_error(gs_error_rangecheck);
-        }
-        else {
-            if (sample_store_next32(pixel_out, &l_dptr, &l_dbit, depth, &l_dbyte) < 0)
-                return_error(gs_error_rangecheck);
-        }
+        sample_store_flush(l_dptr, l_dbit, l_dbyte);
     }
-    sample_store_flush(l_dptr, l_dbit, l_dbyte);
-gx:
     gs_free_object(mem, row, "x_wrap_get_bits");
-    if (actual_data)
-        *actual_data = str;
+
     return code;
 }
 
@@ -547,35 +577,30 @@ static dev_proc_map_cmyk_color(x_cmyk_map_cmyk_color);
 /* Extended device procedures */
 static dev_proc_map_color_rgb(x_cmyk_alt_map_color);
 
-/* The device descriptor */
-static const gx_device_procs x_cmyk_procs = {
-    x_cmyk_open,
-    gx_forward_get_initial_matrix,
-    x_forward_sync_output,
-    x_forward_output_page,
-    x_wrap_close,
-    NULL,			/* map_rgb_color */
-    x_wrap_map_color_rgb,
-    x_wrap_fill_rectangle,
-    gx_default_tile_rectangle,
-    x_wrap_copy_mono,
-    x_wrap_copy_color,
-    gx_default_draw_line,
-    x_wrap_get_bits,
-    x_wrap_get_params,
-    x_cmyk_put_params,
-    x_cmyk_map_cmyk_color,
-    gx_forward_get_xfont_procs,
-    gx_forward_get_xfont_device,
-    NULL,			/* map_rgb_alpha_color */
-    gx_forward_get_page_device,
-    gx_forward_get_alpha_bits,
-    NULL			/* copy_alpha */
-};
+static void
+x_cmyk_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, open_device, x_cmyk_open);
+    set_dev_proc(dev, get_initial_matrix, gx_forward_get_initial_matrix);
+    set_dev_proc(dev, sync_output, x_forward_sync_output);
+    set_dev_proc(dev, output_page, x_forward_output_page);
+    set_dev_proc(dev, close_device, x_wrap_close);
+    set_dev_proc(dev, map_color_rgb, x_wrap_map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, x_wrap_fill_rectangle);
+    set_dev_proc(dev, copy_mono, x_wrap_copy_mono);
+    set_dev_proc(dev, copy_color, x_wrap_copy_color);
+    set_dev_proc(dev, get_bits_rectangle, x_wrap_get_bits_rectangle);
+    set_dev_proc(dev, get_params, x_wrap_get_params);
+    set_dev_proc(dev, put_params, x_cmyk_put_params);
+    set_dev_proc(dev, map_cmyk_color, x_cmyk_map_cmyk_color);
+    set_dev_proc(dev, get_page_device, gx_forward_get_page_device);
+    set_dev_proc(dev, get_alpha_bits, gx_forward_get_alpha_bits);
+}
 
 /* The instances are public. */
 const gx_device_X_wrapper gs_x11cmyk_device = {
-    std_device_dci_type_body(gx_device_X_wrapper, &x_cmyk_procs, "x11cmyk",
+    std_device_dci_type_body(gx_device_X_wrapper,
+        x_cmyk_initialize_device_procs, "x11cmyk",
         &st_device_X_wrapper,
         FAKE_RES * 85 / 10, FAKE_RES * 11,	/* x and y extent (nominal) */
         FAKE_RES, FAKE_RES,	/* x and y density (nominal) */
@@ -583,7 +608,8 @@ const gx_device_X_wrapper gs_x11cmyk_device = {
     X_WRAPPER_DATA(x_cmyk_alt_map_color)
 };
 const gx_device_X_wrapper gs_x11cmyk2_device = {
-    std_device_dci_type_body(gx_device_X_wrapper, &x_cmyk_procs, "x11cmyk2",
+    std_device_dci_type_body(gx_device_X_wrapper,
+        x_cmyk_initialize_device_procs, "x11cmyk2",
         &st_device_X_wrapper,
         FAKE_RES * 85 / 10, FAKE_RES * 11,	/* x and y extent (nominal) */
         FAKE_RES, FAKE_RES,	/* x and y density (nominal) */
@@ -591,7 +617,8 @@ const gx_device_X_wrapper gs_x11cmyk2_device = {
     X_WRAPPER_DATA(x_cmyk_alt_map_color)
 };
 const gx_device_X_wrapper gs_x11cmyk4_device = {
-    std_device_dci_type_body(gx_device_X_wrapper, &x_cmyk_procs, "x11cmyk4",
+    std_device_dci_type_body(gx_device_X_wrapper,
+        x_cmyk_initialize_device_procs, "x11cmyk4",
         &st_device_X_wrapper,
         FAKE_RES * 85 / 10, FAKE_RES * 11,	/* x and y extent (nominal) */
         FAKE_RES, FAKE_RES,	/* x and y density (nominal) */
@@ -599,7 +626,8 @@ const gx_device_X_wrapper gs_x11cmyk4_device = {
     X_WRAPPER_DATA(x_cmyk_alt_map_color)
 };
 const gx_device_X_wrapper gs_x11cmyk8_device = {
-    std_device_dci_type_body(gx_device_X_wrapper, &x_cmyk_procs, "x11cmyk8",
+    std_device_dci_type_body(gx_device_X_wrapper,
+        x_cmyk_initialize_device_procs, "x11cmyk8",
         &st_device_X_wrapper,
         FAKE_RES * 85 / 10, FAKE_RES * 11,	/* x and y extent (nominal) */
         FAKE_RES, FAKE_RES,	/* x and y density (nominal) */
@@ -679,34 +707,29 @@ x_cmyk_map_cmyk_color(gx_device * dev, const gx_color_value cv[])
 static dev_proc_map_color_rgb(x_mono_alt_map_color);
 
 /* The device descriptor */
-static const gx_device_procs x_mono_procs = {
-    x_wrap_open,
-    gx_forward_get_initial_matrix,
-    x_forward_sync_output,
-    x_forward_output_page,
-    x_wrap_close,
-    gx_default_b_w_map_rgb_color,
-    x_wrap_map_color_rgb,
-    x_wrap_fill_rectangle,
-    gx_default_tile_rectangle,
-    x_wrap_copy_mono,
-    gx_default_copy_color,	/* this is fast for the 1-bit case */
-    gx_default_draw_line,
-    x_wrap_get_bits,
-    x_wrap_get_params,
-    x_wrap_put_params,
-    gx_default_map_cmyk_color,
-    gx_forward_get_xfont_procs,
-    gx_forward_get_xfont_device,
-    NULL,			/* map_rgb_alpha_color */
-    gx_forward_get_page_device,
-    gx_forward_get_alpha_bits,
-    NULL			/* copy_alpha */
-};
+static void
+x_mono_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, open_device, x_wrap_open);
+    set_dev_proc(dev, get_initial_matrix, gx_forward_get_initial_matrix);
+    set_dev_proc(dev, sync_output, x_forward_sync_output);
+    set_dev_proc(dev, output_page, x_forward_output_page);
+    set_dev_proc(dev, close_device, x_wrap_close);
+    set_dev_proc(dev, map_rgb_color, gx_default_b_w_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, x_wrap_map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, x_wrap_fill_rectangle);
+    set_dev_proc(dev, copy_mono, x_wrap_copy_mono);
+    set_dev_proc(dev, get_bits_rectangle, x_wrap_get_bits_rectangle);
+    set_dev_proc(dev, get_params, x_wrap_get_params);
+    set_dev_proc(dev, put_params, x_wrap_put_params);
+    set_dev_proc(dev, get_page_device, gx_forward_get_page_device);
+    set_dev_proc(dev, get_alpha_bits, gx_forward_get_alpha_bits);
+}
 
 /* The instance is public. */
 const gx_device_X_wrapper gs_x11mono_device = {
-    std_device_dci_type_body(gx_device_X_wrapper, &x_mono_procs, "x11mono",
+    std_device_dci_type_body(gx_device_X_wrapper,
+        x_mono_initialize_device_procs, "x11mono",
         &st_device_X_wrapper,
         FAKE_RES * 85 / 10, FAKE_RES * 11,	/* x and y extent (nominal) */
         FAKE_RES, FAKE_RES,	/* x and y density (nominal) */
@@ -729,34 +752,30 @@ x_mono_alt_map_color(gx_device * dev, gx_color_index color,
 static dev_proc_map_color_rgb(x_gray_alt_map_color);
 
 /* The device descriptor */
-static const gx_device_procs x_gray_procs = {
-    x_wrap_open,
-    gx_forward_get_initial_matrix,
-    x_forward_sync_output,
-    x_forward_output_page,
-    x_wrap_close,
-    gx_default_gray_map_rgb_color,
-    x_wrap_map_color_rgb,
-    x_wrap_fill_rectangle,
-    gx_default_tile_rectangle,
-    x_wrap_copy_mono,
-    x_wrap_copy_color,
-    gx_default_draw_line,
-    x_wrap_get_bits,
-    x_wrap_get_params,
-    x_wrap_put_params,
-    gx_default_map_cmyk_color,
-    gx_forward_get_xfont_procs,
-    gx_forward_get_xfont_device,
-    NULL,			/* map_rgb_alpha_color */
-    gx_forward_get_page_device,
-    gx_forward_get_alpha_bits,
-    NULL			/* copy_alpha */
-};
+static void
+x_gray_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, open_device, x_wrap_open);
+    set_dev_proc(dev, get_initial_matrix, gx_forward_get_initial_matrix);
+    set_dev_proc(dev, sync_output, x_forward_sync_output);
+    set_dev_proc(dev, output_page, x_forward_output_page);
+    set_dev_proc(dev, close_device, x_wrap_close);
+    set_dev_proc(dev, map_rgb_color, gx_default_gray_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, x_wrap_map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, x_wrap_fill_rectangle);
+    set_dev_proc(dev, copy_mono, x_wrap_copy_mono);
+    set_dev_proc(dev, copy_color, x_wrap_copy_color);
+    set_dev_proc(dev, get_bits_rectangle, x_wrap_get_bits_rectangle);
+    set_dev_proc(dev, get_params, x_wrap_get_params);
+    set_dev_proc(dev, put_params, x_wrap_put_params);
+    set_dev_proc(dev, get_page_device, gx_forward_get_page_device);
+    set_dev_proc(dev, get_alpha_bits, gx_forward_get_alpha_bits);
+}
 
 /* The instances are public. */
 const gx_device_X_wrapper gs_x11gray2_device = {
-    std_device_dci_type_body(gx_device_X_wrapper, &x_gray_procs, "x11gray2",
+    std_device_dci_type_body(gx_device_X_wrapper,
+        x_gray_initialize_device_procs, "x11gray2",
         &st_device_X_wrapper,
         FAKE_RES * 85 / 10, FAKE_RES * 11,	/* x and y extent (nominal) */
         FAKE_RES, FAKE_RES,	/* x and y density (nominal) */
@@ -765,7 +784,8 @@ const gx_device_X_wrapper gs_x11gray2_device = {
 };
 
 const gx_device_X_wrapper gs_x11gray4_device = {
-    std_device_dci_type_body(gx_device_X_wrapper, &x_gray_procs, "x11gray4",
+    std_device_dci_type_body(gx_device_X_wrapper,
+        x_gray_initialize_device_procs, "x11gray4",
         &st_device_X_wrapper,
         FAKE_RES * 85 / 10, FAKE_RES * 11,	/* x and y extent (nominal) */
         FAKE_RES, FAKE_RES,	/* x and y density (nominal) */
@@ -785,21 +805,6 @@ x_gray_alt_map_color(gx_device * dev, gx_color_index color,
 
 /* Device procedures */
 
-/* We encode a complemented alpha value in the top 8 bits of the */
-/* device color. */
-static gx_color_index
-x_alpha_map_rgb_alpha_color(gx_device * dev,
- gx_color_value r, gx_color_value g, gx_color_value b, gx_color_value alpha)
-{
-    gx_color_index color;
-    gx_color_value cv[3];
-    byte abyte = alpha >> (gx_color_value_bits - 8);
-    cv[0] = r; cv[1] = g; cv[2] = b;
-    color = gx_forward_map_rgb_color(dev, cv);
-    return (abyte == 0 ? (gx_color_index)0xff << 24 :
-            ((gx_color_index) (abyte ^ 0xff) << 24) + color);
-}
-
 /* ---------------- Permuted RGB16/32 procedures ---------------- */
 
 /* Device procedures */
@@ -810,35 +815,36 @@ static dev_proc_map_color_rgb(x_rg16x_alt_map_color);
 static dev_proc_map_color_rgb(x_rg32x_alt_map_color);
 
 /* The device descriptor */
-#define RGBX_PROCS(map_rgb_proc)\
-    x_wrap_open,\
-    gx_forward_get_initial_matrix,\
-    x_forward_sync_output,\
-    x_forward_output_page,\
-    x_wrap_close,\
-    map_rgb_proc,		/* differs */\
-    x_wrap_map_color_rgb,\
-    x_wrap_fill_rectangle,\
-    gx_default_tile_rectangle,\
-    x_wrap_copy_mono,\
-    x_forward_copy_color,\
-    gx_default_draw_line,\
-    x_forward_get_bits,\
-    x_wrap_get_params,\
-    x_wrap_put_params,\
-    gx_forward_map_cmyk_color,\
-    gx_forward_get_xfont_procs,\
-    gx_forward_get_xfont_device,\
-    x_alpha_map_rgb_alpha_color,\
-    gx_forward_get_page_device,\
-    gx_default_get_alpha_bits,\
-    gx_default_copy_alpha
+static void
+rgbx_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, open_device, x_wrap_open);
+    set_dev_proc(dev, get_initial_matrix, gx_forward_get_initial_matrix);
+    set_dev_proc(dev, sync_output, x_forward_sync_output);
+    set_dev_proc(dev, output_page, x_forward_output_page);
+    set_dev_proc(dev, close_device, x_wrap_close);
+    set_dev_proc(dev, map_color_rgb, x_wrap_map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, x_wrap_fill_rectangle);
+    set_dev_proc(dev, copy_mono, x_wrap_copy_mono);
+    set_dev_proc(dev, copy_color, x_forward_copy_color);
+    set_dev_proc(dev, get_bits_rectangle, x_forward_get_bits_rectangle);
+    set_dev_proc(dev, get_params, x_wrap_get_params);
+    set_dev_proc(dev, put_params, x_wrap_put_params);
+    set_dev_proc(dev, map_cmyk_color, gx_forward_map_cmyk_color);
+    set_dev_proc(dev, get_page_device, gx_forward_get_page_device);
+}
 
-static const gx_device_procs x_rg16x_procs = {
-    RGBX_PROCS(x_rg16x_map_rgb_color)
-};
+static void
+x_rg16x_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, map_rgb_color, x_rg16x_map_rgb_color);
+
+    rgbx_initialize_device_procs(dev);
+}
+
 const gx_device_X_wrapper gs_x11rg16x_device = {
-    std_device_dci_type_body(gx_device_X_wrapper, &x_rg16x_procs, "x11rg16x",
+    std_device_dci_type_body(gx_device_X_wrapper,
+        x_rg16x_initialize_device_procs, "x11rg16x",
         &st_device_X_wrapper,
         FAKE_RES * 85 / 10, FAKE_RES * 11,	/* x and y extent (nominal) */
         FAKE_RES, FAKE_RES,	/* x and y density (nominal) */
@@ -846,11 +852,17 @@ const gx_device_X_wrapper gs_x11rg16x_device = {
     X_WRAPPER_DATA(x_rg16x_alt_map_color)
 };
 
-static const gx_device_procs x_rg32x_procs = {
-    RGBX_PROCS(x_rg32x_map_rgb_color)
-};
+static void
+x_rg32x_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, map_rgb_color, x_rg32x_map_rgb_color);
+
+    rgbx_initialize_device_procs(dev);
+}
+
 const gx_device_X_wrapper gs_x11rg32x_device = {
-    std_device_dci_type_body(gx_device_X_wrapper, &x_rg32x_procs, "x11rg32x",
+    std_device_dci_type_body(gx_device_X_wrapper,
+        x_rg32x_initialize_device_procs, "x11rg32x",
         &st_device_X_wrapper,
         FAKE_RES * 85 / 10, FAKE_RES * 11,	/* x and y extent (nominal) */
         FAKE_RES, FAKE_RES,	/* x and y density (nominal) */

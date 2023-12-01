@@ -35,12 +35,21 @@
 static dev_proc_print_page(pcxmono_print_page);
 
 /* Use the default RGB->color map, so we get black=0, white=1. */
+
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs pcxmono_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                gx_default_map_rgb_color, gx_default_map_color_rgb);
+static void
+pcxmono_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, map_rgb_color, gx_default_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gx_default_map_color_rgb);
+    set_dev_proc(dev, encode_color, gx_default_map_rgb_color);
+    set_dev_proc(dev, decode_color, gx_default_map_color_rgb);
+}
+
 const gx_device_printer gs_pcxmono_device =
-prn_device(pcxmono_procs, "pcxmono",
+prn_device(pcxmono_initialize_device_procs, "pcxmono",
            DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
            X_DPI, Y_DPI,
            0, 0, 0, 0,		/* margins */
@@ -51,11 +60,16 @@ prn_device(pcxmono_procs, "pcxmono",
 static dev_proc_print_page(pcx256_print_page);
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs pcxgray_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-              gx_default_gray_map_rgb_color, gx_default_gray_map_color_rgb);
+static void
+pcxgray_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_gray_bg(dev);
+    set_dev_proc(dev, encode_color, gx_default_8bit_map_gray_color);
+    set_dev_proc(dev, decode_color, gx_default_8bit_map_color_gray);
+}
+
 const gx_device_printer gs_pcxgray_device =
-{prn_device_body(gx_device_printer, pcxgray_procs, "pcxgray",
+{prn_device_body(gx_device_printer, pcxgray_initialize_device_procs, "pcxgray",
                  DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                  X_DPI, Y_DPI,
                  0, 0, 0, 0,	/* margins */
@@ -67,11 +81,19 @@ const gx_device_printer gs_pcxgray_device =
 static dev_proc_print_page(pcx16_print_page);
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs pcx16_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                pc_4bit_map_rgb_color, pc_4bit_map_color_rgb);
+static void
+pcx16_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, map_rgb_color, pc_4bit_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, pc_4bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, pc_4bit_map_rgb_color);
+    set_dev_proc(dev, decode_color, pc_4bit_map_color_rgb);
+}
+
 const gx_device_printer gs_pcx16_device =
-{prn_device_body(gx_device_printer, pcx16_procs, "pcx16",
+{prn_device_body(gx_device_printer, pcx16_initialize_device_procs, "pcx16",
                  DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                  X_DPI, Y_DPI,
                  0, 0, 0, 0,	/* margins */
@@ -82,11 +104,19 @@ const gx_device_printer gs_pcx16_device =
 /* (Uses a fixed palette of 3,3,2 bits.) */
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs pcx256_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                pc_8bit_map_rgb_color, pc_8bit_map_color_rgb);
+static void
+pcx256_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, map_rgb_color, pc_8bit_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, pc_8bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, pc_8bit_map_rgb_color);
+    set_dev_proc(dev, decode_color, pc_8bit_map_color_rgb);
+}
+
 const gx_device_printer gs_pcx256_device =
-{prn_device_body(gx_device_printer, pcx256_procs, "pcx256",
+{prn_device_body(gx_device_printer, pcx256_initialize_device_procs, "pcx256",
                  DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                  X_DPI, Y_DPI,
                  0, 0, 0, 0,	/* margins */
@@ -98,11 +128,14 @@ const gx_device_printer gs_pcx256_device =
 static dev_proc_print_page(pcx24b_print_page);
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs pcx24b_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                gx_default_rgb_map_rgb_color, gx_default_rgb_map_color_rgb);
+static void
+pcx24b_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb_bg(dev);
+}
+
 const gx_device_printer gs_pcx24b_device =
-prn_device(pcx24b_procs, "pcx24b",
+prn_device(pcx24b_initialize_device_procs, "pcx24b",
            DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
            X_DPI, Y_DPI,
            0, 0, 0, 0,		/* margins */
@@ -112,32 +145,14 @@ prn_device(pcx24b_procs, "pcx24b",
 
 static dev_proc_print_page(pcxcmyk_print_page);
 
-static const gx_device_procs pcxcmyk_procs =
+static void
+pcxcmyk_initialize_device_procs(gx_device *dev)
 {
-    gdev_prn_open,
-    NULL,			/* get_initial_matrix */
-    NULL,			/* sync_output */
-/* Since the print_page doesn't alter the device, this device can print in the background */
-    gdev_prn_bg_output_page,
-    gdev_prn_close,
-    NULL,			/* map_rgb_color */
-    cmyk_1bit_map_color_rgb,
-    NULL,			/* fill_rectangle */
-    NULL,			/* tile_rectangle */
-    NULL,			/* copy_mono */
-    NULL,			/* copy_color */
-    NULL,			/* draw_line */
-    NULL,			/* get_bits */
-    gdev_prn_get_params,
-    gdev_prn_put_params,
-    cmyk_1bit_map_cmyk_color,
-    NULL,			/* get_xfont_procs */
-    NULL,			/* get_xfont_device */
-    NULL,			/* map_rgb_alpha_color */
-    gx_page_device_get_page_device
-};
+    gdev_prn_initialize_device_procs_cmyk1_bg(dev);
+}
+
 const gx_device_printer gs_pcxcmyk_device =
-{prn_device_body(gx_device_printer, pcxcmyk_procs, "pcxcmyk",
+{prn_device_body(gx_device_printer, pcxcmyk_initialize_device_procs, "pcxcmyk",
                  DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                  X_DPI, Y_DPI,
                  0, 0, 0, 0,	/* margins */
@@ -373,6 +388,10 @@ pcx_write_page(gx_device_printer * pdev, gp_file * file, pcx_header * phdr,
                     {
                         byte *pend = plane + rsize;
                         int shift;
+                        /* We'll have a run of full 32bit words,
+                         * followed by some sets of stray 4-bits. */
+                        int stray = pdev->width & 7;
+                        byte *fend = row + ((pdev->width & ~7)>>1);
 
                         for (shift = 0; shift < 4; shift++) {
                             register byte *from, *to;
@@ -380,7 +399,7 @@ pcx_write_page(gx_device_printer * pdev, gp_file * file, pcx_header * phdr,
                             register int bleft = bright << 4;
 
                             for (from = row, to = plane;
-                                 from < end; from += 4
+                                 from < fend; from += 4
                                 ) {
                                 *to++ =
                                     (from[0] & bleft ? 0x80 : 0) |
@@ -392,9 +411,21 @@ pcx_write_page(gx_device_printer * pdev, gp_file * file, pcx_header * phdr,
                                     (from[3] & bleft ? 0x02 : 0) |
                                     (from[3] & bright ? 0x01 : 0);
                             }
-                            /* We might be one byte short of rsize. */
-                            if (to < pend)
+                            if (stray) {
+                                byte v = (from[0] & bleft ? 0x80 : 0);
+                                if (stray > 1) v |= from[0] & bright ? 0x40 : 0;
+                                if (stray > 2) v |= from[1] & bleft ? 0x20 : 0;
+                                if (stray > 3) v |= from[1] & bright ? 0x10 : 0;
+                                if (stray > 4) v |= from[2] & bleft ? 0x08 : 0;
+                                if (stray > 5) v |= from[2] & bright ? 0x04 : 0;
+                                if (stray > 6) v |= from[3] & bleft ? 0x02 : 0;
+                                *to++ = v;
+                            }
+                            /* Continue to 'raster' rather than width. */
+                            while (to < pend) {
                                 *to = to[-1];
+                                to++;
+                            }
                             pcx_write_rle(plane, pend, 1, file);
                         }
                     }

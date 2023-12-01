@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -68,6 +68,8 @@ font_proc_font_info(gs_truetype_font_info); /* Type check. */
 
 #define PUTU16(p, n, offs) {(p + offs)[0] = n >> 8  & 255; (p + offs)[1] = n & 255;}
 
+static byte const ver10[4] = {0x00, 0x01, 0x00, 0x00};
+static byte const ver20[4] = {0x00, 0x02, 0x00, 0x00};
 
 /* ---------------- Font level ---------------- */
 
@@ -207,7 +209,14 @@ gs_type42_font_init(gs_font_type42 * pfont, int subfontID)
         if (!memcmp(tab, "cmap", 4))
             pfont->data.cmap = offset;
         else if (!memcmp(tab, "post", 4)) {
-            pfont->data.post_offset = offset;
+            byte ver[4];
+            READ_SFNTS(pfont, offset, 4, ver);
+            if (memcmp(ver, ver10, 4) == 0 ||  memcmp(ver, ver20, 4) == 0) {
+                pfont->data.post_offset = offset;
+            }
+            else {
+                pfont->data.post_offset = 0;
+            }
         }
         else if (!memcmp(tab, "glyf", 4)) {
             pfont->data.glyf = offset;
@@ -269,8 +278,13 @@ gs_type42_font_init(gs_font_type42 * pfont, int subfontID)
             pfont->data.os2_offset = offset;
         }
     }
-    loca_size >>= pfont->data.indexToLocFormat + 1;
+    loca_size >>= (pfont->data.indexToLocFormat == 0 ? 1 : 2);
     pfont->data.numGlyphs = loca_size - 1;
+    if (pfont->data.numGlyphs > 65535) {
+        pfont->data.numGlyphs = 65535;
+        loca_size = (65536 << (pfont->data.indexToLocFormat == 0 ? 1 : 2));
+    }
+
     if (pfont->data.numGlyphs > (int)pfont->data.trueNumGlyphs) {
         /* pfont->key_name.chars is ASCIIZ due to copy_font_name. */
         char buf[gs_font_name_max + 2];
@@ -403,8 +417,10 @@ gs_type42_font_init(gs_font_type42 * pfont, int subfontID)
                 qsort(psortary, loca_size, sizeof(gs_type42_font_init_sort_t), gs_type42_font_init_compare);
                 while (num_valid_loca_elm > 0 && psortary[num_valid_loca_elm - 1].glyph_offset > glyph_size)
                     num_valid_loca_elm --;
-                if (0 == num_valid_loca_elm)
+                if (0 == num_valid_loca_elm) {
+                    gs_free_object(pfont->memory, psortary, "gs_type42_font_init(sort loca)");
                     return_error(gs_error_invalidfont);
+                }
                 for (i = num_valid_loca_elm; i--;) {
                     long old_length;
 
@@ -748,18 +764,19 @@ mac_glyph_ordering_t MacintoshOrdering[] =
 int
 gs_type42_find_post_name(gs_font_type42 * pfont, gs_glyph glyph, gs_string *gname)
 {
-    int code = 0;
+    /* READ_SFNTS() uses "code" in the macro, so we need code2 to keep track here */
+    int code, code2 = gs_error_undefined;
+
     if (pfont->FontType == ft_TrueType) {
         if (pfont->data.post_offset != 0) {
             byte ver[4];
-            byte const ver10[4] = {0x00, 0x01, 0x00, 0x00};
-            byte const ver20[4] = {0x00, 0x02, 0x00, 0x00};
 
             READ_SFNTS(pfont, pfont->data.post_offset, 4, ver);
             if (!memcmp(ver, ver10, 4)){
                 if (glyph > 257) glyph = 0;
                 gname->data = (byte *)MacintoshOrdering[glyph].name;
                 gname->size = strlen(MacintoshOrdering[glyph].name);
+                code2 = 0;
             }
             else if (!memcmp(ver, ver20, 4)) {
                 byte val[2];
@@ -769,6 +786,7 @@ gs_type42_find_post_name(gs_font_type42 * pfont, gs_glyph glyph, gs_string *gnam
                 if (gind < 258) {
                     gname->data = (byte *)MacintoshOrdering[gind].name;
                     gname->size = strlen(MacintoshOrdering[gind].name);
+                    code2 = 0;
                 }
                 else {
                     int i;
@@ -784,8 +802,8 @@ gs_type42_find_post_name(gs_font_type42 * pfont, gs_glyph glyph, gs_string *gnam
                        for (i = 0; i < numglyphs; i++) {
                            if (i == gind) {
                                READ_SFNTS(pfont, offs, 1, val);
-                               code = pfont->data.string_proc(pfont, offs + 1, (uint)val[0], (const byte **)&(gname->data));
-                               if (code > 0)
+                               code2 = pfont->data.string_proc(pfont, offs + 1, (uint)val[0], (const byte **)&(gname->data));
+                               if (code2 >= 0)
                                    gname->size = val[0];
                                break;
                            }
@@ -795,24 +813,17 @@ gs_type42_find_post_name(gs_font_type42 * pfont, gs_glyph glyph, gs_string *gnam
                            }
                        }
                     }
-                    else {
-                        gname->data = (byte *)MacintoshOrdering[0].name;
-                        gname->size = strlen(MacintoshOrdering[0].name);
-                    }
                 }
             }
             else {
-                gname->data = (byte *)MacintoshOrdering[0].name;
-                gname->size = strlen(MacintoshOrdering[0].name);
+                code2 = gs_error_invalidfont;
             }
-        }
-        else {
-            gname->data = (byte *)MacintoshOrdering[0].name;
-            gname->size = strlen(MacintoshOrdering[0].name);
         }
     }
     else
-        code = gs_note_error(gs_error_invalidfont);
+        code2 = gs_error_invalidfont;
+
+    if (code2 < 0) code = gs_note_error(code2);
     return code;
 }
 
@@ -1289,8 +1300,13 @@ parse_pieces(gs_font_type42 *pfont, gs_glyph glyph, gs_glyph *pieces,
 
         memset(&mat, 0, sizeof(mat)); /* arbitrary */
         for (i = 0; flags & TT_CG_MORE_COMPONENTS; ++i) {
-            if (pieces)
+            if (pieces) {
                 pieces[i] = U16(gdata + 2) + GS_MIN_GLYPH_INDEX;
+                if (U16(gdata + 2) > pfont->data.numGlyphs) {
+                    *pnum_pieces = 0;
+                    return_error(gs_error_invalidfont);
+                }
+            }
             gs_type42_parse_component(&gdata, &flags, &mat, NULL, pfont, &mat);
         }
         *pnum_pieces = i;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -109,7 +109,7 @@ void pl_main_get_forced_geometry(const gs_memory_t *mem, const float **resolutio
 int pl_main_get_scanconverter(const gs_memory_t *mem);
 pl_main_instance_t *pl_main_get_instance(const gs_memory_t *mem);
 
-typedef int pl_main_get_codepoint_t(gp_file *, const char **);
+typedef int pl_main_get_codepoint_t(stream *, const char **);
 void pl_main_set_arg_decode(pl_main_instance_t *minst,
                             pl_main_get_codepoint_t *get_codepoint);
 
@@ -121,4 +121,8 @@ char *pl_main_get_pcl_personality(const gs_memory_t *mem);
 
 pl_interp_implementation_t *pl_main_get_pcl_instance(const gs_memory_t *mem);
 pl_interp_implementation_t *pl_main_get_pjl_instance(const gs_memory_t *mem);
+pl_interp_implementation_t *pl_main_get_pdf_instance(const gs_memory_t *mem);
+pl_interp_implementation_t *pl_main_get_xps_instance(const gs_memory_t *mem);
+pl_interp_implementation_t *pl_main_get_language_instance(const gs_memory_t *mem, const char *name);
+
 #endif /* plmain_INCLUDED */

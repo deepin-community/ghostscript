@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -102,6 +102,8 @@ do_call_operator_verbose(op_proc_t op_proc, i_ctx_t *i_ctx_p)
             op_get_name_string(op_proc));
 #endif
     code = do_call_operator(op_proc, i_ctx_p);
+    if (code < 0)
+        if_debug1m('!', imemory, "[!]   error: %d\n", code);
 #if defined(SHOW_STACK_DEPTHS)
     if_debug2m('!', imemory, "[!][es=%d os=%d]\n",
             esp-i_ctx_p->exec_stack.stack.bot,
@@ -116,7 +118,9 @@ do_call_operator_verbose(op_proc_t op_proc, i_ctx_t *i_ctx_p)
 #endif
 
 /* Define debugging statistics (not threadsafe as uses globals) */
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+/* #define COLLECT_STATS_IDSTACK */
+
+#ifdef COLLECT_STATS_INTERP
 struct stats_interp_s {
     long top;
     long lit, lit_array, exec_array, exec_operator, exec_name;
@@ -910,7 +914,8 @@ gs_errorinfo_put_string(i_ctx_t *i_ctx_p, const char *str)
 /* If an error occurs, leave the current object in *perror_object */
 /* and return a (negative) error code. */
 static int
-interp(i_ctx_t **pi_ctx_p /* context for execution, updated if resched */,
+interp(/* lgtm [cpp/use-of-goto] */
+       i_ctx_t **pi_ctx_p /* context for execution, updated if resched */,
        const ref * pref /* object to interpret */,
        ref * perror_object)
 {
@@ -1158,7 +1163,8 @@ interp(i_ctx_t **pi_ctx_p /* context for execution, updated if resched */,
   case lit(t_shortarray): case nox(t_shortarray):\
   case plain(t_device): case plain_exec(t_device):\
   case plain(t_struct): case plain_exec(t_struct):\
-  case plain(t_astruct): case plain_exec(t_astruct)
+  case plain(t_astruct): case plain_exec(t_astruct):\
+  case plain(t_pdfctx): case plain_exec(t_pdfctx)
             /* Executable arrays are treated as literals in direct execution. */
 #define cases_lit_array()\
   case exec(t_array): case exec(t_mixedarray): case exec(t_shortarray)

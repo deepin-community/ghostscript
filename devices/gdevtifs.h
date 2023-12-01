@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -32,7 +32,7 @@ typedef struct gx_device_tiff_s {
     gx_prn_device_common;
     bool  BigEndian;            /* true = big endian; false = little endian*/
     bool  UseBigTIFF;           /* true = output big tiff file, false don't */
-    uint16 Compression;         /* same values as TIFFTAG_COMPRESSION */
+    uint16_t Compression;         /* same values as TIFFTAG_COMPRESSION */
     long MaxStripSize;
     long AdjustWidth;            /* 0 = no adjust, 1 = adjust to fax values, >1 = adjust to this */
     bool write_datetime;
@@ -63,7 +63,7 @@ void tiff_set_handlers (void);
  * Sets the compression tag for TIFF and updates the rows_per_strip tag to
  * reflect max_strip_size under the new compression scheme.
  */
-#define TIFF_DEFAULT_STRIP_SIZE 1048576
+#define TIFF_DEFAULT_STRIP_SIZE 8192
 
 #define TIFF_DEFAULT_DOWNSCALE 1
 
@@ -80,17 +80,17 @@ int gdev_tiff_begin_page(gx_device_tiff *tfdev, gp_file *file);
 /*
  * Returns the gs_param_string that corresponds to the tiff COMPRESSION_* id.
  */
-int tiff_compression_param_string(gs_param_string *param, uint16 id);
+int tiff_compression_param_string(gs_param_string *param, uint16_t id);
 
 /*
  * Returns the COMPRESSION_* id which corresponds to 'str'.
  */
-int tiff_compression_id(uint16 *id, gs_param_string *param);
+int tiff_compression_id(uint16_t *id, gs_param_string *param);
 
 /*
  * Returns true if 'compression' can be used for encoding a data with a bit
  * depth of 'depth'  (crle, g3, and g4 only work on 1-bit devices).
  */
-int tiff_compression_allowed(uint16 compression, byte depth);
+int tiff_compression_allowed(uint16_t compression, byte depth);
 
 #endif /* gdevtifs_INCLUDED */

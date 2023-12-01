@@ -21,7 +21,9 @@
 #include "gdevmem.h"		/* private definitions */
 
 /* Define debugging statistics. */
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+/* #define COLLECT_STATS_MEM40 */
+
+#ifdef COLLECT_STATS_MEM40
 struct stats_mem40_s {
     long
         fill, fwide, fgray[101], fsetc, fcolor[101], fnarrow[5],
@@ -46,12 +48,20 @@ declare_mem_procs(mem_true40_copy_mono, mem_true40_copy_color, mem_true40_fill_r
 
 /* The device descriptor. */
 const gx_device_memory mem_true40_device =
-mem_full_alpha_device("image40", 40, 0, mem_open,
-                 gx_default_rgb_map_rgb_color, gx_default_rgb_map_color_rgb,
-     mem_true40_copy_mono, mem_true40_copy_color, mem_true40_fill_rectangle,
-                      gx_default_map_cmyk_color, gx_default_copy_alpha,
-                 gx_default_strip_tile_rectangle, mem_default_strip_copy_rop,
-                      mem_get_bits_rectangle);
+    mem_device("image40", 40, 0, mem_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_40 =
+{
+    gx_default_rgb_map_rgb_color,
+    gx_default_rgb_map_color_rgb,
+    mem_true40_fill_rectangle,
+    mem_true40_copy_mono,
+    mem_true40_copy_color,
+    gx_default_copy_alpha,
+    gx_default_strip_tile_rectangle,
+    mem_default_strip_copy_rop2,
+    mem_get_bits_rectangle
+};
 
 /* Convert x coordinate to byte offset in scan line. */
 #undef x_to_byte
@@ -108,7 +118,7 @@ mem_true40_fill_rectangle(gx_device * dev,
      */
     fit_fill_xywh(dev, x, y, w, h);
     INCR(fill);
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef COLLECT_STATS_MEM40
     stats_mem40.ftotal += w;
 #endif
     if (w >= 5) {
@@ -138,7 +148,7 @@ mem_true40_fill_rectangle(gx_device * dev,
                 INCR(fsetc);
                 set_color40_cache(color, a, b, c, d, e);
             }
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef COLLECT_STATS_MEM40
             {
                 int ci;
                 for (ci = 0; ci < prev_count; ++ci)
@@ -416,11 +426,20 @@ declare_mem_procs(mem40_word_copy_mono, mem40_word_copy_color, mem40_word_fill_r
 
 /* Here is the device descriptor. */
 const gx_device_memory mem_true40_word_device =
-mem_full_device("image40w", 40, 0, mem_open,
-                gx_default_rgb_map_rgb_color, gx_default_rgb_map_color_rgb,
-     mem40_word_copy_mono, mem40_word_copy_color, mem40_word_fill_rectangle,
-                gx_default_map_cmyk_color, gx_default_strip_tile_rectangle,
-                gx_no_strip_copy_rop, mem_word_get_bits_rectangle);
+    mem_device("image40w", 40, 0, mem_word_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_40w =
+{
+    gx_default_rgb_map_rgb_color,
+    gx_default_rgb_map_color_rgb,
+    mem40_word_fill_rectangle,
+    mem40_word_copy_mono,
+    mem40_word_copy_color,
+    gx_default_copy_alpha,
+    gx_default_strip_tile_rectangle,
+    gx_no_strip_copy_rop2,
+    mem_word_get_bits_rectangle
+};
 
 /* Fill a rectangle with a color. */
 static int

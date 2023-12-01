@@ -4,12 +4,19 @@ Upstream-Contact: Ghostscript development and discussion <gs-devel@ghostscript.c
 Source: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases
  Repackaged, excluding non-DFSG files and convenience code copies:
   * non-DFSG fonts
+  * images containing non-DFSG ICC profile
   * PCL and PX3 files without license
   * XPS document with embedded potentially non-DFSG odttf font
   * embedded code copies cluttering authorship/licensing tracking
     (Arguably custom build of jpeg code is required - see bug#582521)
 Files-Excluded:
  cups/libs/*
+ doc/language-bindings/images/*.png
+ doc/src/_static/cm-fig*.png
+ doc/src/_static/export-jar.png
+ doc/src/_static/ghostnet-wpf-example.png
+ doc/src/_static/gsviewer.png
+ doc/src/_static/linking-jar.png
  expat/*
  extract/*
  freetype/*
@@ -60,12 +67,11 @@ Files:
 Copyright:
   1992-1996, 1999-2000  Aladdin Enterprises, Menlo Park, CA
   1991                  Apple Computer, Inc
-  2001-2021             Artifex Software, Inc.
+  2001-2022             Artifex Software, Inc.
   1989                  Berthold K.P. Horn
   1986                  Eric Gisin <egisin@waterloo.csnet>
   2001                  gs-cjk project
   2003-2004             Hewlett-Packard Development Company, LP
-  2001-2004             Raph Levien <raph@acm.org>
   2001                  Taiji Yamada <taiji@aihara.co.jp>
   1994                  Thomas Merz <tm@pdflib.com>
   1995-1996             Yves Arrouye <yves.arrouye@usa.net>
@@ -113,7 +119,7 @@ Files:
  base/tttype.h
  base/tttypes.h
 Copyright:
-  2001-2021  Artifex Software, Inc.
+  2001-2022  Artifex Software, Inc.
   1996-1998  David Turner
   1996-1998  Robert Wilhelm
   1996-1998  Werner Lemberg
@@ -183,7 +189,7 @@ Files:
  xps/xpsfapi.c
  xps/xpsfapi.h
 Copyright:
-  2001-2021  Artifex Software, Inc.
+  2001-2022  Artifex Software, Inc.
 License-Grant:
  This software is distributed under license
  and may not be copied, modified or distributed
@@ -205,9 +211,14 @@ License-Grant:
  (415)492-9861,
  for further information.
 License: AGPL-3+
+Reference: LICENSE
 Comment:
  Files contain copyright statement and mention licensing,
  but contain no license nor concrete reference to license.
+ The files are located in directories covered by project-wide license
+ as described in file <LICENSE>,
+ but it is unclear whether or not the purpose of file-specific notes
+ is to state exceptions from general licensing.
  License presumed to be same as generally for the project.
 
 Files:
@@ -239,8 +250,11 @@ License-Grant:
  along with this software
  so you can know your rights and responsibilities.
  It should be in a file named COPYING.
-License: GPL
+License: GPL-1+
 Comment:
+ Version of license not mentioned.
+ License dictates that to mean any version of the license.
+ .
  The referenced file COPYING does not exist
  in folders belonging to same code.
 
@@ -257,8 +271,11 @@ License-Grant:
  along with this software
  so you can know your rights and responsibilities.
  It should be in a file named COPYING.
-License: GPL
+License: GPL-1+
 Comment:
+ Version of license not mentioned.
+ License dictates that to mean any version of the license.
+ .
  The referenced file COPYING does not exist
  in folders belonging to same code.
 
@@ -293,8 +310,11 @@ License-Grant:
  along with this software
  so you can know your rights and responsibilities.
  It should be in a file named COPYING.
-License: GPL
+License: GPL-1+
 Comment:
+ Version of license not mentioned.
+ License dictates that to mean any version of the license.
+ .
  The referenced file COPYING does not exist
  in folders belonging to same code.
 
@@ -312,8 +332,11 @@ License-Grant:
  along with this software
  so you can know your rights and responsibilities.
  It should be in a file named COPYING.
-License: GPL
+License: GPL-1+
 Comment:
+ Version of license not mentioned.
+ License dictates that to mean any version of the license.
+ .
  The referenced file COPYING does not exist
  in folders belonging to same code.
 
@@ -351,21 +374,26 @@ Copyright:
   1993-2006  Easy Software Products
 License-Grant:
  Distribution and use rights are outlined in the file "LICENSE.txt"
- which should have been included with this file. [...]
- .
+ which should have been included with this file.
+License-Grant:
  This code and any derivative of it may be used and distributed freely
  under the terms of the GNU General Public License
  when used with GNU Ghostscript or its derivatives.
  Use of the code (or any derivative of it)
  with software other than GNU GhostScript (or its derivatives)
  is governed by the CUPS license agreement.
-License: GPL
+License: GPL-1+
 Comment:
+ Version of license not mentioned.
+ License dictates that to mean any version of the license.
+ .
  The referenced file LICENSE.txt does not exist
  in folders belonging to same code.
 
 Files:
- contrib/gdevbjc[_a].[ch]
+ contrib/gdevbjc_.c
+ contrib/gdevbjc_.h
+ contrib/gdevbjca.c
 Copyright:
   1989, 2000  Aladdin Enterprises, Menlo Park, CA
   2000-2002   Gergely Szász <szaszg@hu.inter.net>
@@ -391,14 +419,6 @@ Files:
 Copyright:
   2000-2001  Aaron D. Gifford
 License: BSD-3-Clause
-
-Files:
- base/gxfont1.h
- devices/gdevphex.c
-Copyright:
-  2001-2021  Artifex Software, Inc.
-License: Adobe-2006
- FIXME
 
 Files:
  base/aes.c
@@ -488,6 +508,10 @@ License-Grant:
  as part of GNU Ghostscript and/or AFPL Ghostscript,
  under the same terms and conditions as Ghostscript.
 License: AGPL-3+
+Reference: LICENSE
+Comment:
+ Project-wide Ghostscript license terms
+ are described in file <LICENSE>.
 
 Files:
  config.guess
@@ -514,10 +538,12 @@ Files:
 Copyright:
   1998  Ivan Schreter
 License: AGPL-3+
+Reference: LICENSE
 Comment:
  File contain copyright statement and mentions licensing,
  but contains no license nor concrete reference to license.
- License presumed to be same as generally for the project.
+ License presumed to be same as generally for the project,
+ described in file <LICENSE>.
 
 Files:
  base/gsstrl.c
@@ -622,7 +648,8 @@ Copyright:
 License: MIT-Open-Group
 
 Files:
- contrib/eplaser/gdevescv.[ch]
+ contrib/eplaser/gdevescv.c
+ contrib/eplaser/gdevescv.h
 Copyright:
   1999-2000        EPSON SOFTWARE DEVELOPMENT LABORATORY, INC.
   2000-2006, 2009  SEIKO EPSON CORPORATION
@@ -635,8 +662,11 @@ License-Grant:
  along with this software
  so you can know your rights and responsibilities.
  It should be in a file named COPYING.
-License: GPL
+License: GPL-1+
 Comment:
+ Version of license not mentioned.
+ License dictates that to mean any version of the license.
+ .
  The referenced file COPYING does not exist
  in folders belonging to same code.
 
@@ -704,10 +734,10 @@ Comment:
 Files:
  debian/*
 Copyright:
+  2009-2022  Jonas Smedegaard <dr@jones.dk>
   2004-2009  Masayuki Hatta (mhatta) <mhatta@debian.org>
-  2009-2021  Jonas Smedegaard <dr@jones.dk>
 License-Grant:
- This program is free software;
+ This packaging is free software;
  you can redistribute it and/or modify it
  under the terms of the GNU General Public License
  as published by the Free Software Foundation;
@@ -726,8 +756,11 @@ Files:
  debian/update-gsfontmap
 Copyright:
   2010  Kenshi Muto <kmuto@debian.org>
-License: GPL
- FIXME
+License-Grant:
+ License: GPL
+License: GPL-1+
+ Version of license not mentioned.
+ License dictates that to mean any version of the license.
 
 License: AGPL-3
  GNU AFFERO GENERAL PUBLIC LICENSE
@@ -1581,137 +1614,8 @@ License: AGPL-3
  and how to apply and follow the GNU AGPL,
  see <http://www.gnu.org/licenses/>.
 
-License: GPL-3+
-Reference: /usr/share/common-licenses/GPL-3
-
-License: GPL-2+
-Reference: /usr/share/common-licenses/GPL-2
-
-License: GPL
-Reference: /usr/share/common-licenses/GPL
-
-License: LGPL-2.1
-Reference: /usr/share/common-licenses/LGPL-2.1
-
 License: Apache-2.0
 Reference: /usr/share/common-licenses/Apache-2.0
-
-License: GAP~configure
- This configure script is free software;
- the Free Software Foundation gives unlimited permission
- to copy, distribute and modify it.
-
-License: Expat
- Permission is hereby granted, free of charge,
- to any person obtaining a copy
- of this software and associated documentation files (the "Software"),
- to deal in the Software without restriction,
- including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense,
- and/or sell copies of the Software,
- and to permit persons to whom the Software is furnished to do so,
- subject to the following conditions:
- .
- The above copyright notice and this permission notice shall be included
- in all copies or substantial portions of the Software.
- .
- THE SOFTWARE IS PROVIDED "AS IS",
- WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
- INCLUDING BUT NOT LIMITED TO
- THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
- AND NONINFRINGEMENT.
- IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
- FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
- WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
- OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-License: Expat~SunSoft
- Permission is hereby granted, free of charge,
- to any person obtaining a copy
- of this software and associated documentation files (the "Software"),
- to deal in the Software without restriction,
- including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense,
- and/or sell copies of the Software,
- and to permit persons to whom the Software is furnished to do so,
- subject to the following conditions:
- .
- The above copyright notice and this permission notice shall be included
- in all copies or substantial portions of the Software.
- .
- THE SOFTWARE IS PROVIDED "AS IS",
- WITHOUT WARRANTY OF ANY KIND,
- EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
- THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
- AND NONINFRINGEMENT.
- IN NO EVENT SHALL SUNSOFT, INC. OR ITS PARENT COMPANY BE LIABLE
- FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
- WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
- OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-License: Expat~Ghostgum
- Permission is hereby granted, free of charge,
- to any person obtaining a copy of this file ("Software"),
- to deal in the Software without restriction,
- including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense,
- and/or sell copies of this Software,
- and to permit persons to whom this file is furnished to do so,
- subject to the following conditions:
- .
- This Software is distributed with NO WARRANTY OF ANY KIND.
- No author or distributor accepts any responsibility
- for the consequences of using it,
- or for whether it serves any particular purpose or works at all,
- unless he or she says so in writing.
- .
- The above copyright notice and this permission notice shall be included
- in all copies or substantial portions of the Software.
-
-License: MIT-Open-Group
- Permission to use, copy, modify, distribute, and sell
- this software and its documentation
- for any purpose is hereby granted without fee,
- provided that the above copyright notice appear in all copies
- and that both that copyright notice and this permission notice appear
- in supporting documentation.
- .
- The above copyright notice and this permission notice shall be included
- in all copies or substantial portions of the Software.
- .
- THE SOFTWARE IS PROVIDED "AS IS",
- WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
- INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
- AND NONINFRINGEMENT.
- IN NO EVENT SHALL THE OPEN GROUP BE LIABLE
- FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
- WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
- OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-License: NTP~WSU
- Permission to use, copy, modify, and distribute
- this software and its documentation
- for any purpose and without fee is hereby granted.
- This software is provided "as is"
- without express or implied warranty.
-
-License: NTP~Lucent
- Permission to use, copy, modify, and distribute this software
- for any purpose without fee is hereby granted,
- provided that this entire notice is included in all copies
- of any software which is or includes
- a copy or modification of this software.
- .
- THIS SOFTWARE IS BEING PROVIDED "AS IS",
- WITHOUT ANY EXPRESS OR IMPLIED WARRANTY.
- IN PARTICULAR, NEITHER THE AUTHORS NOR LUCENT TECHNOLOGIES MAKE
- ANY REPRESENTATION OR WARRANTY OF ANY KIND
- CONCERNING THE MERCHANTABILITY OF THIS SOFTWARE OR ITS FITNESS
- FOR ANY PARTICULAR PURPOSE.
 
 License: BSD-3-Clause
  Redistribution and use in source and binary forms,
@@ -1785,6 +1689,75 @@ License: BSD-3-Clause~Adobe
  (INCLUDING NEGLIGENCE OR OTHERWISE)
  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+License: Expat
+ Permission is hereby granted, free of charge,
+ to any person obtaining a copy
+ of this software and associated documentation files (the "Software"),
+ to deal in the Software without restriction,
+ including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense,
+ and/or sell copies of the Software,
+ and to permit persons to whom the Software is furnished to do so,
+ subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included
+ in all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS",
+ WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ INCLUDING BUT NOT LIMITED TO
+ THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
+ AND NONINFRINGEMENT.
+ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+ FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+License: Expat~Ghostgum
+ Permission is hereby granted, free of charge,
+ to any person obtaining a copy of this file ("Software"),
+ to deal in the Software without restriction,
+ including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense,
+ and/or sell copies of this Software,
+ and to permit persons to whom this file is furnished to do so,
+ subject to the following conditions:
+ .
+ This Software is distributed with NO WARRANTY OF ANY KIND.
+ No author or distributor accepts any responsibility
+ for the consequences of using it,
+ or for whether it serves any particular purpose or works at all,
+ unless he or she says so in writing.
+ .
+ The above copyright notice and this permission notice shall be included
+ in all copies or substantial portions of the Software.
+
+License: Expat~SunSoft
+ Permission is hereby granted, free of charge,
+ to any person obtaining a copy
+ of this software and associated documentation files (the "Software"),
+ to deal in the Software without restriction,
+ including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense,
+ and/or sell copies of the Software,
+ and to permit persons to whom the Software is furnished to do so,
+ subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included
+ in all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS",
+ WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
+ AND NONINFRINGEMENT.
+ IN NO EVENT SHALL SUNSOFT, INC. OR ITS PARENT COMPANY BE LIABLE
+ FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 License: FTL
  The FreeType Project LICENSE
@@ -1968,6 +1941,83 @@ License: FTL
  .
  Our home page can be found at https://www.freetype.org
 
+License: GAP~configure
+ This configure script is free software;
+ the Free Software Foundation gives unlimited permission
+ to copy, distribute and modify it.
+
+License: GPL-1+
+Reference: /usr/share/common-licenses/GPL-1
+
+License: GPL-2+
+Reference: /usr/share/common-licenses/GPL-2
+
+License: GPL-3+
+Reference: /usr/share/common-licenses/GPL-3
+
+License: ISC
+ Permission to use, copy, modify, and distribute this software
+ for any purpose with or without fee is hereby granted,
+ provided that the above copyright notice and this permission notice
+ appear in all copies.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS"
+ AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE
+ INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.
+ IN NO EVENT SHALL THE AUTHOR BE LIABLE
+ FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES
+ OR ANY DAMAGES WHATSOEVER
+ RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+ WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+ ARISING OUT OF OR IN CONNECTION WITH
+ THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+License: LGPL-2.1
+Reference: /usr/share/common-licenses/LGPL-2.1
+
+License: MIT-Open-Group
+ Permission to use, copy, modify, distribute, and sell
+ this software and its documentation
+ for any purpose is hereby granted without fee,
+ provided that the above copyright notice appear in all copies
+ and that both that copyright notice and this permission notice appear
+ in supporting documentation.
+ .
+ The above copyright notice and this permission notice shall be included
+ in all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS",
+ WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
+ AND NONINFRINGEMENT.
+ IN NO EVENT SHALL THE OPEN GROUP BE LIABLE
+ FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+License: NTP~Lucent
+ Permission to use, copy, modify, and distribute this software
+ for any purpose without fee is hereby granted,
+ provided that this entire notice is included in all copies
+ of any software which is or includes
+ a copy or modification of this software.
+ .
+ THIS SOFTWARE IS BEING PROVIDED "AS IS",
+ WITHOUT ANY EXPRESS OR IMPLIED WARRANTY.
+ IN PARTICULAR, NEITHER THE AUTHORS NOR LUCENT TECHNOLOGIES MAKE
+ ANY REPRESENTATION OR WARRANTY OF ANY KIND
+ CONCERNING THE MERCHANTABILITY OF THIS SOFTWARE OR ITS FITNESS
+ FOR ANY PARTICULAR PURPOSE.
+
+License: NTP~WSU
+ Permission to use, copy, modify, and distribute
+ this software and its documentation
+ for any purpose and without fee is hereby granted.
+ This software is provided "as is"
+ without express or implied warranty.
+
 License: X11
  Permission is hereby granted, free of charge, to any person
  obtaining a copy of this software and associated documentation files
@@ -2019,20 +2069,3 @@ License: ZLIB
      and must not be misrepresented as being the original software.
   3. This notice may not be removed or altered
      from any source distribution.
-
-License: ISC
- Permission to use, copy, modify, and distribute this software
- for any purpose with or without fee is hereby granted,
- provided that the above copyright notice and this permission notice
- appear in all copies.
- .
- THE SOFTWARE IS PROVIDED "AS IS"
- AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE
- INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.
- IN NO EVENT SHALL THE AUTHOR BE LIABLE
- FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES
- OR ANY DAMAGES WHATSOEVER
- RESULTING FROM LOSS OF USE, DATA OR PROFITS,
- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
- ARISING OUT OF OR IN CONNECTION WITH
- THE USE OR PERFORMANCE OF THIS SOFTWARE.

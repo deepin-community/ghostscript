@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -15,6 +15,7 @@
 
 
 /* Color mapping for Ghostscript */
+#include "assert_.h"
 #include "gx.h"
 #include "gserrors.h"
 #include "gsccolor.h"
@@ -27,6 +28,7 @@
 #include "gxcmap.h"
 #include "gxlum.h"
 #include "gzstate.h"
+#include "gzht.h"
 #include "gxdither.h"
 #include "gxcdevn.h"
 #include "string_.h"
@@ -209,32 +211,32 @@ gx_backwards_compatible_gray_encode(gx_device *dev,
 /* -------- Default color space to color model conversion routines -------- */
 
 void
-gray_cs_to_gray_cm(gx_device * dev, frac gray, frac out[])
+gray_cs_to_gray_cm(const gx_device * dev, frac gray, frac out[])
 {
     out[0] = gray;
 }
 
 static void
-rgb_cs_to_gray_cm(gx_device * dev, const gs_gstate *pgs,
+rgb_cs_to_gray_cm(const gx_device * dev, const gs_gstate *pgs,
                                    frac r, frac g, frac b, frac out[])
 {
     out[0] = color_rgb_to_gray(r, g, b, NULL);
 }
 
 static void
-cmyk_cs_to_gray_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
+cmyk_cs_to_gray_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 {
     out[0] = color_cmyk_to_gray(c, m, y, k, NULL);
 }
 
 static void
-gray_cs_to_rgb_cm(gx_device * dev, frac gray, frac out[])
+gray_cs_to_rgb_cm(const gx_device * dev, frac gray, frac out[])
 {
     out[0] = out[1] = out[2] = gray;
 }
 
 void
-rgb_cs_to_rgb_cm(gx_device * dev, const gs_gstate *pgs,
+rgb_cs_to_rgb_cm(const gx_device * dev, const gs_gstate *pgs,
                                   frac r, frac g, frac b, frac out[])
 {
     out[0] = r;
@@ -243,20 +245,20 @@ rgb_cs_to_rgb_cm(gx_device * dev, const gs_gstate *pgs,
 }
 
 static void
-cmyk_cs_to_rgb_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
+cmyk_cs_to_rgb_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 {
     color_cmyk_to_rgb(c, m, y, k, NULL, out, dev->memory);
 }
 
 static void
-gray_cs_to_rgbk_cm(gx_device * dev, frac gray, frac out[])
+gray_cs_to_rgbk_cm(const gx_device * dev, frac gray, frac out[])
 {
     out[0] = out[1] = out[2] = frac_0;
     out[3] = gray;
 }
 
 static void
-rgb_cs_to_rgbk_cm(gx_device * dev, const gs_gstate *pgs,
+rgb_cs_to_rgbk_cm(const gx_device * dev, const gs_gstate *pgs,
                                   frac r, frac g, frac b, frac out[])
 {
     if ((r == g) && (g == b)) {
@@ -272,7 +274,7 @@ rgb_cs_to_rgbk_cm(gx_device * dev, const gs_gstate *pgs,
 }
 
 static void
-cmyk_cs_to_rgbk_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
+cmyk_cs_to_rgbk_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 {
     frac rgb[3];
     if ((c == frac_0) && (m == frac_0) && (y == frac_0)) {
@@ -286,7 +288,7 @@ cmyk_cs_to_rgbk_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 }
 
 static void
-gray_cs_to_cmyk_cm(gx_device * dev, frac gray, frac out[])
+gray_cs_to_cmyk_cm(const gx_device * dev, frac gray, frac out[])
 {
     out[0] = out[1] = out[2] = frac_0;
     out[3] = frac_1 - gray;
@@ -308,7 +310,7 @@ gray_cs_to_cmyk_cm(gx_device * dev, frac gray, frac out[])
  * often they are { pop 0 }.
  */
 static void
-rgb_cs_to_cmyk_cm(gx_device * dev, const gs_gstate *pgs,
+rgb_cs_to_cmyk_cm(const gx_device * dev, const gs_gstate *pgs,
                            frac r, frac g, frac b, frac out[])
 {
     if (pgs != 0)
@@ -325,7 +327,7 @@ rgb_cs_to_cmyk_cm(gx_device * dev, const gs_gstate *pgs,
 }
 
 void
-cmyk_cs_to_cmyk_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
+cmyk_cs_to_cmyk_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 {
     out[0] = c;
     out[1] = m;
@@ -356,31 +358,40 @@ static const gx_cm_color_map_procs DeviceRGBK_procs = {
  * to color model conversion routines.
  */
 const gx_cm_color_map_procs *
-gx_default_DevGray_get_color_mapping_procs(const gx_device * dev)
+gx_default_DevGray_get_color_mapping_procs(const gx_device * dev,
+                                           const gx_device ** tdev)
 {
+    *tdev = dev;
     return &DeviceGray_procs;
 }
 
 const gx_cm_color_map_procs *
-gx_default_DevRGB_get_color_mapping_procs(const gx_device * dev)
+gx_default_DevRGB_get_color_mapping_procs(const gx_device * dev,
+                                          const gx_device ** tdev)
 {
+    *tdev = dev;
     return &DeviceRGB_procs;
 }
 
 const gx_cm_color_map_procs *
-gx_default_DevCMYK_get_color_mapping_procs(const gx_device * dev)
+gx_default_DevCMYK_get_color_mapping_procs(const gx_device * dev,
+                                           const gx_device ** tdev)
 {
+    *tdev = dev;
     return &DeviceCMYK_procs;
 }
 
 const gx_cm_color_map_procs *
-gx_default_DevRGBK_get_color_mapping_procs(const gx_device * dev)
+gx_default_DevRGBK_get_color_mapping_procs(const gx_device * dev,
+                                           const gx_device ** tdev)
 {
+    *tdev = dev;
     return &DeviceRGBK_procs;
 }
 
 const gx_cm_color_map_procs *
-gx_error_get_color_mapping_procs(const gx_device * dev)
+gx_error_get_color_mapping_procs(const gx_device * dev,
+                                 const gx_device ** tdev)
 {
     /*
      * We should never get here.  If we do then we do not have a "get_color_mapping_procs"
@@ -392,14 +403,14 @@ gx_error_get_color_mapping_procs(const gx_device * dev)
               dev->dname);
     switch (dev->color_info.num_components) {
       case 1:     /* DeviceGray or DeviceInvertGray */
-        return gx_default_DevGray_get_color_mapping_procs(dev);
+        return gx_default_DevGray_get_color_mapping_procs(dev, tdev);
 
       case 3:
-        return gx_default_DevRGB_get_color_mapping_procs(dev);
+        return gx_default_DevRGB_get_color_mapping_procs(dev, tdev);
 
       case 4:
       default:		/* Unknown color model - punt with CMYK */
-        return gx_default_DevCMYK_get_color_mapping_procs(dev);
+        return gx_default_DevCMYK_get_color_mapping_procs(dev, tdev);
     }
 }
 
@@ -497,13 +508,7 @@ static cmap_proc_rgb(cmap_rgb_direct);
 #define cmap_cmyk_halftoned cmap_cmyk_direct
 static cmap_proc_cmyk(cmap_cmyk_direct);
 
-static cmap_proc_rgb_alpha(cmap_rgb_alpha_halftoned);
-static cmap_proc_rgb_alpha(cmap_rgb_alpha_direct);
-
 /* Procedure names are only guaranteed unique to 23 characters.... */
-static cmap_proc_rgb_alpha(cmap_rgb_alpha_halftoned);
-static cmap_proc_rgb_alpha(cmap_rgb_alpha_direct);
-
 static cmap_proc_separation(cmap_separation_halftoned);
 static cmap_proc_separation(cmap_separation_direct);
 
@@ -517,7 +522,6 @@ static const gx_color_map_procs cmap_few = {
      cmap_gray_halftoned,
      cmap_rgb_halftoned,
      cmap_cmyk_halftoned,
-     cmap_rgb_alpha_halftoned,
      cmap_separation_halftoned,
      cmap_devicen_halftoned,
      cmap_halftoned_is_halftoned
@@ -526,7 +530,6 @@ static const gx_color_map_procs cmap_many = {
      cmap_gray_direct,
      cmap_rgb_direct,
      cmap_cmyk_direct,
-     cmap_rgb_alpha_direct,
      cmap_separation_direct,
      cmap_devicen_direct,
      cmap_direct_is_halftoned
@@ -888,6 +891,32 @@ gx_remap_DeviceCMYK(const gs_client_color * pc, const gs_color_space * pcs,
     return 0;
 }
 
+/* ------ Utility for selecting the dev_ht from the pgs using the dev->graphics_type_tag ----- */
+
+static gs_HT_objtype_t
+tag_to_HT_objtype[8] = { HT_OBJTYPE_DEFAULT,
+                         HT_OBJTYPE_TEXT,	/* GS_TEXT_TAG = 0x1  */
+                         HT_OBJTYPE_IMAGE,	/* GS_IMAGE_TAG = 0x2 */
+                         HT_OBJTYPE_DEFAULT,
+                         HT_OBJTYPE_VECTOR,	/* GS_VECTOR_TAG = 0x4  */
+                         HT_OBJTYPE_DEFAULT, HT_OBJTYPE_DEFAULT, HT_OBJTYPE_DEFAULT
+                       };
+
+/* Return the selected dev_ht[] or the pgs->dev_ht[HT_OBJTYPE_DEFAULT] */
+gx_device_halftone *
+gx_select_dev_ht(const gs_gstate *pgs)
+{
+    gs_HT_objtype_t objtype;
+
+    /* This function only works with 3 bits currently. Flag here in case we add object types */
+    assert(HT_OBJTYPE_COUNT == 4);
+
+    objtype = tag_to_HT_objtype[pgs->device->graphics_type_tag & 7];
+    if (pgs->dev_ht[objtype] == NULL)
+        objtype = HT_OBJTYPE_DEFAULT;
+    return pgs->dev_ht[objtype];
+}
+
 /* ------ Render Gray color. ------ */
 
 static void
@@ -896,24 +925,22 @@ cmap_gray_halftoned(frac gray, gx_device_color * pdc,
 {
     uchar i, ncomps = dev->color_info.num_components;
     frac cm_comps[GX_DEVICE_COLOR_MAX_COMPONENTS];
-    subclass_color_mappings scm;
+    const gx_device *cmdev;
+    const gx_cm_color_map_procs *cmprocs;
 
     /* map to the color model */
-    scm = get_color_mapping_procs_subclass(dev);
-    map_gray_subclass(scm, gray, cm_comps);
+    cmprocs = dev_proc(dev, get_color_mapping_procs)(dev, &cmdev);
+    cmprocs->map_gray(cmdev, gray, cm_comps);
 
     /* apply the transfer function(s); convert to color values */
     if (pgs->effective_transfer_non_identity_count == 0) {
-        if (dev->color_info.polarity != GX_CINFO_POLARITY_ADDITIVE && dev->color_info.opmode == GX_CINFO_OPMODE_UNKNOWN)
-            check_cmyk_color_model_comps(dev);
+        /* No transfer function to apply */
     } else if (dev->color_info.polarity == GX_CINFO_POLARITY_ADDITIVE)
         for (i = 0; i < ncomps; i++)
             cm_comps[i] = gx_map_color_frac(pgs,
                                 cm_comps[i], effective_transfer[i]);
     else {
-        if (dev->color_info.opmode == GX_CINFO_OPMODE_UNKNOWN)
-            check_cmyk_color_model_comps(dev);
-        if (dev->color_info.opmode == GX_CINFO_OPMODE) {  /* CMYK-like color space */
+        if (gx_get_opmsupported(dev) == GX_CINFO_OPMSUPPORTED) {  /* CMYK-like color space */
             i = dev->color_info.black_component;
             if (i < ncomps)
                 cm_comps[i] = frac_1 - gx_map_color_frac(pgs,
@@ -924,7 +951,7 @@ cmap_gray_halftoned(frac gray, gx_device_color * pdc,
                             (frac)(frac_1 - cm_comps[i]), effective_transfer[i]);
         }
     }
-    if (gx_render_device_DeviceN(cm_comps, pdc, dev, pgs->dev_ht,
+    if (gx_render_device_DeviceN(cm_comps, pdc, dev, gx_select_dev_ht(pgs),
                                         &pgs->screen_phase[select]) == 1)
         gx_color_load_select(pdc, pgs, dev, select);
 }
@@ -937,16 +964,15 @@ cmap_gray_direct(frac gray, gx_device_color * pdc, const gs_gstate * pgs,
     frac cm_comps[GX_DEVICE_COLOR_MAX_COMPONENTS];
     gx_color_value cv[GX_DEVICE_COLOR_MAX_COMPONENTS];
     gx_color_index color;
-    subclass_color_mappings scm;
+    const gx_device *cmdev;
+    const gx_cm_color_map_procs *cmprocs;
 
     /* map to the color model */
-    scm = get_color_mapping_procs_subclass(dev);
-    map_gray_subclass(scm, gray, cm_comps);
+    cmprocs = dev_proc(dev, get_color_mapping_procs)(dev, &cmdev);
+    cmprocs->map_gray(cmdev, gray, cm_comps);
 
     /* apply the transfer function(s); convert to color values */
     if (pgs->effective_transfer_non_identity_count == 0) {
-        if (dev->color_info.polarity != GX_CINFO_POLARITY_ADDITIVE && dev->color_info.opmode == GX_CINFO_OPMODE_UNKNOWN)
-                check_cmyk_color_model_comps(dev);
         for (i = 0; i < ncomps; i++)
             cv[i] = frac2cv(cm_comps[i]);
     } else if (dev->color_info.polarity == GX_CINFO_POLARITY_ADDITIVE)
@@ -956,9 +982,7 @@ cmap_gray_direct(frac gray, gx_device_color * pdc, const gs_gstate * pgs,
             cv[i] = frac2cv(cm_comps[i]);
         }
     else {
-        if (dev->color_info.opmode == GX_CINFO_OPMODE_UNKNOWN)
-            check_cmyk_color_model_comps(dev);
-        if (dev->color_info.opmode == GX_CINFO_OPMODE) {  /* CMYK-like color space */
+        if (gx_get_opmsupported(dev) == GX_CINFO_OPMSUPPORTED) {  /* CMYK-like color space */
             i = dev->color_info.black_component;
             if (i < ncomps)
                 cm_comps[i] = frac_1 - gx_map_color_frac(pgs,
@@ -981,7 +1005,7 @@ cmap_gray_direct(frac gray, gx_device_color * pdc, const gs_gstate * pgs,
         color_set_pure(pdc, color);
         return;
     }
-    if (gx_render_device_DeviceN(cm_comps, pdc, dev, pgs->dev_ht,
+    if (gx_render_device_DeviceN(cm_comps, pdc, dev, gx_select_dev_ht(pgs),
                                         &pgs->screen_phase[select]) == 1)
         gx_color_load_select(pdc, pgs, dev, select);
 }
@@ -994,11 +1018,12 @@ cmap_rgb_halftoned(frac r, frac g, frac b, gx_device_color * pdc,
 {
     uchar i, ncomps = dev->color_info.num_components;
     frac cm_comps[GX_DEVICE_COLOR_MAX_COMPONENTS];
-    subclass_color_mappings scm;
+    const gx_device *cmdev;
+    const gx_cm_color_map_procs *cmprocs;
 
     /* map to the color model */
-    scm = get_color_mapping_procs_subclass(dev);
-    map_rgb_subclass(scm, pgs, r, g, b, cm_comps);
+    cmprocs = dev_proc(dev, get_color_mapping_procs)(dev, &cmdev);
+    cmprocs->map_rgb(cmdev, pgs, r, g, b, cm_comps);
 
     /* apply the transfer function(s); convert to color values */
     if (pgs->effective_transfer_non_identity_count != 0) {
@@ -1012,7 +1037,7 @@ cmap_rgb_halftoned(frac r, frac g, frac b, gx_device_color * pdc,
                         (frac)(frac_1 - cm_comps[i]), effective_transfer[i]);
     }
 
-    if (gx_render_device_DeviceN(cm_comps, pdc, dev, pgs->dev_ht,
+    if (gx_render_device_DeviceN(cm_comps, pdc, dev, gx_select_dev_ht(pgs),
                                         &pgs->screen_phase[select]) == 1)
         gx_color_load_select(pdc, pgs, dev, select);
 }
@@ -1025,11 +1050,12 @@ cmap_rgb_direct(frac r, frac g, frac b, gx_device_color * pdc,
     frac cm_comps[GX_DEVICE_COLOR_MAX_COMPONENTS];
     gx_color_value cv[GX_DEVICE_COLOR_MAX_COMPONENTS];
     gx_color_index color;
-    subclass_color_mappings scm;
+    const gx_device *cmdev;
+    const gx_cm_color_map_procs *cmprocs;
 
     /* map to the color model */
-    scm = get_color_mapping_procs_subclass(dev);
-    map_rgb_subclass(scm, pgs, r, g, b, cm_comps);
+    cmprocs = dev_proc(dev, get_color_mapping_procs)(dev, &cmdev);
+    cmprocs->map_rgb(cmdev, pgs, r, g, b, cm_comps);
 
     /* apply the transfer function(s); convert to color values */
     if (pgs->effective_transfer_non_identity_count == 0) {
@@ -1056,7 +1082,7 @@ cmap_rgb_direct(frac r, frac g, frac b, gx_device_color * pdc,
         color_set_pure(pdc, color);
         return;
     }
-    if (gx_render_device_DeviceN(cm_comps, pdc, dev, pgs->dev_ht,
+    if (gx_render_device_DeviceN(cm_comps, pdc, dev, gx_select_dev_ht(pgs),
                                         &pgs->screen_phase[select]) == 1)
         gx_color_load_select(pdc, pgs, dev, select);
 }
@@ -1076,11 +1102,12 @@ cmap_cmyk_direct(frac c, frac m, frac y, frac k, gx_device_color * pdc,
     cmm_dev_profile_t *dev_profile;
     gsicc_colorbuffer_t src_space = gsUNDEFINED;
     bool gray_to_k;
-    subclass_color_mappings scm;
+    const gx_device *cmdev;
+    const gx_cm_color_map_procs *cmprocs;
 
     /* map to the color model */
-    scm = get_color_mapping_procs_subclass(dev);
-    map_cmyk_subclass(scm, c, m, y, k, cm_comps);
+    cmprocs = dev_proc(dev, get_color_mapping_procs)(dev, &cmdev);
+    cmprocs->map_cmyk(cmdev, c, m, y, k, cm_comps);
 
     /* apply the transfer function(s); convert to color values */
     if (dev->color_info.polarity == GX_CINFO_POLARITY_ADDITIVE) {
@@ -1115,7 +1142,7 @@ cmap_cmyk_direct(frac c, frac m, frac y, frac k, gx_device_color * pdc,
     /* duplicating most of the code of this procedure. */
     if (gx_device_must_halftone(dev)) {
         if (gx_render_device_DeviceN(cm_comps, pdc, dev,
-                    pgs->dev_ht, &pgs->screen_phase[select]) == 1)
+                    gx_select_dev_ht(pgs), &pgs->screen_phase[select]) == 1)
             gx_color_load_select(pdc, pgs, dev, select);
         return;
     }
@@ -1133,109 +1160,11 @@ cmap_cmyk_direct(frac c, frac m, frac y, frac k, gx_device_color * pdc,
             color_set_pure(pdc, color);
         else {
             if (gx_render_device_DeviceN(cm_comps, pdc, dev,
-                        pgs->dev_ht, &pgs->screen_phase[select]) == 1)
+                        gx_select_dev_ht(pgs), &pgs->screen_phase[select]) == 1)
                 gx_color_load_select(pdc, pgs, dev, select);
         }
     }
     return;
-}
-
-static void
-cmap_rgb_alpha_halftoned(frac r, frac g, frac b, frac alpha,
-        gx_device_color * pdc, const gs_gstate * pgs, gx_device * dev,
-                         gs_color_select_t select)
-{
-    uchar i, ncomps = dev->color_info.num_components;
-    frac cm_comps[GX_DEVICE_COLOR_MAX_COMPONENTS];
-    subclass_color_mappings scm;
-
-    /* map to the color model */
-    scm = get_color_mapping_procs_subclass(dev);
-    map_rgb_subclass(scm, pgs, r, g, b, cm_comps);
-
-    /* pre-multiply to account for the alpha weighting */
-    if (alpha != frac_1) {
-#ifdef PREMULTIPLY_TOWARDS_WHITE
-        frac alpha_bias = frac_1 - alpha;
-#else
-        frac alpha_bias = 0;
-#endif
-
-        for (i = 0; i < ncomps; i++)
-            cm_comps[i] = (frac)((long)cm_comps[i] * alpha) / frac_1 + alpha_bias;
-    }
-
-    /* apply the transfer function(s); convert to color values */
-    if (pgs->effective_transfer_non_identity_count != 0) {
-        if (dev->color_info.polarity == GX_CINFO_POLARITY_ADDITIVE)
-            for (i = 0; i < ncomps; i++)
-                cm_comps[i] = gx_map_color_frac(pgs,
-                                cm_comps[i], effective_transfer[i]);
-        else
-            for (i = 0; i < ncomps; i++)
-                cm_comps[i] = frac_1 - gx_map_color_frac(pgs,
-                        (frac)(frac_1 - cm_comps[i]), effective_transfer[i]);
-    }
-
-    if (gx_render_device_DeviceN(cm_comps, pdc, dev, pgs->dev_ht,
-                                        &pgs->screen_phase[select]) == 1)
-        gx_color_load_select(pdc, pgs, dev, select);
-}
-
-static void
-cmap_rgb_alpha_direct(frac r, frac g, frac b, frac alpha, gx_device_color * pdc,
-     const gs_gstate * pgs, gx_device * dev, gs_color_select_t select)
-{
-    uchar i, ncomps = dev->color_info.num_components;
-    frac cm_comps[GX_DEVICE_COLOR_MAX_COMPONENTS];
-    gx_color_value cv_alpha, cv[GX_DEVICE_COLOR_MAX_COMPONENTS];
-    gx_color_index color;
-    subclass_color_mappings scm;
-
-    /* map to the color model */
-    scm = get_color_mapping_procs_subclass(dev);
-    map_rgb_subclass(scm, pgs, r, g, b, cm_comps);
-
-    /* pre-multiply to account for the alpha weighting */
-    if (alpha != frac_1) {
-#ifdef PREMULTIPLY_TOWARDS_WHITE
-        frac alpha_bias = frac_1 - alpha;
-#else
-        frac alpha_bias = 0;
-#endif
-
-        for (i = 0; i < ncomps; i++)
-            cm_comps[i] = (frac)((long)cm_comps[i] * alpha) / frac_1 + alpha_bias;
-    }
-
-    /* apply the transfer function(s); convert to color values */
-    if (pgs->effective_transfer_non_identity_count == 0)
-        for (i = 0; i < ncomps; i++)
-            cv[i] = frac2cv(cm_comps[i]);
-    else if (dev->color_info.polarity == GX_CINFO_POLARITY_ADDITIVE)
-        for (i = 0; i < ncomps; i++)
-            cv[i] = frac2cv(gx_map_color_frac(pgs,
-                                cm_comps[i], effective_transfer[i]));
-    else
-        for (i = 0; i < ncomps; i++)
-            cv[i] = frac2cv(frac_1 - gx_map_color_frac(pgs,
-                        (frac)(frac_1 - cm_comps[i]), effective_transfer[i]));
-
-    /* encode as a color index */
-    if (dev_proc(dev, map_rgb_alpha_color) != gx_default_map_rgb_alpha_color &&
-         (cv_alpha = frac2cv(alpha)) != gx_max_color_value)
-        color = dev_proc(dev, map_rgb_alpha_color)(dev, cv[0], cv[1], cv[2], cv_alpha);
-    else
-        color = dev_proc(dev, encode_color)(dev, cv);
-
-    /* check if the encoding was successful; we presume failure is rare */
-    if (color != gx_no_color_index) {
-        color_set_pure(pdc, color);
-        return;
-    }
-    if (gx_render_device_DeviceN(cm_comps, pdc, dev, pgs->dev_ht,
-                                        &pgs->screen_phase[select]) == 1)
-        gx_color_load_select(pdc, pgs, dev, select);
 }
 
 /* ------ Render Separation All color. ------ */
@@ -1249,19 +1178,26 @@ cmap_rgb_alpha_direct(frac r, frac g, frac b, frac alpha, gx_device_color * pdc,
  *    pcolor_component_map - Map from DeviceN to the Devices colorants.
  *        A negative value indicates component is not to be mapped.
  *    plist - Pointer to list for mapped components
+ *    num_comps - num_comps that we need to zero (may be more than
+ *                is set if we are mapping values for an NCLR ICC profile
+ *                via an alternate tint transform for a sep value) --
+ *                i.e. cmyk+og values and we may have some spots that
+ *                are supported but may have reached the limit and
+ *                using the alt tint values.  Need to make sure to zero all.
  *
  * Returns:
  *    Mapped components in plist.
  */
 static inline void
 map_components_to_colorants(const frac * pcc,
-        const gs_devicen_color_map * pcolor_component_map, frac * plist)
+        const gs_devicen_color_map * pcolor_component_map, frac * plist,
+        int num_colorants)
 {
-    int i = pcolor_component_map->num_colorants - 1;
+    int i;
     int pos;
 
     /* Clear all output colorants first */
-    for (; i >= 0; i--) {
+    for (i = num_colorants - 1; i >= 0; i--) {
         plist[i] = frac_0;
     }
 
@@ -1425,8 +1361,14 @@ cmap_separation_halftoned(frac all, gx_device_color * pdc,
         for (i = 0; i < pgs->color_component_map.num_colorants; i++)
             cm_comps[i] = comp_value;
     } else {
+        if (pgs->color_component_map.sep_type == SEP_NONE) {
+            color_set_null(pdc);
+            return;
+        }
+
         /* map to the color model */
-        map_components_to_colorants(&all, &(pgs->color_component_map), cm_comps);
+        map_components_to_colorants(&all, &(pgs->color_component_map), cm_comps,
+            pgs->color_component_map.num_colorants);
     }
 
     if (devicen_has_cmyk(dev, des_profile) &&
@@ -1447,7 +1389,7 @@ cmap_separation_halftoned(frac all, gx_device_color * pdc,
                         (frac)(frac_1 - cm_comps[i]), effective_transfer[i]);
     }
 
-    if (gx_render_device_DeviceN(cm_comps, pdc, dev, pgs->dev_ht,
+    if (gx_render_device_DeviceN(cm_comps, pdc, dev, gx_select_dev_ht(pgs),
                                         &pgs->screen_phase[select]) == 1)
         gx_color_load_select(pdc, pgs, dev, select);
 }
@@ -1490,16 +1432,21 @@ cmap_separation_direct(frac all, gx_device_color * pdc, const gs_gstate * pgs,
         if (des_profile->data_cs == gsCIELAB || des_profile->islab) {
             use_rgb2dev_icc = true;
         }
-    }
-    else {
+    } else {
+        if (pgs->color_component_map.sep_type == SEP_NONE) {
+            color_set_null(pdc);
+            return;
+        }
+
         /* map to the color model */
-        map_components_to_colorants(&comp_value, &(pgs->color_component_map), cm_comps);
+        map_components_to_colorants(&comp_value, &(pgs->color_component_map), cm_comps,
+            pgs->color_component_map.num_colorants);
     }
 
     /* Check if we have the standard colorants.  If yes, then we will apply
       ICC color management to those colorants. */
     if (devicen_has_cmyk(dev, des_profile) && des_profile->data_cs == gsCMYK &&
-        !named_color_supported(pgs)) {
+        !named_color_supported(pgs) && pgs->color_component_map.sep_type != SEP_ALL) {
         /* We need to do a CMYK to CMYK conversion here.  This will always
            use the default CMYK profile and the device's output profile.
            We probably need to add some checking here
@@ -1560,6 +1507,16 @@ cmap_separation_direct(frac all, gx_device_color * pdc, const gs_gstate * pgs,
         for (i = 0; i < ncomps; i++)
             pdc->colors.devn.values[i] = cv[i];
         pdc->type = gx_dc_type_devn;
+
+        /* Let device set the tags if present */
+        if (device_encodes_tags(dev)) {
+	        const gx_device *cmdev;
+	        const gx_cm_color_map_procs *cmprocs;
+
+            cmprocs = dev_proc(dev, get_color_mapping_procs)(dev, &cmdev);
+            cmprocs->map_cmyk(cmdev, 0, 0, 0, 0, cm_comps);
+            pdc->colors.devn.values[ncomps - 1] = frac2cv(cm_comps[ncomps - 1]);
+        }
         return;
     }
 
@@ -1572,7 +1529,7 @@ cmap_separation_direct(frac all, gx_device_color * pdc, const gs_gstate * pgs,
         return;
     }
 
-    if (gx_render_device_DeviceN(cm_comps, pdc, dev, pgs->dev_ht,
+    if (gx_render_device_DeviceN(cm_comps, pdc, dev, gx_select_dev_ht(pgs),
                                         &pgs->screen_phase[select]) == 1)
         gx_color_load_select(pdc, pgs, dev, select);
 }
@@ -1594,11 +1551,17 @@ cmap_devicen_halftoned(const frac * pcc,
     cmm_dev_profile_t *dev_profile = NULL;
     cmm_profile_t *des_profile = NULL;
 
+    if (pcs->params.device_n.all_none == true) {
+        color_set_null(pdc);
+        return;
+    }
+
     dev_proc(dev, get_profile)(dev,  &dev_profile);
     gsicc_extract_profile(dev->graphics_type_tag,
                           dev_profile, &des_profile, &render_cond);
     /* map to the color model */
-    map_components_to_colorants(pcc, &(pgs->color_component_map), cm_comps);
+    map_components_to_colorants(pcc, &(pgs->color_component_map), cm_comps,
+        pgs->color_component_map.num_colorants);
     /* See comments in cmap_devicen_direct for details on below operations */
     if (devicen_has_cmyk(dev, des_profile) &&
         des_profile->data_cs == gsCMYK &&
@@ -1618,7 +1581,7 @@ cmap_devicen_halftoned(const frac * pcc,
     }
 
     /* We need to finish halftoning */
-    if (gx_render_device_DeviceN(cm_comps, pdc, dev, pgs->dev_ht,
+    if (gx_render_device_DeviceN(cm_comps, pdc, dev, gx_select_dev_ht(pgs),
                                         &pgs->screen_phase[select]) == 1)
         gx_color_load_select(pdc, pgs, dev, select);
 }
@@ -1640,6 +1603,11 @@ cmap_devicen_direct(const frac * pcc,
     cmm_dev_profile_t *dev_profile = NULL;
     cmm_profile_t *des_profile = NULL;
 
+    if (pcs->params.device_n.all_none == true) {
+        color_set_null(pdc);
+        return;
+    }
+
     dev_proc(dev, get_profile)(dev,  &dev_profile);
     gsicc_extract_profile(dev->graphics_type_tag,
                           dev_profile, &des_profile, &render_cond);
@@ -1647,9 +1615,10 @@ cmap_devicen_direct(const frac * pcc,
     /* map to the color model */
     if (dev_profile->spotnames != NULL && dev_profile->spotnames->equiv_cmyk_set) {
         map_components_to_colorants(pcc, dev_profile->spotnames->color_map,
-                                    cm_comps);
+                                    cm_comps, ncomps);
     } else {
-        map_components_to_colorants(pcc, &(pgs->color_component_map), cm_comps);
+        map_components_to_colorants(pcc, &(pgs->color_component_map), cm_comps,
+            pgs->color_component_map.num_colorants);
     }
     /*  Check if we have the standard colorants.  If yes, then we will apply
        ICC color management to those colorants. To understand why, consider
@@ -1688,6 +1657,17 @@ cmap_devicen_direct(const frac * pcc,
                 pdc->colors.devn.values[i] = frac2cv(frac_1 - gx_map_color_frac(pgs,
                             (frac)(frac_1 - cm_comps[i]), effective_transfer[i]));
         pdc->type = gx_dc_type_devn;
+
+        /* Let device set the tags if present */
+        if (device_encodes_tags(dev)) {
+	        const gx_device *cmdev;
+	        const gx_cm_color_map_procs *cmprocs;
+
+            cmprocs = dev_proc(dev, get_color_mapping_procs)(dev, &cmdev);
+            cmprocs->map_cmyk(cmdev, 0, 0, 0, 0, cm_comps);
+            pdc->colors.devn.values[ncomps - 1] = frac2cv(cm_comps[ncomps - 1]);
+        }
+
         return;
     }
 
@@ -1713,7 +1693,7 @@ cmap_devicen_direct(const frac * pcc,
         color_set_pure(pdc, color);
         return;
     }
-    if (gx_render_device_DeviceN(cm_comps, pdc, dev, pgs->dev_ht,
+    if (gx_render_device_DeviceN(cm_comps, pdc, dev, gx_select_dev_ht(pgs),
                                         &pgs->screen_phase[select]) == 1)
         gx_color_load_select(pdc, pgs, dev, select);
 }
@@ -1814,6 +1794,21 @@ gx_default_w_b_map_color_rgb(gx_device * dev, gx_color_index color,
     return 0;
 }
 
+gx_color_index
+gx_default_w_b_mono_encode_color(gx_device *dev, const gx_color_value cv[])
+{
+    return cv[0] > gx_max_color_value / 2 ? (gx_color_index)1
+                                          : (gx_color_index)0;
+}
+
+int
+gx_default_w_b_mono_decode_color(gx_device * dev, gx_color_index color,
+                                 gx_color_value pgray[])
+{				/* Map 0 to max_value, 1 to 0. */
+    pgray[0] = -(gx_color_value) color;
+    return 0;
+}
+
 /* Black-on-white */
 gx_color_index
 gx_default_b_w_map_rgb_color(gx_device * dev, const gx_color_value cv[])
@@ -1832,6 +1827,21 @@ gx_default_b_w_map_color_rgb(gx_device * dev, gx_color_index color,
                              gx_color_value prgb[3])
 {				/* Map 0 to max_value, 1 to 0. */
     prgb[0] = prgb[1] = prgb[2] = -((gx_color_value) color ^ 1);
+    return 0;
+}
+
+gx_color_index
+gx_default_b_w_mono_encode_color(gx_device *dev, const gx_color_value cv[])
+{
+    return cv[0] > gx_max_color_value / 2 ? (gx_color_index)0
+                                          : (gx_color_index)1;
+}
+
+int
+gx_default_b_w_mono_decode_color(gx_device * dev, gx_color_index color,
+                                 gx_color_value pgray[])
+{				/* Map 0 to max_value, 1 to 0. */
+    pgray[0] = -((gx_color_value) color ^ 1);
     return 0;
 }
 
@@ -1865,6 +1875,26 @@ gx_default_gray_map_color_rgb(gx_device * dev, gx_color_index color,
 }
 
 gx_color_index
+gx_default_gray_encode_color(gx_device * dev, const gx_color_value cv[])
+{
+    gx_color_value gray = (cv[0] * dev->color_info.max_gray +
+                           (gx_max_color_value / 2)) / gx_max_color_value;
+
+    return gray;
+}
+
+int
+gx_default_gray_decode_color(gx_device * dev, gx_color_index color,
+                             gx_color_value *cv)
+{
+    gx_color_value gray = (gx_color_value)
+        (color * gx_max_color_value / dev->color_info.max_gray);
+
+    cv[0] = gray;
+    return 0;
+}
+
+gx_color_index
 gx_default_8bit_map_gray_color(gx_device * dev, const gx_color_value cv[])
 {
     gx_color_index color = gx_color_value_to_byte(cv[0]);
@@ -1874,7 +1904,7 @@ gx_default_8bit_map_gray_color(gx_device * dev, const gx_color_value cv[])
 
 int
 gx_default_8bit_map_color_gray(gx_device * dev, gx_color_index color,
-                              gx_color_value pgray[1])
+                              gx_color_value pgray[])
 {
     pgray[0] = (gx_color_value)(color * gx_max_color_value / 255);
     return 0;
@@ -1966,7 +1996,7 @@ cmyk_1bit_map_color_rgb(gx_device * dev, gx_color_index color,
 
 int
 cmyk_1bit_map_color_cmyk(gx_device * dev, gx_color_index color,
-                        gx_color_value pcv[4])
+                        gx_color_value pcv[])
 {
     pcv[0] = (color & 8 ? 0 : gx_max_color_value);
     pcv[1] = (color & 4 ? 0 : gx_max_color_value);
@@ -2022,7 +2052,7 @@ cmyk_8bit_map_color_rgb(gx_device * dev, gx_color_index color,
 
 int
 cmyk_8bit_map_color_cmyk(gx_device * dev, gx_color_index color,
-                        gx_color_value pcv[4])
+                        gx_color_value pcv[])
 {
     pcv[0] = gx_color_value_from_byte((color >> 24) & 0xff);
     pcv[1] = gx_color_value_from_byte((color >> 16) & 0xff);
@@ -2033,7 +2063,7 @@ cmyk_8bit_map_color_cmyk(gx_device * dev, gx_color_index color,
 
 int
 cmyk_16bit_map_color_cmyk(gx_device * dev, gx_color_index color,
-                          gx_color_value pcv[4])
+                          gx_color_value pcv[])
 {
     pcv[0] = ((color >> 24) >> 24) & 0xffff;
     pcv[1] = ((color >> 16) >> 16) & 0xffff;
@@ -2042,23 +2072,22 @@ cmyk_16bit_map_color_cmyk(gx_device * dev, gx_color_index color,
     return 0;
 }
 
-/* Default mapping between RGB+alpha and RGB. */
-
-gx_color_index
-gx_default_map_rgb_alpha_color(gx_device * dev,
- gx_color_value r, gx_color_value g, gx_color_value b, gx_color_value alpha)
-{				/* Colors have been premultiplied: we don't need to do it here. */
-    gx_color_value cv[3];
-    cv[0] = r; cv[1] = g; cv[2] = b;
-    return (*dev_proc(dev, map_rgb_color))(dev, cv);
-}
-
 int
-gx_default_map_color_rgb_alpha(gx_device * dev, gx_color_index color,
-                               gx_color_value prgba[4])
+cmyk_16bit_map_color_rgb(gx_device * dev, gx_color_index color,
+                         gx_color_value prgb[3])
 {
-    prgba[3] = gx_max_color_value;	/* alpha = 1 */
-    return (*dev_proc(dev, map_color_rgb)) (dev, color, prgba);
+    gx_color_value c     = ((color >> 24) >> 24) & 0xffff;
+    gx_color_value m     = ((color >> 16) >> 16) & 0xffff;
+    gx_color_value y     = ( color        >> 16) & 0xffff;
+    gx_color_value not_k = (~color             ) & 0xffff;
+    int r     = not_k - c;
+    int g     = not_k - m;
+    int b     = not_k - y;
+
+    prgb[0] = (r < 0 ? 0 : r);
+    prgb[1] = (g < 0 ? 0 : g);
+    prgb[2] = (b < 0 ? 0 : b);
+    return 0;
 }
 
 frac
@@ -2093,7 +2122,7 @@ cmapper_transfer_halftone_add(gx_cmapper_t *data)
     }
     /* Halftoning */
     if (gx_render_device_DeviceN(&(cv_frac[0]), &data->devc, dev,
-                    pgs->dev_ht, &pgs->screen_phase[select]) == 1)
+                    gx_select_dev_ht(pgs), &pgs->screen_phase[select]) == 1)
         gx_color_load_select(&data->devc, pgs, dev, select);
 }
 
@@ -2122,7 +2151,7 @@ cmapper_transfer_halftone_op(gx_cmapper_t *data)
     }
     /* Halftoning */
     if (gx_render_device_DeviceN(&(cv_frac[0]), &data->devc, dev,
-                    pgs->dev_ht, &pgs->screen_phase[select]) == 1)
+                    gx_select_dev_ht(pgs), &pgs->screen_phase[select]) == 1)
         gx_color_load_select(&data->devc, pgs, dev, select);
 }
 
@@ -2146,7 +2175,7 @@ cmapper_transfer_halftone_sub(gx_cmapper_t *data)
     }
     /* Halftoning */
     if (gx_render_device_DeviceN(&(cv_frac[0]), &data->devc, dev,
-                    pgs->dev_ht, &pgs->screen_phase[select]) == 1)
+                    gx_select_dev_ht(pgs), &pgs->screen_phase[select]) == 1)
         gx_color_load_select(&data->devc, pgs, dev, select);
 }
 
@@ -2242,7 +2271,7 @@ cmapper_halftone(gx_cmapper_t *data)
         cv_frac[i] = cv2frac(pconc[i]);
     }
     if (gx_render_device_DeviceN(&(cv_frac[0]), &data->devc, dev,
-                pgs->dev_ht, &pgs->screen_phase[select]) == 1)
+                gx_select_dev_ht(pgs), &pgs->screen_phase[select]) == 1)
         gx_color_load_select(&data->devc, pgs, dev, select);
 }
 
@@ -2274,8 +2303,6 @@ gx_get_cmapper(gx_cmapper_t *data, const gs_gstate *pgs,
     data->select = select;
     data->devc.type = gx_dc_type_none;
     data->direct = 0;
-    if (has_transfer && dev->color_info.opmode == GX_CINFO_OPMODE_UNKNOWN)
-        check_cmyk_color_model_comps(dev);
     /* Per spec. Images with soft mask, and the mask, do not use transfer function */
     if (pgs->effective_transfer_non_identity_count == 0 ||
         (dev_proc(dev, dev_spec_op)(dev, gxdso_in_smask, NULL, 0)) > 0)
@@ -2286,7 +2313,7 @@ gx_get_cmapper(gx_cmapper_t *data, const gs_gstate *pgs,
                 data->set_color = cmapper_transfer_halftone_add;
             else
                 data->set_color = cmapper_transfer_add;
-        } else if (dev->color_info.opmode == GX_CINFO_OPMODE) {
+        } else if (gx_get_opmsupported(dev) == GX_CINFO_OPMSUPPORTED) {
             if (has_halftone)
                 data->set_color = cmapper_transfer_halftone_op;
             else
@@ -2327,8 +2354,6 @@ cmap_transfer_halftone(gx_color_value *pconc, gx_device_color * pdc,
     /* apply the transfer function(s) */
     if (has_transfer) {
         if (pgs->effective_transfer_non_identity_count == 0) {
-            if (dev->color_info.polarity != GX_CINFO_POLARITY_ADDITIVE && dev->color_info.opmode == GX_CINFO_OPMODE_UNKNOWN)
-                check_cmyk_color_model_comps(dev);
             for (i = 0; i < ncomps; i++)
                 cv_frac[i] = cv2frac(pconc[i]);
         } else if (dev->color_info.polarity == GX_CINFO_POLARITY_ADDITIVE) {
@@ -2338,10 +2363,7 @@ cmap_transfer_halftone(gx_color_value *pconc, gx_device_color * pdc,
                                     frac_value, effective_transfer[i]);
             }
         } else {
-            if (dev->color_info.opmode == GX_CINFO_OPMODE_UNKNOWN) {
-                check_cmyk_color_model_comps(dev);
-            }
-            if (dev->color_info.opmode == GX_CINFO_OPMODE) {  /* CMYK-like color space */
+            if (gx_get_opmsupported(dev) == GX_CINFO_OPMSUPPORTED) {  /* CMYK-like color space */
                 uint k = dev->color_info.black_component;
                 for (i = 0; i < ncomps; i++) {
                     frac_value = cv2frac(pconc[i]);
@@ -2371,7 +2393,7 @@ cmap_transfer_halftone(gx_color_value *pconc, gx_device_color * pdc,
     /* Halftoning */
     if (has_halftone) {
         if (gx_render_device_DeviceN(&(cv_frac[0]), pdc, dev,
-                    pgs->dev_ht, &pgs->screen_phase[select]) == 1)
+                    gx_select_dev_ht(pgs), &pgs->screen_phase[select]) == 1)
             gx_color_load_select(pdc, pgs, dev, select);
     } else {
         /* We have a frac value from the transfer function.  Do the encode.
@@ -2396,17 +2418,13 @@ cmap_transfer(gx_color_value *pconc, const gs_gstate * pgs, gx_device * dev)
 
     /* apply the transfer function(s) */
     if (pgs->effective_transfer_non_identity_count == 0) {
-        if (dev->color_info.polarity != GX_CINFO_POLARITY_ADDITIVE && dev->color_info.opmode == GX_CINFO_OPMODE_UNKNOWN)
-            check_cmyk_color_model_comps(dev);
+        /* No transfer function to apply */
     } else if (dev->color_info.polarity == GX_CINFO_POLARITY_ADDITIVE)
         for (i = 0; i < ncomps; i++)
             pconc[i] = frac2cv(gx_map_color_frac(pgs,
                                cv2frac(pconc[i]), effective_transfer[i]));
     else {
-        if (dev->color_info.opmode == GX_CINFO_OPMODE_UNKNOWN) {
-            check_cmyk_color_model_comps(dev);
-        }
-        if (dev->color_info.opmode == GX_CINFO_OPMODE) {  /* CMYK-like color space */
+        if (gx_get_opmsupported(dev) == GX_CINFO_OPMSUPPORTED) {  /* CMYK-like color space */
             i = dev->color_info.black_component;
             if (i < ncomps)
                 pconc[i] = frac2cv(frac_1 - gx_map_color_frac(pgs,
@@ -2433,10 +2451,7 @@ cmap_transfer_plane(gx_color_value *pconc, const gs_gstate *pgs,
         cv_frac = gx_map_color_frac(pgs, frac_value, effective_transfer[plane]);
         pconc[0] = frac2cv(cv_frac);
     } else {
-        if (dev->color_info.opmode == GX_CINFO_OPMODE_UNKNOWN) {
-            check_cmyk_color_model_comps(dev);
-        }
-        if (dev->color_info.opmode == GX_CINFO_OPMODE) {  /* CMYK-like color space */
+        if (gx_get_opmsupported(dev) == GX_CINFO_OPMSUPPORTED) {  /* CMYK-like color space */
             uint k = dev->color_info.black_component;
             if (plane == k) {
                 frac_value = cv2frac(pconc[0]);
@@ -2457,7 +2472,6 @@ cmap_transfer_plane(gx_color_value *pconc, const gs_gstate *pgs,
 bool
 gx_device_uses_std_cmap_procs(gx_device * dev, const gs_gstate * pgs)
 {
-    subclass_color_mappings scm;
     const gx_cm_color_map_procs *pprocs;
     gsicc_rendering_param_t render_cond;
     cmm_dev_profile_t *dev_profile = NULL;
@@ -2468,16 +2482,10 @@ gx_device_uses_std_cmap_procs(gx_device * dev, const gs_gstate * pgs)
                           dev_profile, &des_profile, &render_cond);
 
     if (des_profile != NULL) {
-        scm = get_color_mapping_procs_subclass(dev);
-        pprocs = scm.procs;
-        /* FIXME: This looks wrong to me. Presumably we should be finding
-         * the parentmost device, looking at the procs for that, and if
-         * they are forwarding ones, getting the procs for the forwarded
-         * device. This is NOT what this code does. */
+        const gx_device *cmdev;
+
+        pprocs = dev_proc(dev, get_color_mapping_procs)(dev, &cmdev);
         /* Check if they are forwarding procs */
-        if (fwd_uses_fwd_cmap_procs(dev)) {
-            pprocs = fwd_get_target_cmap_procs(dev);
-        }
         switch(des_profile->num_comps) {
             case 1:
                 if (pprocs == &DeviceGray_procs) {

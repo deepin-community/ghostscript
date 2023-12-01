@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -85,7 +85,6 @@ gx_dc_ht_colored_save_dc(const gx_device_color * pdevc,
     memcpy( psdc->colors.colored.c_level,
             pdevc->colors.colored.c_level,
             sizeof(psdc->colors.colored.c_base) );
-    psdc->colors.colored.alpha = pdevc->colors.colored.alpha;
     psdc->phase = pdevc->phase;
 }
 
@@ -105,7 +104,6 @@ gx_dc_ht_colored_equal(const gx_device_color * pdevc1,
 
     if (pdevc2->type != pdevc1->type ||
         pdevc1->colors.colored.c_ht != pdevc2->colors.colored.c_ht ||
-        pdevc1->colors.colored.alpha != pdevc2->colors.colored.alpha ||
         pdevc1->phase.x != pdevc2->phase.x ||
         pdevc1->phase.y != pdevc2->phase.y ||
         num_comp != pdevc2->colors.colored.num_components
@@ -131,10 +129,12 @@ gx_dc_ht_colored_equal(const gx_device_color * pdevc1,
  * The halftone is never transmitted as part of a device color, so there
  * is no flag for it.
  */
-static const int   dc_ht_colored_has_base = 0x01;
-static const int   dc_ht_colored_has_level = 0x02;
-static const int   dc_ht_colored_has_alpha = 0x04;
-static const int   dc_ht_colored_alpha_is_max = 0x08;
+enum {
+   dc_ht_colored_has_base = 0x01,
+   dc_ht_colored_has_level = 0x02,
+   dc_ht_colored_has_phase_x = 0x04,
+   dc_ht_colored_has_phase_y = 0x08,
+};
 
 /*
  * Serialize a device color that uses a traditional colored halftone.
@@ -196,7 +196,6 @@ gx_dc_ht_colored_write(
     int                             num_comps = dev->color_info.num_components;
     int                             depth = dev->color_info.depth;
     gx_color_index                  plane_mask = pdevc->colors.colored.plane_mask;
-    gx_color_value                  alpha = pdevc->colors.colored.alpha;
     const gx_device_color_saved *   psdc = psdc0;
     byte *                          pdata0 = pdata;
 
@@ -224,7 +223,7 @@ gx_dc_ht_colored_write(
     }
 
     plane_mask = pdevc->colors.colored.plane_mask;
-    if ( psdc == 0                                                          ||
+    if ( psdc == NULL                                                       ||
          memcmp( pdevc->colors.colored.c_level,
                  psdc->colors.colored.c_level,
                  num_comps * sizeof(pdevc->colors.colored.c_level[0]) ) != 0  ) {
@@ -248,14 +247,10 @@ gx_dc_ht_colored_write(
         }
     }
 
-    if (psdc == 0 || alpha != psdc->colors.colored.alpha) {
-        if (alpha == gx_max_color_value)
-            flag_bits |= dc_ht_colored_alpha_is_max;
-        else {
-            flag_bits |= dc_ht_colored_has_alpha;
-            req_size += enc_u_sizew(alpha);
-        }
-    }
+    if (psdc == NULL || psdc->phase.x != pdevc->phase.x)
+        flag_bits |= dc_ht_colored_has_phase_x, req_size += enc_u_sizew(pdevc->phase.x);
+    if (psdc == NULL || psdc->phase.y != pdevc->phase.y)
+        flag_bits |= dc_ht_colored_has_phase_y, req_size += enc_u_sizew(pdevc->phase.y);
 
     /* see if there is anything to do */
     if (flag_bits == 0) {
@@ -313,8 +308,12 @@ gx_dc_ht_colored_write(
         }
     }
 
-    if ((flag_bits & dc_ht_colored_has_alpha) != 0)
-        enc_u_putw(alpha, pdata);
+    if ((flag_bits & dc_ht_colored_has_phase_x) != 0) {
+        enc_u_putw(pdevc->phase.x, pdata);
+    }
+    if ((flag_bits & dc_ht_colored_has_phase_x) != 0) {
+        enc_u_putw(pdevc->phase.y, pdata);
+    }
 
     *psize = pdata - pdata0;
     return 0;
@@ -353,13 +352,15 @@ gx_dc_ht_colored_write(
 static int
 gx_dc_ht_colored_read(
     gx_device_color *       pdevc,
-    const gs_gstate * pgs,
+    const gs_gstate *       pgs,
     const gx_device_color * prior_devc,
     const gx_device *       dev,
-    int64_t		    offset,
+    int64_t                 offset,
     const byte *            pdata,
     uint                    size,
-    gs_memory_t *           mem )       /* ignored */
+    gs_memory_t *           mem,        /* ignored */
+    int                     x0,
+    int                     y0)
 {
     gx_device_color         devc;
     int                     num_comps = dev->color_info.num_components;
@@ -379,7 +380,7 @@ gx_dc_ht_colored_read(
 
     /* the number of components is determined by the color model */
     devc.colors.colored.num_components = num_comps;
-    devc.colors.colored.c_ht = pgs->dev_ht;
+    devc.colors.colored.c_ht = pgs->dev_ht[HT_OBJTYPE_DEFAULT];
 
     /*
      * Verify that we have at least the flag bits. For performance
@@ -447,23 +448,14 @@ gx_dc_ht_colored_read(
         size -= pdata - pdata_start;
     }
 
-    if ((flag_bits & dc_ht_colored_alpha_is_max) != 0)
-        devc.colors.colored.alpha = gx_max_color_value;
-    else if ((flag_bits & dc_ht_colored_has_alpha) != 0) {
-        const byte *    pdata_start = pdata;
-
-        if (size < 1)
-            return_error(gs_error_rangecheck);
-        enc_u_getw(devc.colors.colored.alpha, pdata);
-        size -= pdata - pdata_start;
+    if ((flag_bits & dc_ht_colored_has_phase_x) != 0) {
+        enc_u_getw(devc.phase.x, pdata);
+        devc.phase.x += x0;
     }
-
-    /* set the phase as required (select value is arbitrary) */
-    color_set_phase_mod( &devc,
-                         pgs->screen_phase[0].x,
-                         pgs->screen_phase[0].y,
-                         pgs->dev_ht->lcm_width,
-                         pgs->dev_ht->lcm_height );
+    if ((flag_bits & dc_ht_colored_has_phase_y) != 0) {
+        enc_u_getw(devc.phase.y, pdata);
+        devc.phase.y += y0;
+    }
 
     /* everything looks OK */
     *pdevc = devc;
@@ -546,9 +538,9 @@ static SET_HT_COLORS_PROC(set_ht_colors_gt_4);
                 gx_color_index plane_mask,	/* which planes are halftoned */\
                 gx_device *dev,		/* in case we are mapping lazily */\
                 const color_values_pair_t *pvp,	/* color values ditto */\
-                gx_color_index colors[MAX_DCC],	/* the actual colors for the tile, */\
+                gx_color_index colors[MAX_DCC_16],	/* the actual colors for the tile, */\
                                 /* actually [nplanes] */\
-                const gx_const_strip_bitmap * sbits[MAX_DCC]	/* the bitmaps for the planes, */\
+                const gx_const_strip_bitmap * sbits[MAX_DCC_16]	/* the bitmaps for the planes, */\
                                 /* actually [nplanes] */\
                 )
 
@@ -671,8 +663,8 @@ gx_dc_ht_colored_fill_rectangle(const gx_device_color * pdevc,
 
     /*
      * If the LCM of the plane cell sizes is smaller than the rectangle
-     * being filled, compute a single tile and let tile_rectangle do the
-     * replication.
+     * being filled, compute a single tile and let strip_tile_rectangle
+     * do the replication.
      */
     if ((w > lw || h > lh) &&
         (raster = bitmap_raster(lw * depth)) <= tile_bytes / lh
@@ -703,18 +695,7 @@ gx_dc_ht_colored_fill_rectangle(const gx_device_color * pdevc,
                                                                gx_no_color_index,
                                                                pdevc->phase.x,
                                                                pdevc->phase.y);
-            if (source->planar_height == 0)
-                return (*dev_proc(dev, strip_copy_rop))
-                               (dev,
-                                source->sdata + (y - origy) * source->sraster,
-                                source->sourcex + (x - origx),
-                                source->sraster, source->id,
-                                (source->use_scolors ? source->scolors : NULL),
-                                &tiles, NULL,
-                                x, y, w, h,
-                                pdevc->phase.x, pdevc->phase.y, lop);
-            else
-                return (*dev_proc(dev, strip_copy_rop2))
+            return (*dev_proc(dev, strip_copy_rop2))
                                (dev,
                                 source->sdata + (y - origy) * source->sraster,
                                 source->sourcex + (x - origx),
@@ -779,16 +760,7 @@ fit:				/* Now the tile will definitely fit. */
                      x, cy, dw, ch);
             } else {
                 tiles.rep_height = tiles.size.y = ch;
-                if (source->planar_height == 0)
-                    code = (*dev_proc(dev, strip_copy_rop))
-                          (dev, source->sdata + source->sraster * (cy-origy),
-                           source->sourcex + (x - origx),
-                           source->sraster,
-                           source->id,
-                           (source->use_scolors ? source->scolors : NULL),
-                           &tiles, NULL, x, cy, dw, ch, 0, 0, lop);
-                else
-                    code = (*dev_proc(dev, strip_copy_rop2))
+                code = (*dev_proc(dev, strip_copy_rop2))
                           (dev, source->sdata + source->sraster * (cy-origy),
                            source->sourcex + (x - origx),
                            source->sraster,
@@ -891,9 +863,6 @@ set_ht_colors_le_4(color_values_pair_t *pvp /* only used internally */,
         set_plane_color(2, pvp, pdc, sbits, caches, max_color, invert);
     }
     if (nplanes == 3) {
-        gx_color_value alpha = pdc->colors.colored.alpha;
-
-        if (alpha == gx_max_color_value) {
 #define M(i)\
   cvalues[0] = pvp->values[(i) & 1][0];\
   cvalues[1] = pvp->values[((i) & 2) >> 1][1];\
@@ -902,14 +871,6 @@ set_ht_colors_le_4(color_values_pair_t *pvp /* only used internally */,
 
             M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7);
 #undef M
-        } else {
-#define M(i)\
-  colors[i] = dev_proc(dev, map_rgb_alpha_color)(dev, pvp->values[(i) & 1][0],\
-                                     pvp->values[((i) & 2) >> 1][1],\
-                                     pvp->values[(i) >> 2][2], alpha)
-            M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7);
-#undef M
-        }
     } else if (nplanes > 3){
         set_plane_color(3, pvp, pdc, sbits, caches, max_color, invert);
         if (nplanes > 4) {
@@ -1192,7 +1153,7 @@ set_color_ht_le_4(byte *dest_data, uint dest_raster, int px, int py,
                   gx_color_index plane_mask, gx_device *ignore_dev,
                   const color_values_pair_t *ignore_pvp,
                   gx_color_index colors[MAX_DCC_16],
-                  const gx_const_strip_bitmap * sbits[MAX_DCC])
+                  const gx_const_strip_bitmap * sbits[MAX_DCC_16])
 {
     /*
      * Note that the planes are specified in the order RGB or CMYK, but
@@ -1383,7 +1344,7 @@ set_color_ht_gt_4(byte *dest_data, uint dest_raster, int px, int py,
                   gx_color_index plane_mask, gx_device *dev,
                   const color_values_pair_t *pvp,
                   gx_color_index colors[MAX_DCC_16],
-                  const gx_const_strip_bitmap * sbits[MAX_DCC])
+                  const gx_const_strip_bitmap * sbits[MAX_DCC_16])
 {
     int x, y;
     tile_cursor_t cursor[MAX_DCC];

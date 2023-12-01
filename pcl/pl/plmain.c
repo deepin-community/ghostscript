@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -76,6 +76,8 @@ extern_gs_lib_device_list();
 /* pcimpl.c (PCL only), or pximpl (XL only) depending on make configuration.*/
 extern pl_interp_implementation_t *pdl_implementations[];    /* zero-terminated list */
 
+#define PJL_VERSION_STRING GS_STRINGIZE(PJLVERSION)
+
 /* Define the usage message. */
 static const char *pl_usage = "\
 Usage: %s [option* file]+...\n\
@@ -99,6 +101,18 @@ typedef struct
 #define BUFFERED_FILE_CHUNK_SHIFT 20
 #define BUFFERED_FILE_CHUNK_SIZE (1<<BUFFERED_FILE_CHUNK_SHIFT)
 
+typedef enum {
+    /* Default: Never reset resources automatically on job changes. */
+    PL_RESET_RESOURCES_NEVER = 0,
+
+    /* Reset resources whenver we drop back to PJL. */
+    PL_RESET_RESOURCES_ON_PJL = 1,
+
+    /* Reset resources whenever we change language (other than to drop
+     * back to PJL). */
+    PL_RESET_RESOURCES_ON_LANGUAGE_CHANGE = 2
+} pl_resource_reset;
+
 /*
  * Main instance for all interpreters.
  */
@@ -110,10 +124,9 @@ struct pl_main_instance_s
     long base_time[2];          /* starting time */
     int error_report;           /* -E# */
     bool pause;                 /* -dNOPAUSE => false */
-    int first_page;             /* -dFirstPage= */
-    int last_page;              /* -dLastPage= */
     gx_device *device;
     gs_gc_root_t *device_root;
+    int device_index;
     pl_main_get_codepoint_t *get_codepoint;
                                 /* Get next 'unicode' codepoint */
 
@@ -144,6 +157,12 @@ struct pl_main_instance_s
     arg_list args;
     pl_interp_implementation_t **implementations;
     pl_interp_implementation_t *curr_implementation;
+
+    /* We keep track of the last (non PJL) implementation we used.
+     * This is used to conditionally reset soft fonts etc. */
+    pl_interp_implementation_t *prev_non_pjl_implementation;
+
+    pl_resource_reset reset_resources;
 
     /* When processing data via 'run_string', interpreters may not
      * completely consume the data they are passed each time. We use
@@ -180,7 +199,7 @@ static pl_interp_implementation_t
                               int len);
 
 /* Process the options on the command line. */
-static gp_file *pl_main_arg_fopen(const char *fname, void *mem);
+static stream *pl_main_arg_fopen(const char *fname, void *mem);
 
 /* Process the options on the command line, including making the
    initial device and setting its parameters.  */
@@ -319,13 +338,7 @@ pl_main_init_with_args(pl_main_instance_t *inst, int argc, char *argv[])
         if (code != gs_error_Info)
             errprintf(mem, pl_usage, argv[0]);
 
-        if (pl_characteristics(pjli)->version)
-            errprintf(mem, "Version: %s\n",
-                      pl_characteristics(pjli)->version);
-        if (pl_characteristics(pjli)->build_date)
-            errprintf(mem, "Build date: %s\n",
-                      pl_characteristics(pjli)->
-                      build_date);
+        errprintf(mem, "Version: %s\n", PJL_VERSION_STRING);
         errprintf(mem, "Languages:");
         for (i = 0; inst->implementations[i] != NULL; i++) {
             if (((i + 1)) % 9 == 0)
@@ -362,7 +375,18 @@ revert_to_pjli(pl_main_instance_t *minst)
             return code;
         }
     }
+    minst->curr_implementation = NULL;
+    /* We may want to reset the fonts. */
+    if (minst->prev_non_pjl_implementation &&
+        minst->reset_resources == PL_RESET_RESOURCES_ON_PJL) {
+        if_debug1m('I', minst->memory, "Resetting resources (%s)\n",
+                   pl_characteristics(minst->curr_implementation)->language);
+        code = pl_reset(minst->prev_non_pjl_implementation, PL_RESET_RESOURCES);
+        if (code < 0)
+            return code;
+    }
     minst->curr_implementation = pjli;
+
     code = pl_init_job(minst->curr_implementation, minst->device);
 
     return code;
@@ -907,11 +931,26 @@ pl_main_run_file_utf8(pl_main_instance_t *minst, const char *prefix_commands, co
 
                 /* If the language implementation needs changing, change it. */
                 if (desired_implementation != pjli) {
+
+                    /* If we are being asked to swap to a language implementation
+                     * that is different to the last (non-PJL) implementation that
+                     * we were using, we may want to clear soft-fonts. */
+                    if (minst->prev_non_pjl_implementation &&
+                        minst->reset_resources == PL_RESET_RESOURCES_ON_LANGUAGE_CHANGE &&
+                        desired_implementation != minst->prev_non_pjl_implementation) {
+                        if_debug1m('I', mem, "Resetting resources (%s)\n",
+                                   pl_characteristics(minst->curr_implementation)->language);
+                        code = pl_reset(minst->prev_non_pjl_implementation, PL_RESET_RESOURCES);
+                        if (code < 0)
+                            goto error_fatal;
+                    }
+
                     code = pl_dnit_job(pjli);
                     minst->curr_implementation = NULL;
                     if (code >= 0)
                         code = pl_init_job(desired_implementation, minst->device);
                     minst->curr_implementation = desired_implementation;
+                    minst->prev_non_pjl_implementation = desired_implementation;
                     if (code < 0)
                         goto error_fatal;
                 }
@@ -1164,6 +1203,7 @@ pl_main_delete_instance(pl_main_instance_t *minst)
 
     gs_free_object(mem, minst->buf_ptr, "minst_buffer");
 
+    gs_c_param_list_release(&minst->params);
     gs_c_param_list_release(&minst->enum_params);
     gs_free_object(mem, minst->enum_keybuf, "param enumerator keybuf");
 
@@ -1294,6 +1334,8 @@ pl_main_alloc_instance(gs_memory_t * mem)
     minst->pause = true;
     minst->device = 0;
     minst->implementation = NULL;
+    minst->prev_non_pjl_implementation = NULL;
+    minst->reset_resources = PL_RESET_RESOURCES_NEVER;
     minst->base_time[0] = 0;
     minst->base_time[1] = 0;
     minst->interpolate = false;
@@ -1321,7 +1363,7 @@ pl_main_alloc_instance(gs_memory_t * mem)
 
 /* Create a default device if not already defined. */
 static int
-pl_top_create_device(pl_main_instance_t * pti, int index)
+pl_top_create_device(pl_main_instance_t * pti)
 {
     int code = 0;
 
@@ -1337,13 +1379,13 @@ pl_top_create_device(pl_main_instance_t * pti, int index)
         if (pti->device != NULL)
             pti->device = NULL;
 
-        if (index == -1) {
+        if (pti->device_index == -1) {
             dev = gs_getdefaultlibdevice(pti->memory);
         }
         else {
-            const gx_device **list;
-            gs_lib_device_list((const gx_device * const **)&list, NULL);
-            dev = list[index];
+            dev = gs_getdevice(pti->device_index);
+            if (dev == NULL) /* Shouldn't ever happen */
+                return -1;
         }
         for (impl = pti->implementations; *impl != 0; ++impl) {
            mem = pl_get_device_memory(*impl);
@@ -1408,11 +1450,11 @@ pl_top_create_device(pl_main_instance_t * pti, int index)
 }
 
 /* Process the options on the command line. */
-static gp_file *
+static stream *
 pl_main_arg_fopen(const char *fname, void *data)
 {
-    const gs_memory_t *mem = (const gs_memory_t *)data;
-    return gp_fopen(mem, fname, "r");
+    gs_memory_t *mem = (gs_memory_t *)data;
+    return sfopen(fname, "r", mem);
 }
 
 static void
@@ -1452,39 +1494,51 @@ parse_floats(gs_memory_t * mem, uint arg_count, const char *arg, float *f)
     return float_index;
 }
 
-#define argcmp(A, S, L) \
-    (!strncmp(A, S, L) && (A[L] == 0 || A[L] == '='))
+#define argis(A, S) \
+    (!strncmp((A), (S), sizeof(S)-1) && ((A)[sizeof(S)-1] == 0 || (A)[sizeof(S)-1] == '=' || (A)[sizeof(S)-1] == '#'))
 
 static int check_for_special_int(pl_main_instance_t * pmi, const char *arg, int64_t b)
 {
-    if (argcmp(arg, "BATCH", 5))
+    if (argis(arg, "BATCH"))
         return (b == 1) ? 0 : gs_note_error(gs_error_rangecheck);
-    if (argcmp(arg, "NOPAUSE", 7)) {
+    if (argis(arg, "NOPAUSE")) {
         pmi->pause = !b;
-        return 0;
+        return 1;
     }
-    if (argcmp(arg, "DOINTERPOLATE", 13)) {
+    if (argis(arg, "DOINTERPOLATE")) {
         pmi->interpolate = !!b;
         return 0;
     }
-    if (argcmp(arg, "NOCACHE", 7)) {
+    if (argis(arg, "NOCACHE")) {
         pmi->nocache = !!b;
         return 0;
     }
-    if (argcmp(arg, "SCANCONVERTERTYPE", 17)) {
+    if (argis(arg, "SCANCONVERTERTYPE")) {
         pmi->scanconverter = b;
         return 0;
+    }
+    if (argis(arg, "RESETRESOURCES")) {
+        pmi->reset_resources = b;
+        return 0;
+    }
+    if (argis(arg, "NODISPLAY")) {
+        pmi->pause = !b;
+        pmi->device_index = get_device_index(pmi->memory, "nullpage");
+        if (pmi->device_index == -1)
+            return -1;
+        return 1;
     }
     return 1;
 }
 
 static int check_for_special_float(pl_main_instance_t * pmi, const char *arg, float f)
 {
-    if (argcmp(arg, "BATCH", 5) ||
-        argcmp(arg, "NOPAUSE", 7) ||
-        argcmp(arg, "DOINTERPOLATE", 13) ||
-        argcmp(arg, "NOCACHE", 7) ||
-        argcmp(arg, "SCANCONVERTERTYPE", 17)) {
+    if (argis(arg, "BATCH") ||
+        argis(arg, "NOPAUSE") ||
+        argis(arg, "DOINTERPOLATE") ||
+        argis(arg, "NOCACHE") ||
+        argis(arg, "SCANCONVERTERTYPE") ||
+        argis(arg, "RESETRESOURCES")) {
         return gs_note_error(gs_error_rangecheck);
     }
     return 1;
@@ -1492,11 +1546,12 @@ static int check_for_special_float(pl_main_instance_t * pmi, const char *arg, fl
 
 static int check_for_special_str(pl_main_instance_t * pmi, const char *arg, gs_param_string *f)
 {
-    if (argcmp(arg, "BATCH", 5) ||
-        argcmp(arg, "NOPAUSE", 7) ||
-        argcmp(arg, "DOINTERPOLATE", 13) ||
-        argcmp(arg, "NOCACHE", 7) ||
-        argcmp(arg, "SCANCONVERTERTYPE", 17)) {
+    if (argis(arg, "BATCH") ||
+        argis(arg, "NOPAUSE") ||
+        argis(arg, "DOINTERPOLATE") ||
+        argis(arg, "NOCACHE") ||
+        argis(arg, "SCANCONVERTERTYPE") ||
+        argis(arg, "RESETRESOURCES")) {
         return gs_note_error(gs_error_rangecheck);
     }
     return 1;
@@ -1511,7 +1566,7 @@ pass_param_to_languages(pl_main_instance_t *pmi,
 
     for (imp = pmi->implementations; *imp != NULL; imp++) {
         code = pl_set_param(*imp, plist);
-        if (code != 0)
+        if (code < 0)
             break;
     }
 
@@ -1789,22 +1844,19 @@ pl_main_set_string_param(pl_main_instance_t * pmi, const char *arg)
         return -1;
     }
     value = eqp + 1;
-    if (!strncmp(arg, "DEVICE", 6)) {
+    if (argis(arg, "DEVICE")) {
         dmprintf(pmi->memory, "DEVICE can only be set on the command line!\n");
         return -1;
-    } else if (!strncmp(arg, "DefaultGrayProfile",
-                        strlen("DefaultGrayProfile"))) {
+    } else if (argis(arg, "DefaultGrayProfile")) {
         dmprintf(pmi->memory, "DefaultGrayProfile can only be set on the command line!\n");
         return -1;
-    } else if (!strncmp(arg, "DefaultRGBProfile",
-                        strlen("DefaultRGBProfile"))) {
+    } else if (argis(arg, "DefaultRGBProfile")) {
         dmprintf(pmi->memory, "DefaultRGBProfile can only be set on the command line!\n");
         return -1;
-    } else if (!strncmp(arg, "DefaultCMYKProfile",
-                        strlen("DefaultCMYKProfile"))) {
+    } else if (argis(arg, "DefaultCMYKProfile")) {
         dmprintf(pmi->memory, "DefaultCMYKProfile can only be set on the command line!\n");
         return -1;
-    } else if (!strncmp(arg, "ICCProfileDir", strlen("ICCProfileDir"))) {
+    } else if (argis(arg, "ICCProfileDir")) {
         dmprintf(pmi->memory, "ICCProfileDir can only be set on the command line!\n");
         return -1;
     } else {
@@ -1850,22 +1902,19 @@ pl_main_set_parsed_param(pl_main_instance_t * pmi, const char *arg)
         return -1;
     }
     value = eqp + 1;
-    if (!strncmp(arg, "DEVICE", 6)) {
+    if (argis(arg, "DEVICE")) {
         dmprintf(pmi->memory, "DEVICE cannot be set by -p!\n");
         return -1;
-    } else if (!strncmp(arg, "DefaultGrayProfile",
-                        strlen("DefaultGrayProfile"))) {
+    } else if (argis(arg, "DefaultGrayProfile")) {
         dmprintf(pmi->memory, "DefaultGrayProfile cannot be set by -p!\n");
         return -1;
-    } else if (!strncmp(arg, "DefaultRGBProfile",
-                        strlen("DefaultRGBProfile"))) {
+    } else if (argis(arg, "DefaultRGBProfile")) {
         dmprintf(pmi->memory, "DefaultRGBProfile cannot be set by -p!\n");
         return -1;
-    } else if (!strncmp(arg, "DefaultCMYKProfile",
-                        strlen("DefaultCMYKProfile"))) {
+    } else if (argis(arg, "DefaultCMYKProfile")) {
         dmprintf(pmi->memory, "DefaultCMYKProfile cannot be set by -p!\n");
         return -1;
-    } else if (!strncmp(arg, "ICCProfileDir", strlen("ICCProfileDir"))) {
+    } else if (argis(arg, "ICCProfileDir")) {
         dmprintf(pmi->memory, "ICCProfileDir cannot be set by -p!\n");
         return -1;
     }
@@ -2230,7 +2279,7 @@ int pl_main_enumerate_params(pl_main_instance_t *pmi, void **iter, const char **
 }
 
 static int
-handle_dash_s(pl_main_instance_t *pmi, const char *arg, int *device_index)
+handle_dash_s(pl_main_instance_t *pmi, const char *arg)
 {
     int code = 0;
     char *eqp;
@@ -2243,30 +2292,23 @@ handle_dash_s(pl_main_instance_t *pmi, const char *arg, int *device_index)
         return -1;
     }
     value = eqp + 1;
-    if (!strncmp(arg, "DEVICE", 6)) {
-        if (device_index == NULL) {
-            dmprintf(pmi->memory, "DEVICE cannot be set this late!\n");
+    if (argis(arg, "DEVICE")) {
+        if (pmi->device_index != -1) {
+            dmprintf(pmi->memory, "DEVICE already set!\n");
             return -1;
         }
-        if (*device_index != -1) {
-            dmprintf(pmi->memory, "DEVICE can only be set once!\n");
+        pmi->device_index = get_device_index(pmi->memory, value);
+        if (pmi->device_index == -1)
             return -1;
-        }
-        *device_index = get_device_index(pmi->memory, value);
-        if (*device_index == -1)
-            return -1;
-    } else if (!strncmp(arg, "DefaultGrayProfile",
-                        strlen("DefaultGrayProfile"))) {
+    } else if (argis(arg, "DefaultGrayProfile")) {
         pmi->pdefault_gray_icc = arg_copy(value, pmi->memory);
-    } else if (!strncmp(arg, "DefaultRGBProfile",
-                        strlen("DefaultRGBProfile"))) {
+    } else if (argis(arg, "DefaultRGBProfile")) {
         pmi->pdefault_rgb_icc = arg_copy(value, pmi->memory);
-    } else if (!strncmp(arg, "DefaultCMYKProfile",
-                        strlen("DefaultCMYKProfile"))) {
+    } else if (argis(arg, "DefaultCMYKProfile")) {
         pmi->pdefault_cmyk_icc = arg_copy(value, pmi->memory);
-    } else if (!strncmp(arg, "ICCProfileDir", strlen("ICCProfileDir"))) {
+    } else if (argis(arg, "ICCProfileDir")) {
         pmi->piccdir = arg_copy(value, pmi->memory);
-    } else if (!strncmp(arg, "OutputFile", 10) && strlen(eqp) > 0) {
+    } else if (argis(arg, "OutputFile") && strlen(eqp) > 0) {
         code = gs_add_outputfile_control_path(pmi->memory, eqp+1);
         if (code < 0)
             return code;
@@ -2302,10 +2344,10 @@ pl_main_process_options(pl_main_instance_t * pmi, arg_list * pal,
     int code = 0;
     const char *arg = NULL;
     gs_c_param_list *params = &pmi->params;
-    int device_index = -1;
     char *collected_commands = NULL;
     bool not_an_arg = 1;
 
+    pmi->device_index = -1;
     /* By default, stdin_is_interactive = 1. This mirrors what stdin_init
      * would have done in the iodev one time initialisation. We aren't
      * getting our stdin via an iodev though, so we do it here. */
@@ -2331,7 +2373,8 @@ pl_main_process_options(pl_main_instance_t * pmi, arg_list * pal,
                 } else if (strcmp(arg, "debug") == 0) {
                     gs_debug_flags_list(pmi->memory);
                     break;
-                } else if (strncmp(arg, "debug=", 6) == 0) {
+                } else if (strncmp(arg, "debug=", 6) == 0 ||
+                           strncmp(arg, "debug#", 6) == 0) {
                     gs_debug_flags_parse(pmi->memory, arg + 6);
                     break;
 #ifndef OMIT_SAVED_PAGES	/* TBI */
@@ -2666,9 +2709,11 @@ help:
                         break;
                     param_string_from_transient_string(str, adef);
                     gs_c_param_list_write_more(params);
-                    code =
-                        param_write_string((gs_param_list *) params,
-                                           "OutputFile", &str);
+                    code = param_write_string((gs_param_list *) params,
+                                              "OutputFile", &str);
+                    if (code < 0)
+                        break;
+                    code = pl_main_set_param(pmi, "NOPAUSE");
                     pmi->pause = false;
                     break;
                 }
@@ -2709,7 +2754,7 @@ help:
                 break;
             case 's':
             case 'S':
-                code = handle_dash_s(pmi, arg, &device_index);
+                code = handle_dash_s(pmi, arg);
                 if (code < 0)
                     return code;
                 break;
@@ -2719,9 +2764,7 @@ help:
                 code = pl_main_set_param(pmi, "QUIET");
                 break;
             case 'v':               /* print revision */
-                if (pl_characteristics(pjli)->version)
-                    errprintf(pmi->memory, "%s\n",
-                              pl_characteristics(pjli)->version);
+                errprintf(pmi->memory, "%s\n", PJL_VERSION_STRING);
                 arg_finit(pal);
                 gs_c_param_list_release(params);
                 return 0;
@@ -2734,19 +2777,6 @@ help:
         arg = NULL;
     }
   out:
-    /* PCL does not support spot colors and XPS files with spot colors are very
-       rare (as in never found in the wild). Handling XPS spots for a separation
-       device will require a little work. To avoid issues at the current time,
-       we will do the following
-    */
-    {
-        int num_spots = 0;
-        gs_c_param_list_write_more(params);
-        code = param_write_int((gs_param_list *)params, "PageSpotColors", &(num_spots));
-        if (code < 0)
-            return code;
-    }
-
     /* Do any last minute language specific device initialisation
      * (i.e. let gs_init.ps do its worst). */
     code = pl_main_post_args_init(pmi);
@@ -2754,7 +2784,7 @@ help:
         return code;
 
     gs_c_param_list_read(params);
-    code = pl_top_create_device(pmi, device_index); /* create default device if needed */
+    code = pl_top_create_device(pmi); /* create default device if needed */
     if (code < 0)
         return code;
 
@@ -2788,7 +2818,7 @@ help:
                 continue; /* We've already read any -f into arg */
             } else if (!not_an_arg && arg[0] == '-' &&
                        (arg[1] == 's' || arg[1] == 'S')) {
-                code = handle_dash_s(pmi, arg+2, NULL);
+                code = handle_dash_s(pmi, arg+2);
                 if (code < 0)
                     break;
                 arg = NULL;
@@ -2867,7 +2897,7 @@ help:
 
 /* Find default language implementation */
 static pl_interp_implementation_t *
-pl_auto_sense(pl_main_instance_t *minst, const char *name,  int buffer_length)
+pl_auto_sense(pl_main_instance_t *minst, const char *buffer,  int buffer_length)
 {
     /* Lookup this string in the auto sense field for each implementation */
     pl_interp_implementation_t **impls = minst->implementations;
@@ -2878,14 +2908,14 @@ pl_auto_sense(pl_main_instance_t *minst, const char *name,  int buffer_length)
 
     /* first check for a UEL */
     if (buffer_length >= uel_len) {
-        if (!memcmp(name, PJL_UEL, uel_len))
+        if (!memcmp(buffer, PJL_UEL, uel_len))
             return impls[0];
     }
 
     /* Defaults to language 1 (if there is one): PJL is language 0, PCL is language 1. */
     best = impls[1] ? impls[1] : impls[0];
     for (impl = impls; *impl != NULL; ++impl) {
-        int score = pl_characteristics(*impl)->auto_sense(name, buffer_length);
+        int score = pl_characteristics(*impl)->auto_sense(buffer, buffer_length);
         if (score > max_score) {
             best = *impl;
             max_score = score;
@@ -2952,18 +2982,6 @@ pl_log_string(const gs_memory_t * mem, const char *str, int wait_for_key)
     errwrite(mem, str, strlen(str));
     if (wait_for_key)
         (void)fgetc(mem->gs_lib_ctx->core->fstdin);
-}
-
-pl_interp_implementation_t *
-pl_main_get_pcl_instance(const gs_memory_t *mem)
-{
-    return pl_main_get_instance(mem)->implementations[1];
-}
-
-pl_interp_implementation_t *
-pl_main_get_pjl_instance(const gs_memory_t *mem)
-{
-    return pl_main_get_instance(mem)->implementations[0];
 }
 
 bool pl_main_get_interpolate(const gs_memory_t *mem)
@@ -3060,10 +3078,51 @@ pl_finish_page(pl_main_instance_t * pmi, gs_gstate * pgs, int num_copies, int fl
     if (pmi->pause) {
         char strbuf[256];
 
-        gs_sprintf(strbuf, "End of page %d, press <enter> to continue.\n",
+        gs_snprintf(strbuf, sizeof(strbuf), "End of page %d, press <enter> to continue.\n",
                 pdev->PageCount);
         pl_log_string(pmi->memory, strbuf, 1);
     } else if (gs_debug_c(':'))
         pl_print_usage(pmi, "render done :");
     return 0;
+}
+
+pl_interp_implementation_t *
+pl_main_get_language_instance(const gs_memory_t *mem, const char *name)
+{
+    pl_main_instance_t *minst = pl_main_get_instance(mem);
+    pl_interp_implementation_t **inst = minst->implementations;
+
+    while (*inst)
+    {
+        const pl_interp_characteristics_t *chars = (*inst)->proc_characteristics(*inst);
+
+        if (strcmp(chars->language, name) == 0)
+            return *inst;
+        inst++;
+    }
+
+    return NULL;
+}
+
+pl_interp_implementation_t *pl_main_get_pdf_instance(const gs_memory_t *mem)
+{
+    return pl_main_get_language_instance(mem, "PDF");
+}
+
+pl_interp_implementation_t *
+pl_main_get_pcl_instance(const gs_memory_t *mem)
+{
+    return pl_main_get_language_instance(mem, "PCL");
+}
+
+pl_interp_implementation_t *
+pl_main_get_pjl_instance(const gs_memory_t *mem)
+{
+    return pl_main_get_language_instance(mem, "PJL");
+}
+
+pl_interp_implementation_t *
+pl_main_get_xps_instance(const gs_memory_t *mem)
+{
+    return pl_main_get_language_instance(mem, "XPS");
 }

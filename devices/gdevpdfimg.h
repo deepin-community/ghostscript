@@ -25,6 +25,11 @@
  */
 #define PDFIMG_STATIC_OBJS 4
 #define OCR_MAX_FILE_OBJECTS 8
+/* This is the number of objects per page: 1: the image object,
+ * 2: the length object for the image object, 3: the page stream
+ * object. 4: the page dict object, 5: the length object for
+ * the page stream object. */
+#define PDFIMG_OBJS_PER_PAGE 5
 
 typedef struct pdfimage_page_s {
     int ImageObjectNumber;
@@ -35,6 +40,8 @@ typedef struct pdfimage_page_s {
     gs_offset_t PageStreamOffset;
     int PageDictObjectNumber;
     gs_offset_t PageDictOffset;
+    int PageLengthObjectNumber;
+    gs_offset_t PageLengthOffset;
     void *next;
 } pdfimage_page;
 
@@ -66,6 +73,9 @@ typedef struct gx_device_pdf_image_s {
     PCLm_temp_file_t xref_stream;
     PCLm_temp_file_t temp_stream;
     int NextObject;
+
+    int Tumble;
+    int Tumble2;
 
     /* OCR data */
     struct {

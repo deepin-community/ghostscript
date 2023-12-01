@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -345,13 +345,14 @@ gsicc_create_clut(const gs_color_space *pcs, gsicc_clut *clut, gs_range *ranges,
        Uniformly from min range to max range */
     ptr_short = clut->data_short;
     for (i = 0; i < num_points; i++) {
-        if (num_components == 1) {
+        switch (num_components) {
+        case 1:
             /* Get the input vector value */
             fltptr = input_samples[0];
             index = i%table_size;
             cc.paint.values[0] = fltptr[index];
-        }
-        if (num_components == 3) {
+            break;
+        case 3:
             /* The first channel varies least rapidly in the ICC table */
             fltptr = input_samples[2];
             index = i%table_size;
@@ -363,8 +364,8 @@ gsicc_create_clut(const gs_color_space *pcs, gsicc_clut *clut, gs_range *ranges,
             index = (unsigned int) floor((float) i/(float) (table_size*
                                                         table_size))%table_size;
             cc.paint.values[0] = fltptr[index];
-        }
-        if (num_components == 4) {
+            break;
+        case 4:
             /* The first channel varies least rapidly in the ICC table */
             fltptr = input_samples[3];
             index = i%table_size;
@@ -380,6 +381,9 @@ gsicc_create_clut(const gs_color_space *pcs, gsicc_clut *clut, gs_range *ranges,
             index = (unsigned int) floor((float) i/(float) (table_size*
                                         table_size*table_size))%table_size;
             cc.paint.values[0] = fltptr[index];
+            break;
+        default:
+            return_error(gs_error_rangecheck); /* Should never happen */
         }
         /* These special concretizations functions do not go through
            the ICC mapping like the procs associated with the color space */
@@ -461,7 +465,7 @@ save_profile(const gs_memory_t *mem, unsigned char *buffer, char filename[], int
     char full_file_name[50];
     gp_file *fid;
 
-    gs_sprintf(full_file_name,"%d)Profile_%s.icc",icc_debug_index,filename);
+    gs_snprintf(full_file_name,sizeof(full_file_name),"%d)Profile_%s.icc",icc_debug_index,filename);
     fid = gp_fopen(mem, full_file_name,"wb");
     gp_fwrite(buffer,sizeof(unsigned char),buffer_size,fid);
     gp_fclose(fid);
@@ -1525,6 +1529,7 @@ create_lutAtoBprofile(unsigned char **pp_buffer_in, icHeader *header,
         return gs_throw(gs_error_VMerror, "Allocation of ICC cam failed");
     }
     gsicc_create_compute_cam(lutatobparts->white_point, &(d50), cam);
+    gs_free_object(memory, lutatobparts->cam, "create_lutAtoBprofile");
     lutatobparts->cam = cam;
     get_D50(temp_XYZ); /* See Appendix D6 in spec */
     add_xyzdata(curr_ptr, temp_XYZ);

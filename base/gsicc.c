@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -427,8 +427,12 @@ gx_remap_ICC_with_link(const gs_client_color * pcc, const gs_color_space * pcs,
        the transfer function and potentially the halftoning */
     /* Right now we need to go from unsigned short to frac.  I really
        would like to avoid this sort of stuff.  That will come. */
-    for ( k = 0; k < num_des_comps; k++){
+    for (k = 0; k < num_des_comps; k++){
         conc[k] = ushort2frac(psrc_temp[k]);
+    }
+    /* In case there are extra components beyond the ICC ones */
+    for (k = num_des_comps; k < dev->color_info.num_components; k++) {
+        conc[k] = 0;
     }
     gx_remap_concrete_ICC(pcs, conc, pdc, pgs, dev, select, dev_profile);
 
@@ -450,6 +454,19 @@ gx_remap_ICC(const gs_client_color * pcc, const gs_color_space * pcs,
     cmm_dev_profile_t *dev_profile;
     int code;
 
+    color_replace_t param;
+    param.pcc = pcc;
+    param.pcs = pcs;
+    param.pdc = pdc;
+    param.pgs = pgs;
+    param.pdf14_iccprofile = NULL;
+
+    /* Try color replacement. If successful (>0) then no
+       ICC color management for this color. */
+    if (dev_proc(pgs->device, dev_spec_op)(pgs->device,
+        gxdso_replacecolor, &param, sizeof(color_replace_t)) > 0)
+        return 0;
+
     code = dev_proc(dev, get_profile)(dev, &dev_profile);
     if (code < 0)
         return code;
@@ -470,6 +487,7 @@ gx_remap_ICC(const gs_client_color * pcc, const gs_color_space * pcs,
 #endif
         return_error(gs_error_unknownerror);
     }
+
     code = gx_remap_ICC_with_link(pcc, pcs, pdc, pgs, dev, select, icc_link);
     /* Release the link */
     gsicc_release_link(icc_link);
@@ -535,8 +553,12 @@ gx_remap_ICC_imagelab(const gs_client_color * pcc, const gs_color_space * pcs,
        the transfer function and potentially the halftoning */
     /* Right now we need to go from unsigned short to frac.  I really
        would like to avoid this sort of stuff.  That will come. */
-    for ( k = 0; k < num_des_comps; k++){
+    for (k = 0; k < num_des_comps; k++){
         conc[k] = ushort2frac(psrc_temp[k]);
+    }
+    /* We have to worry about extra colorants in the device. */
+    for (k = num_des_comps; k < dev->color_info.num_components; k++) {
+        conc[k] = 0;
     }
     gx_remap_concrete_ICC(pcs, conc, pdc, pgs, dev, select, dev_profile);
 
@@ -599,9 +621,14 @@ gx_concretize_ICC(
         (icc_link->procs.map_color)(dev, icc_link, psrc, psrc_temp, 2);
     }
     /* This needs to be optimized */
-    for (k = 0; k < num_des_comps; k++){
+    for (k = 0; k < num_des_comps; k++) {
         pconc[k] = float2frac(((float) psrc_temp[k])/65535.0);
     }
+    /* We have to worry about extra colorants in the device. */
+    for (k = num_des_comps; k < dev->color_info.num_components; k++) {
+        pconc[k] = 0;
+    }
+
     /* Release the link */
     gsicc_release_link(icc_link);
     return 0;
@@ -615,10 +642,11 @@ gx_concretize_ICC(
  * unintuitive but otherwise legitimate state of affairs".
          */
 static void
-gx_final_ICC(const gs_color_space * pcs)
+gx_final_ICC(gs_color_space * pcs)
 {
     if (pcs->cmm_icc_profile_data != NULL) {
         gsicc_adjust_profile_rc(pcs->cmm_icc_profile_data, -1, "gx_final_ICC");
+        pcs->cmm_icc_profile_data = NULL;
     }
 }
 
@@ -681,7 +709,8 @@ gx_set_overprint_ICC(const gs_color_space * pcs, gs_gstate * pgs)
     bool gray_to_k;
     bool op = pgs->is_fill_color ? pgs->overprint : pgs->stroke_overprint;
 
-    if (dev == 0 || pcinfo == NULL)
+    if (dev == 0 || pcinfo == NULL || !op ||
+        gx_get_opmsupported(dev) == GX_CINFO_OPMSUPPORTED_NOT)
         return gx_set_no_overprint(pgs);
 
     dev_proc(dev, get_profile)(dev, &dev_profile);
@@ -697,22 +726,19 @@ gx_set_overprint_ICC(const gs_color_space * pcs, gs_gstate * pgs)
         "[overprint] gx_set_overprint_ICC. cs_ok = %d is_fill_color = %d overprint = %d stroke_overprint = %d \n",
         cs_ok, pgs->is_fill_color, pgs->overprint, pgs->stroke_overprint);
 
-    if (!op || pcinfo->opmode == GX_CINFO_OPMODE_NOT) {
-        return gx_set_no_overprint(pgs);
-    } else if (!cs_ok) {
-        /* In this case, we still need to maintain any spot
-           colorant channels.  Per Table 7.14. */
-        if (dev_proc(dev, dev_spec_op)(dev, gxdso_supports_devn, NULL, 0)) {
-            return gx_set_spot_only_overprint(pgs);
-        } else {
-            return gx_set_no_overprint(pgs);
-        }
-    } else
+    if (cs_ok)
         return gx_set_overprint_cmyk(pcs, pgs);
+
+    /* In this case, we still need to maintain any spot
+       colorant channels.  Per Table 7.14. */
+    if (dev_proc(dev, dev_spec_op)(dev, gxdso_supports_devn, NULL, 0))
+        return gx_set_spot_only_overprint(pgs);
+
+    return gx_set_no_overprint(pgs);
 }
 
 int
-gx_default_get_profile(gx_device *dev, cmm_dev_profile_t **profile)
+gx_default_get_profile(const gx_device *dev, cmm_dev_profile_t **profile)
 {
     *profile = dev->icc_struct;
     return 0;

@@ -39,8 +39,9 @@
 
 /* The device descriptor */
 static dev_proc_print_page(sj48_print_page);
+/* The print_page proc is compatible with allowing bg printing */
 gx_device_printer far_data gs_sj48_device =
-  prn_device(prn_bg_procs, "sj48",	/* The print_page proc is compatible with allowing bg printing */
+  prn_device(gdev_prn_initialize_device_procs_mono_bg, "sj48",
         80,				/* width_10ths, 8" */
         105,				/* height_10ths, 10.5" */
         360,				/* x_dpi */
@@ -80,8 +81,8 @@ gx_device_printer far_data gs_sj48_device =
 static int
 sj48_print_page(gx_device_printer *pdev, gp_file *prn_stream)
 {	int line_size = gx_device_raster((gx_device *)pdev, 0);
-        int xres = pdev->x_pixels_per_inch;
-        int yres = pdev->y_pixels_per_inch;
+        int xres = (int)pdev->x_pixels_per_inch;
+        int yres = (int)pdev->y_pixels_per_inch;
         int mode = (yres == 180 ?
                         (xres == 180 ? 39 : 40) :
                         (xres == 180 ? 71 : 72));

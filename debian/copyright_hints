@@ -29,9 +29,10 @@ Copyright:
   1996-1998, Geoffrey Keating.
   1999, Aladdin Enterprises, Menlo Park, CA
   2000, Aladdin Enterprises, Menlo Park, CA
-  2001-2004, Raph Levien <raph@acm.org>
   2001-2008, Artifex Software, Inc.
   2001-2021, Artifex Software, Inc.
+  2001-2022, Artifex Software, Inc.
+  2001-2023, Artifex Software, Inc.
   2002-2021, Artifex, Inc.
   2003-2004, Copyright Hewlett-Packard Development Company, LP
   2003-2021, Artifex Software.
@@ -39,11 +40,22 @@ Copyright:
   2011, Sebastian Kapfer <sebastian.kapfer@physik.uni-erlangen.de>
   2013-2021, Artifex Software, Inc.
   2014-2021, Artifex Software, Inc.
+  2014-2022, Artifex Software, Inc.
   2015-2021, Artifex Software, Inc.
   2017-2021, Artifex Software, Inc.
+  2018-2021, Artifex Software, Inc.
+  2018-2022, Artifex Software, Inc.
+  2018-2023, Artifex Software, Inc.
+  2019, Artifex Software, Inc.
   2019-2021, Artifex Software, Inc.
+  2019-2022, Artifex Software, Inc.
+  2019-2023, Artifex Software, Inc.
   2020-2021, Artifex Software, Inc.
+  2020-2022, Artifex Software, Inc.
+  2020-2023, Artifex Software, Inc.
   2021, Artifex Software, Inc.
+  2022, Artifex Software, Inc.
+  2023, Artifex Software, Inc.
 License: AGPL-3+
  FIXME
 
@@ -65,6 +77,8 @@ Copyright:
   1996-1998, David Turner, Robert Wilhelm, and Werner Lemberg
   1996-1998, David Turner, Robert Wilhelm, and Werner Lemberg.
   2001-2021, Artifex Software, Inc.
+  2001-2022, Artifex Software, Inc.
+  2001-2023, Artifex Software, Inc.
 License: AGPL-3+ and/or FTL
  FIXME
 
@@ -136,7 +150,7 @@ Files:
  devices/vector/gdevpdfk.c
 Copyright:
   (useless, but required by icclib)
-  2001-2021, Artifex Software, Inc.
+  2001-2023, Artifex Software, Inc.
 License: AGPL-3+
  FIXME
 
@@ -145,7 +159,7 @@ Files:
 Copyright:
   1, k_fontinfodict | k_sid);
   12 0 SID -, FontInfo
-  2001-2021, Artifex Software, Inc.
+  2001-2022, Artifex Software, Inc.
   isFixedPitch,
 License: AGPL-3+
  FIXME
@@ -177,7 +191,7 @@ License: AGPL-3+
 Files:
  devices/gdevcdj.c
 Copyright:
-  2001-2021, Artifex Software, Inc.
+  2001-2023, Artifex Software, Inc.
   24 -> 32 bit (1-stage)
 License: AGPL-3+
  FIXME
@@ -185,7 +199,7 @@ License: AGPL-3+
 Files:
  base/gsicc_create.c
 Copyright:
-  2001-2021, Artifex Software, Inc.
+  2001-2022, Artifex Software, Inc.
   Artifex Software 2009-2021";
 License: AGPL-3+
  FIXME
@@ -209,7 +223,7 @@ License: AGPL-3+
 Files:
  base/gstype42.c
 Copyright:
-  2001-2021, Artifex Software, Inc.
+  2001-2022, Artifex Software, Inc.
   FONT_INFO_COPYRIGHT, 0);
   informatoin if there is any,
 License: AGPL-3+
@@ -243,7 +257,7 @@ License: AGPL-3+
 Files:
  devices/vector/gdevpsu.c
 Copyright:
-  2001-2021, Artifex Software, Inc.
+  2001-2022, Artifex Software, Inc.
   begin ProcSet
 License: AGPL-3+
  FIXME
@@ -251,7 +265,7 @@ License: AGPL-3+
 Files:
  psi/iminst.h
 Copyright:
-  2001-2021, Artifex Software, Inc.
+  2001-2022, Artifex Software, Inc.
   heap allocator
 License: AGPL-3+
  FIXME
@@ -259,7 +273,7 @@ License: AGPL-3+
 Files:
  devices/vector/gdevpsf1.c
 Copyright:
-  2001-2021, Artifex Software, Inc.
+  2001-2022, Artifex Software, Inc.
   info.members & FONT_INFO_COPYRIGHT);
 License: AGPL-3+
  FIXME
@@ -327,7 +341,7 @@ License: AGPL-3+
 Files:
  psi/iref.h
 Copyright:
-  2001-2021, Artifex Software, Inc.
+  2001-2022, Artifex Software, Inc.
   type of the structure.
 License: AGPL-3+
  FIXME
@@ -354,7 +368,9 @@ Files:
 Copyright:
   2001-2021, Artifex Software Inc.
   2001-2021, Artifex Software, Inc.
-  2009-2021, Artifex Software, Inc.
+  2001-2022, Artifex Software, Inc.
+  2001-2023, Artifex Software, Inc.
+  2009-2022, Artifex Software, Inc.
   2016-2021, Artifex Software, Inc.
 License: AGPL-3+
  FIXME
@@ -362,7 +378,7 @@ License: AGPL-3+
 Files:
  base/memento.c
 Copyright:
-  2009-2021, Artifex Software, Inc.
+  2009-2022, Artifex Software, Inc.
   doNestedDisplay(c, depth+1);
 License: AGPL-3+
  FIXME
@@ -376,20 +392,20 @@ Copyright:
   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
   CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
   CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  Copyright: Neither the name of Adobe Systems Incorporated nor the names
-  Copyright: Redistribution and use in source and binary forms, with or
-  Copyright: Redistributions in binary form must reproduce the above
-  Copyright: Redistributions of source code must retain the above
-  Copyright: THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
   DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
   HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
   INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
   MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
   NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  Neither the name of Adobe Systems Incorporated nor the names
   OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+  Redistribution and use in source and binary forms, with or
+  Redistributions in binary form must reproduce the above
+  Redistributions of source code must retain the above
   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
   disclaimer in the documentation and/or other materials
   disclaimer.
   following conditions are met:
@@ -434,7 +450,6 @@ Files:
  base/rm_all.com
  base/rm_one.com
  base/tesseract.mak
- base/tessocr.cpp
  contrib/chp2200/AUTHORS
  contrib/chp2200/INSTALL
  contrib/epson740/README
@@ -459,7 +474,10 @@ Files:
  contrib/lxm3200-tweaked/README
  contrib/lxm3200-tweaked/Z12-Z31-QuickSetup
  contrib/md2k_md5k/README.jis
+ contrib/opvp/README.txt
+ contrib/opvp/build_opv_harness.sh
  contrib/opvp/opvp_media.def
+ contrib/opvp/opvpharness.c
  contrib/pcl3/doc/gs-pcl3.html
  contrib/pcl3/doc/notes.bbl
  contrib/pcl3/doc/pcl3opts.1
@@ -510,56 +528,29 @@ Files:
  contrib/uniprint/stc740ih.upp
  demos/c/Makefile
  demos/c/ReadMe.txt
- demos/c/api_test.c
  demos/c/api_test.vcxproj
  demos/c/api_test.vcxproj.filters
+ demos/c/multi_test.vcxproj
+ demos/c/multi_test.vcxproj.filters
  demos/csharp/README.txt
- demos/csharp/api/ghostapi.cs
- demos/csharp/api/ghostmono.cs
- demos/csharp/api/ghostnet.cs
- demos/csharp/linux/gs_mono.sln
- demos/csharp/linux/gtk_viewer/Properties/AssemblyInfo.cs
- demos/csharp/linux/gtk_viewer/gtk-gui/generated.cs
- demos/csharp/linux/gtk_viewer/gtk-gui/gtk_viewer.src.gsOutput.cs
- demos/csharp/linux/gtk_viewer/gtk-gui/gui.stetic
- demos/csharp/linux/gtk_viewer/gtk_viewer.csproj
- demos/csharp/linux/gtk_viewer/gtk_viewer.sln
- demos/csharp/linux/gtk_viewer/src/DocPage.cs
- demos/csharp/linux/gtk_viewer/src/MainRender.cs
- demos/csharp/linux/gtk_viewer/src/MainThumbRendering.cs
- demos/csharp/linux/gtk_viewer/src/MainWindow.cs
- demos/csharp/linux/gtk_viewer/src/MainZoom.cs
- demos/csharp/linux/gtk_viewer/src/Program.cs
- demos/csharp/linux/gtk_viewer/src/TempFile.cs
- demos/csharp/linux/gtk_viewer/src/gsOutput.cs
+ demos/csharp/linux/gtk_viewer/make.sh
  demos/csharp/windows/ghostnet.sln
+ demos/csharp/windows/ghostnet_commandline_app/ghostnet_commandline_app.csproj
  demos/csharp/windows/ghostnet_wpf_example/App.config
  demos/csharp/windows/ghostnet_wpf_example/App.xaml
- demos/csharp/windows/ghostnet_wpf_example/App.xaml.cs
- demos/csharp/windows/ghostnet_wpf_example/DocPage.cs
- demos/csharp/windows/ghostnet_wpf_example/MainPrint.cs
- demos/csharp/windows/ghostnet_wpf_example/MainRender.cs
- demos/csharp/windows/ghostnet_wpf_example/MainThumbRendering.cs
- demos/csharp/windows/ghostnet_wpf_example/MainWindow.xaml
- demos/csharp/windows/ghostnet_wpf_example/MainWindow.xaml.cs
- demos/csharp/windows/ghostnet_wpf_example/MainZoom.cs
- demos/csharp/windows/ghostnet_wpf_example/PrintControl.xaml
- demos/csharp/windows/ghostnet_wpf_example/PrintControl.xaml.cs
- demos/csharp/windows/ghostnet_wpf_example/PrintStatus.xaml
- demos/csharp/windows/ghostnet_wpf_example/PrintStatus.xaml.cs
  demos/csharp/windows/ghostnet_wpf_example/Properties/Resources.Designer.cs
  demos/csharp/windows/ghostnet_wpf_example/Properties/Resources.resx
  demos/csharp/windows/ghostnet_wpf_example/Properties/Settings.Designer.cs
  demos/csharp/windows/ghostnet_wpf_example/Properties/Settings.settings
- demos/csharp/windows/ghostnet_wpf_example/TempFile.cs
- demos/csharp/windows/ghostnet_wpf_example/XPSprint.cs
  demos/csharp/windows/ghostnet_wpf_example/ghostnet_simple_viewer.csproj
- demos/csharp/windows/ghostnet_wpf_example/gsIO.cs
- demos/csharp/windows/ghostnet_wpf_example/gsOutput.xaml
- demos/csharp/windows/ghostnet_wpf_example/gsOutput.xaml.cs
+ demos/java/README.txt
  demos/java/gsjava/.classpath
  demos/java/gsjava/.project
+ demos/java/gsjava/Manifest.md
  demos/java/gsjava/README.txt
+ demos/java/gsjava/build_darwin.sh
+ demos/java/gsjava/build_linux.sh
+ demos/java/gsjava/build_win32.bat
  demos/java/gsjava/src/com/artifex/gsjava/GSAPI.java
  demos/java/gsjava/src/com/artifex/gsjava/GSInstance.java
  demos/java/gsjava/src/com/artifex/gsjava/callbacks/DisplayCallback.java
@@ -603,7 +594,11 @@ Files:
  demos/java/gstest/src/gstest/Main.java
  demos/java/gsviewer/.classpath
  demos/java/gsviewer/.project
+ demos/java/gsviewer/Manifest.md
  demos/java/gsviewer/README.txt
+ demos/java/gsviewer/build_darwin.sh
+ demos/java/gsviewer/build_linux.sh
+ demos/java/gsviewer/build_win32.bat
  demos/java/gsviewer/src/com/artifex/gsviewer/DefaultUnhandledExceptionHandler.java
  demos/java/gsviewer/src/com/artifex/gsviewer/Document.java
  demos/java/gsviewer/src/com/artifex/gsviewer/GSFileFilter.java
@@ -619,6 +614,11 @@ Files:
  demos/java/gsviewer/src/com/artifex/gsviewer/gui/SettingsDialog.java
  demos/java/gsviewer/src/com/artifex/gsviewer/gui/ViewerGUIListener.java
  demos/java/gsviewer/src/com/artifex/gsviewer/gui/ViewerWindow.java
+ demos/java/gsviewer/start_darwin.sh
+ demos/java/gsviewer/start_linux.sh
+ demos/java/jni/gs_jni/README.txt
+ demos/java/jni/gs_jni/build_darwin.sh
+ demos/java/jni/gs_jni/build_linux.sh
  demos/java/jni/gs_jni/callbacks.cpp
  demos/java/jni/gs_jni/callbacks.h
  demos/java/jni/gs_jni/com_artifex_gsjava_GSAPI.cpp
@@ -630,30 +630,44 @@ Files:
  demos/java/jni/gs_jni/gs_jni.sln
  demos/java/jni/gs_jni/gs_jni.vcxproj
  demos/java/jni/gs_jni/gs_jni.vcxproj.filters
+ demos/java/jni/gs_jni/install_linux.sh
+ demos/java/jni/gs_jni/instance_data.cpp
+ demos/java/jni/gs_jni/instance_data.h
  demos/java/jni/gs_jni/jni_util.cpp
  demos/java/jni/gs_jni/jni_util.h
+ demos/java/jni/gs_jni/settings.h
+ demos/java/mtdemo/Main.java
+ demos/java/mtdemo/README.txt
+ demos/java/mtdemo/Worker.java
+ demos/java/mtdemo/build_darwin.sh
+ demos/java/mtdemo/build_linux.sh
+ demos/java/mtdemo/build_win32.bat
+ demos/java/mtdemo/runmtd_darwin.sh
+ demos/java/mtdemo/runmtd_linux.sh
+ demos/java/mtdemo/runmtd_win32.bat
  demos/python/README.txt
  demos/python/examples.py
- devices/extract.mak
- devices/vector/doc_common.c
- devices/vector/doc_common.h
  doc/GS9_Color_Management.pdf
- doc/gs-style.css
- doc/gs-vms.hlp
- doc/gsdoc.el
- doc/images/.DS_Store
- doc/images/Artifex_logo.png
- doc/images/favicon.png
- doc/images/ghostscript_logo.png
- doc/images/hamburger-light.png
- doc/images/x-light.png
- doc/index.html
- doc/index.js
+ doc/Ghostscript.pdf
+ doc/HowToBuildTheDocs.txt
+ doc/colormanage/figures/Object_Color.pdf
+ doc/colormanage/figures/architecture.pdf
+ doc/colormanage/figures/des_profile_intent.pdf
+ doc/colormanage/figures/destination_profile.pdf
+ doc/colormanage/figures/ghostscriptR_stack_RGBclr_CS6.pdf
+ doc/colormanage/figures/proof_link.pdf
+ doc/colormanage/figures/source_intent.pdf
+ doc/colormanage/figures/source_profile.pdf
+ doc/colormanage/figures/text_graph_image_cmyk_rgb.pdf
  doc/pclxps/Makefile
  doc/pclxps/README
  doc/pclxps/ghostpdl.pdf
- doc/pscet_status.txt
- doc/style.css
+ doc/src/_static/custom.css
+ doc/src/_static/ghostscript-white-plus-text.png
+ doc/src/conf.py
+ doc/src/header.rst
+ doc/src/images/discord-mark-blue.svg
+ doc/src/requirements.txt
  examples/alphabet.ps
  examples/annots.pdf
  examples/cjk/article9.ps
@@ -664,7 +678,7 @@ Files:
  examples/grayalph.ps
  examples/ridt91.eps
  examples/snowflak.ps
- examples/spots.ps
+ examples/spots2.pdf
  examples/text_graph_image_cmyk_rgb.pdf
  examples/text_graphic_image.pdf
  examples/tiger.eps
@@ -828,14 +842,6 @@ Files:
  lib/stcany_h.upp
  lib/unix-lpr.sh
  lib/wmakebat.bat
- man/de/dvipdf.1
- man/de/gsnd.1
- man/de/pdf2dsc.1
- man/de/pdf2ps.1
- man/de/printafm.1
- man/de/ps2ascii.1
- man/de/ps2pdf.1
- man/de/ps2ps.1
  man/dvipdf.1
  man/eps2eps.1
  man/gs.1
@@ -869,6 +875,8 @@ Files:
  pcl/pcl/PCL5C_Color_Laserjet_4700_Differences.xls
  pcl/pl/gpcl6dll32.def
  pcl/pl/gpcl6dll64.def
+ pcl/pl/gpdfdll32.def
+ pcl/pl/gpdfdll64.def
  pcl/pl/gpdldll32.def
  pcl/pl/gpdldll64.def
  pcl/pl/gxpsdll32.def
@@ -993,6 +1001,8 @@ Files:
  toolbin/tests/updatelist.py
  toolbin/tests/updatelistpdf.py
  toolbin/tests/validate.py
+ toolbin/tif_config.h.for.bmpcmp
+ toolbin/tiffconf.h.for.bmpcmp
  toolbin/vdb.pl
  toolbin/vg_bugs.supp
  toolbin/vg_okay.supp
@@ -1005,6 +1015,9 @@ Files:
  windows/ghostpcl.vcproj
  windows/ghostpcl.vcxproj
  windows/ghostpcl.vcxproj.filters
+ windows/ghostpdf.vcproj
+ windows/ghostpdf.vcxproj
+ windows/ghostpdf.vcxproj.filters
  windows/ghostpdl.vcproj
  windows/ghostpdl.vcxproj
  windows/ghostpdl.vcxproj.filters
@@ -1100,6 +1113,42 @@ License: UNKNOWN
  FIXME
 
 Files:
+ doc/src/API.rst
+ doc/src/C-style.rst
+ doc/src/Develop.rst
+ doc/src/DeviceSubclassing.rst
+ doc/src/Devices.rst
+ doc/src/Drivers.rst
+ doc/src/Fonts.rst
+ doc/src/GPDL.rst
+ doc/src/GhostscriptColorManagement.rst
+ doc/src/Install.rst
+ doc/src/Language.rst
+ doc/src/LanguageBindingsCSharp.rst
+ doc/src/LanguageBindingsJava.rst
+ doc/src/LanguageBindingsPython.rst
+ doc/src/Lib.rst
+ doc/src/Make.rst
+ doc/src/News.rst
+ doc/src/Ps-style.rst
+ doc/src/Ps2epsi.rst
+ doc/src/SampleDownscaleDevice.rst
+ doc/src/SavedPages.rst
+ doc/src/Source.rst
+ doc/src/Unix-lpr.rst
+ doc/src/VectorDevices.rst
+ doc/src/footer.rst
+ doc/src/index.rst
+ doc/src/toc.rst
+ toolbin/halftone/gen_ordered/README
+Copyright:
+  2001-2022, Artifex Software, Inc.
+  2001-2023, Artifex Software, Inc.
+  2010-2021, Artifex Software, Inc.
+License: UNKNOWN
+ FIXME
+
+Files:
  iccprofiles/gray_to_k.icc
  iccprofiles/ps_cmyk.icc
  iccprofiles/ps_gray.icc
@@ -1124,31 +1173,6 @@ Files:
  toolbin/color/src_color/rgb_source_red.icc
 Copyright:
   Artifex Software 2010
-License: UNKNOWN
- FIXME
-
-Files:
- demos/java/jni/gs_jni/include/classfile_constants.h
- demos/java/jni/gs_jni/include/jawt.h
- demos/java/jni/gs_jni/include/jdwpTransport.h
- demos/java/jni/gs_jni/include/jvmti.h
- demos/java/jni/gs_jni/include/jvmticmlr.h
- demos/java/jni/gs_jni/include/win32/bridge/AccessBridgeCallbacks.h
- demos/java/jni/gs_jni/include/win32/bridge/AccessBridgeCalls.c
- demos/java/jni/gs_jni/include/win32/bridge/AccessBridgeCalls.h
- demos/java/jni/gs_jni/include/win32/bridge/AccessBridgePackages.h
- demos/java/jni/gs_jni/include/win32/jawt_md.h
- demos/java/jni/gs_jni/include/win32/jni_md.h
-Copyright:
-  1996,1998, Oracle and/or its affiliates.
-  1999,2013, Oracle and/or its affiliates.
-  1999, Oracle and/or its affiliates.
-  2003,2011, Oracle and/or its affiliates.
-  2003,2016, Oracle and/or its affiliates.
-  2004,2012, Oracle and/or its affiliates.
-  2005,2010, Oracle and/or its affiliates.
-  2005,2014, Oracle and/or its affiliates.
-  2010, Oracle and/or its affiliates.
 License: UNKNOWN
  FIXME
 
@@ -1312,7 +1336,7 @@ Files:
  config.guess
  config.sub
 Copyright:
-  1992-2020, Free Software Foundation, Inc.
+  1992-2021, Free Software Foundation, Inc.
 License: GPL-3+ with Autoconf-data exception
  FIXME
 
@@ -1397,6 +1421,13 @@ License: public-domain
  FIXME
 
 Files:
+ doc/src/LanguageBindings.rst
+Copyright:
+  2001-2022, Artifex Software, Inc.
+License: AGPL
+ FIXME
+
+Files:
  doc/COPYING
 Copyright:
   2007, Free Software Foundation, Inc. <http://fsf.org/>
@@ -1415,6 +1446,13 @@ Files:
 Copyright:
   NONE
 License: Aladdin
+ FIXME
+
+Files:
+ doc/src/Readme.rst
+Copyright:
+  2001-2022, Artifex Software, Inc.
+License: Aladdin and/or GPL
  FIXME
 
 Files:
@@ -1481,17 +1519,14 @@ Files:
  DroidSansFallback.NOTICE
 Copyright:
   2005-2008, The Android Open Source Project
-  License. Subject to the terms and conditions of
-  license to reproduce, prepare Derivative Works of,
-  patent, trademark, and
 License: Apache-2.0
  FIXME
 
 Files:
  configure
 Copyright:
-  1992-1996,1998-2012, Free Software Foundation, Inc.
-  2012, Free Software Foundation, Inc.
+  1992-1996,1998-2017,2020-2021, Free Software Foundation,
+  2021, Free Software Foundation, Inc.
 License: FSFUL
  FIXME
 
@@ -1653,6 +1688,13 @@ License: UNKNOWN
  FIXME
 
 Files:
+ toolbin/color/icc_creator/nclr/Artifex_6CLR.icc
+Copyright:
+  Artifex Software 2021
+License: UNKNOWN
+ FIXME
+
+Files:
  iccprofiles/lab.icc
 Copyright:
   2009, Artifex Software Inc
@@ -1660,9 +1702,9 @@ License: UNKNOWN
  FIXME
 
 Files:
- doc/GS9_Color_Management.tex
+ doc/colormanage/GS9_Color_Management.tex
 Copyright:
-  2019-2021, Artifex Software Inc.
+  2021, Artifex Software Inc.
 License: UNKNOWN
  FIXME
 
@@ -1674,9 +1716,36 @@ License: UNKNOWN
  FIXME
 
 Files:
- toolbin/halftone/gen_ordered/README
+ doc/src/Use.rst
 Copyright:
-  2010-2021, Artifex Software, Inc.
+  2001-2022, Artifex Software, Inc.
+  a range with a starting page number, followed by a dash '`-`' which ends at the last page.
+License: UNKNOWN
+ FIXME
+
+Files:
+ doc/src/UnsupportedDevices.rst
+Copyright:
+  2001-2022, Artifex Software, Inc.
+  magenta (M), and yellow (Y) colors in the BJC-8200. The unused colors are photo (or light) cyan (c) and magenta (m). Also the Canon driver seems to use only CMYK, for example when printing on Photo Paper Pro in "Camera" or "SuperPhoto" mode. These modes supposedly produce prints of the best quality that the Canon driver can offer. Other modes of Canon driver do use up to all six color cartridges (CMYKcm). Therefore expanding :title:`uniprint`'s capabilities for six colors would be interesting, but it may not increase the output quality of 6-color printers such as the BJC-8200 drastically.
+License: UNKNOWN
+ FIXME
+
+Files:
+ doc/src/thirdparty.rst
+Copyright:
+  2001-2022, Artifex Software, Inc.
+  owned by Artifex)
+License: UNKNOWN
+ FIXME
+
+Files:
+ demos/python/gsapi.py
+Copyright:
+  2001-2023, Artifex Software, Inc.
+  revision, revisiondate):
+  self.revision = revision
+  self.revision,
 License: UNKNOWN
  FIXME
 
@@ -1700,6 +1769,13 @@ Files:
  lib/ghostpdf.ppd
 Copyright:
   2004-2006, Ghostgum Software Pty Ltd.
+License: UNKNOWN
+ FIXME
+
+Files:
+ doc/colormanage/figures/DeviceN_Figure1.pdf
+Copyright:
+  1998, Hewlett-Packard Company
 License: UNKNOWN
  FIXME
 
@@ -1734,23 +1810,6 @@ License: UNKNOWN
  FIXME
 
 Files:
- demos/java/jni/gs_jni/include/jni.h
-Copyright:
-  1996,2013, Oracle and/or its affiliates.
-  1996, Netscape Communications Corporation.
-License: UNKNOWN
- FIXME
-
-Files:
- demos/python/gsapi.py
-Copyright:
-  revision, revisiondate):
-  self.revision = revision
-  self.revision,
-License: UNKNOWN
- FIXME
-
-Files:
  demos/csharp/windows/ghostnet_wpf_example/About.xaml.cs
 Copyright:
   xPathCopyright); }
@@ -1762,6 +1821,13 @@ Files:
 Copyright:
   1994, X Consortium
 License: X11
+ FIXME
+
+Files:
+ doc/src/Psfiles.rst
+Copyright:
+  2001-2022, Artifex Software, Inc.
+License: public-domain
  FIXME
 
 Files:
@@ -1790,17 +1856,10 @@ License: GPL
 Files:
  debian/copyright-check
 Copyright:
-  2020-2021, Jonas Smedegaard <dr@jones.dk>
   2020-2021, Purism, SPC
+  2020-2023, Jonas Smedegaard <dr@jones.dk>
   K / /mg;'
   protected nor stating copyright or licensing
 License: GPL-3+
- FIXME
-
-Files:
- debian/patches/020210713~e25dbf1.patch
-Copyright:
-  2020-2021, Artifex Software, Inc.
-License: UNKNOWN
  FIXME
 

@@ -1,5 +1,4 @@
 TESSINCLUDES=\
-	$(I_)$(TESSERACTDIR)$(_I)\
 	$(I_)$(TESSERACTDIR)/include$(_I)\
 	$(I_)$(TESSERACTDIR)/src/api$(_I)\
 	$(I_)$(TESSERACTDIR)/src/arch$(_I)\
@@ -24,7 +23,11 @@ TESSINCLUDES=\
 #   add  -DDISABLED_LEGACY_ENGINE to TESSCXX
 #   empty TESSERACT_LEGACY
 
-TESSCXX = $(CXX) $(TESSINCLUDES) $(TESSCXXFLAGS) $(CCFLAGS) -DTESSERACT_IMAGEDATA_AS_PIX -DTESSERACT_DISABLE_DEBUG_FONTS -DGRAPHICS_DISABLED
+# We set -DCLUSTER when doing builds for our testing cluster. Unfortunately,
+# this conflicts with Tesseract's use of a CLUSTER type. We work around this
+# here by undefining CLUSTER for the tesseract portion of the build.
+
+TESSCXX = $(CXX) $(TESSINCLUDES) $(TESSCXXFLAGS) $(CCFLAGS) -DTESSERACT_IMAGEDATA_AS_PIX -DTESSERACT_DISABLE_DEBUG_FONTS -DGRAPHICS_DISABLED -UCLUSTER
 #-DDISABLED_LEGACY_ENGINE
 TESSOBJ = $(GLOBJDIR)$(D)tesseract_
 TESSO_ = $(O_)$(TESSOBJ)

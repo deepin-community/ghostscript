@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -28,7 +28,6 @@
 /* ---------------- Generic image support ---------------- */
 
 /* Structure descriptors */
-public_st_gs_image_common();
 public_st_gs_data_image();
 public_st_gs_pixel_image();
 
@@ -37,6 +36,7 @@ void
 gs_image_common_t_init(gs_image_common_t * pic)
 {
     gs_make_identity(&pic->ImageMatrix);
+    pic->imagematrices_are_untrustworthy = false;
 }
 void
 gs_data_image_t_init(gs_data_image_t * pim, int num_components)
@@ -54,6 +54,7 @@ gs_data_image_t_init(gs_data_image_t * pim, int num_components)
             pim->Decode[i] = 1, pim->Decode[i + 1] = 0;
     }
     pim->Interpolate = false;
+    pim->imagematrices_are_untrustworthy = false;
 }
 void
 gs_pixel_image_t_init(gs_pixel_image_t * pim,
@@ -109,18 +110,6 @@ gx_image_enum_common_init(gx_image_enum_common_t * piec,
     }
     for (i = 0; i < piec->num_planes; ++i)
         piec->plane_widths[i] = pic->Width;
-    return 0;
-}
-
-/* Compute the source size of an ordinary image with explicit data. */
-int
-gx_data_image_source_size(const gs_gstate * pgs,
-                          const gs_image_common_t * pim, gs_int_point * psize)
-{
-    const gs_data_image_t *pdi = (const gs_data_image_t *)pim;
-
-    psize->x = pdi->Width;
-    psize->y = pdi->Height;
     return 0;
 }
 

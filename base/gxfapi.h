@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -200,6 +200,8 @@ struct gs_fapi_font_s
 
     int (*serialize_tt_font) (gs_fapi_font *ff, void *buf, int buf_size);
 
+    int (*retrieve_tt_font) (gs_fapi_font *ff, void **buf, int *buf_size);
+
     int (*get_charstring) (gs_fapi_font *ff, int index, byte *buf, ushort buf_length);
 
     int (*get_charstring_name) (gs_fapi_font *ff, int index, byte *buf, ushort buf_length);
@@ -209,7 +211,7 @@ struct gs_fapi_font_s
     int (*get_glyphname_or_cid) (gs_text_enum_t *penum, gs_font_base *pbfont,
                                  gs_string *charstring, gs_string *name,
                                  gs_glyph ccode, gs_string *enc_char_name,
-                                 char *font_file_path, gs_fapi_char_ref *cr,
+                                  char *font_file_path, gs_fapi_char_ref *cr,
                                  bool bCID);
 
     int (*fapi_get_metrics) (gs_fapi_font *ff, gs_string *char_name, gs_glyph cid, double *m, bool vertical);
@@ -329,6 +331,8 @@ struct gs_fapi_server_s
     gs_fapi_font ff;
     int max_bitmap;
     bool use_outline;
+    bool transform_outline;
+    gs_matrix outline_mat;
     uint grid_fit;
     gs_matrix initial_FontMatrix;       /* Font Matrix at the time the font is defined */
     /* Used to use the stored 'OrigFont' entry but */

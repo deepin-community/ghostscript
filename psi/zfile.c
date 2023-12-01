@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -412,7 +412,7 @@ zfilenameforall(i_ctx_t *i_ctx_p)
     ++esp;
     make_istruct(esp, 0, pfen);
     *++esp = op[-1];
-    pop(3);
+    ref_stack_pop(&o_stack, 3);
     code = file_continue(i_ctx_p);
     return (code == o_pop_estack ? o_push_estack : code);
 }
@@ -772,18 +772,25 @@ ztempfile(i_ctx_t *i_ctx_p)
     if (gp_file_name_is_absolute(pstr, strlen(pstr))) {
         int plen = strlen(pstr);
         const char *sep = gp_file_name_separator();
-#ifdef DEBUG
         int seplen = strlen(sep);
-        if (seplen != 1)
+
+        /* This should not be possible if gp_file_name_is_absolute is true I think
+         * But let's avoid the problem.
+         */
+        if (plen < seplen)
             return_error(gs_error_Fatal);
-#endif
+
+        plen -= seplen;
         /* strip off the file name prefix, leave just the directory name
          * so we can check if we are allowed to write to it
          */
         for ( ; plen >=0; plen--) {
-            if (pstr[plen] == sep[0])
+            if ( gs_file_name_check_separator(&pstr[plen], seplen, &pstr[plen]))
                 break;
         }
+        if (plen < 0)
+            return_error(gs_error_Fatal);
+
         memcpy(fname, pstr, plen);
         fname[plen] = '\0';
         if (check_file_permissions(i_ctx_p, fname, strlen(fname),
@@ -1167,6 +1174,10 @@ lib_file_open_search_with_combine(gs_file_path_ptr  lib_path, const gs_memory_t 
             	return_error(gs_error_limitcheck);
             memcpy(buffer, pname.fname, pname.len);
             memcpy(buffer+pname.len, fname, flen);
+            if (pname.iodev->procs.open_file == NULL) {
+                code = 1;
+                continue;
+            }
             code = pname.iodev->procs.open_file(pname.iodev, buffer, pname.len + flen, fmode,
                                           &s, (gs_memory_t *)mem);
             if (code < 0) {
@@ -1276,12 +1287,11 @@ lib_file_open(gs_file_path_ptr  lib_path, const gs_memory_t *mem, i_ctx_t *i_ctx
 }
 
 /* The startup code calls this to open @-files. */
-gp_file *
-lib_fopen(const gs_file_path_ptr pfpath, const gs_memory_t *mem, const char *fname)
+stream *
+lib_sopen(const gs_file_path_ptr pfpath, const gs_memory_t *mem, const char *fname)
 {
     /* We need a buffer to hold the expanded file name. */
     char filename_found[DEFAULT_BUFFER_SIZE];
-    gp_file *file = NULL;
     uint fnamelen;
     ref obj;
     int code;
@@ -1292,8 +1302,8 @@ lib_fopen(const gs_file_path_ptr pfpath, const gs_memory_t *mem, const char *fna
 
     if (code < 0)
         return NULL;
-    file = ((stream *)(obj.value.pfile))->file;
-    return file;
+
+    return((stream *)(obj.value.pfile));
 }
 
 /* Open a file stream that reads a string. */

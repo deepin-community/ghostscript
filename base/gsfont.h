@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -43,6 +43,7 @@ gs_font_dir *gs_font_dir_alloc2_limits(gs_memory_t * struct_mem,
                                        gs_memory_t * bits_mem,
                                        uint smax, uint bmax, uint mmax,
                                        uint cmax, uint upper);
+void gs_font_dir_free(gs_font_dir *dir);
 
 /* Backward compatibility */
 #define gs_font_dir_alloc(mem) gs_font_dir_alloc2(mem, mem)

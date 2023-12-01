@@ -159,12 +159,20 @@ static dev_proc_print_page_copies(hl1250_print_page_copies);
 static dev_proc_get_params(hl1250_get_params);
 static dev_proc_put_params(hl1250_put_params);
 
-static const gx_device_procs prn_hl1250_procs =
-prn_params_procs(hl1250_open, gdev_prn_output_page, hl1250_close,
-                 hl1250_get_params, hl1250_put_params);
+static void
+hl1250_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
+
+    set_dev_proc(dev, open_device, hl1250_open);
+    set_dev_proc(dev, close_device, hl1250_close);
+    set_dev_proc(dev, get_params, hl1250_get_params);
+    set_dev_proc(dev, put_params, hl1250_put_params);
+}
 
 #define hl1250_device_copies(dname, xdpi, ydpi)\
-{   prn_device_std_body_copies(gx_device_hl1250, prn_hl1250_procs,\
+{   prn_device_std_body_copies(gx_device_hl1250,\
+                               hl1250_initialize_device_procs,\
                                dname,\
                                DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,\
                                xdpi, ydpi,\
@@ -662,7 +670,7 @@ hl1250_print_page_copies(gx_device_printer * pdev, gp_file * prn_stream,
            (-120, 0) compared to the one in the ljet4 driver (-180, 36)
            (X, Y coordinates here are specified in 1/720-inch units).  */
 
-        gs_sprintf(page_init, "\033&l-120U\033*r0F\033&u%dD%s", y_dpi, tray_pcl);
+        gs_snprintf(page_init, sizeof(page_init), "\033&l-120U\033*r0F\033&u%dD%s", y_dpi, tray_pcl);
         return dljet_mono_print_page_copies(pdev, prn_stream, num_copies,
                                             y_dpi, PCL_LJ4_FEATURES,
                                             page_init, page_init, false);

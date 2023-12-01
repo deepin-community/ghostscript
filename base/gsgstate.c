@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -112,7 +112,8 @@ gs_gstate_initialize(gs_gstate * pgs, gs_memory_t * mem)
         for (i = 0; i < gs_color_select_count; ++i)
             pgs->screen_phase[i].x = pgs->screen_phase[i].y = 0;
     }
-    pgs->dev_ht = 0;
+    for (i=0; i < HT_OBJTYPE_COUNT; i++)
+        pgs->dev_ht[i] = NULL;
     pgs->cie_render = 0;
     pgs->cie_to_xyz = false;
     pgs->black_generation = 0;
@@ -148,7 +149,7 @@ gs_gstate_initialize(gs_gstate * pgs, gs_memory_t * mem)
     pgs->icc_profile_cache = gsicc_profilecache_new(pgs->memory);
     if (pgs->icc_profile_cache == NULL)
         return_error(gs_error_VMerror);
-    pgs->black_text_state = NULL;
+    pgs->black_textvec_state = NULL;
 #if ENABLE_CUSTOM_COLOR_CALLBACK
     pgs->custom_color_callback = INIT_CUSTOM_COLOR_PTR;
 #endif
@@ -159,8 +160,11 @@ gs_gstate_initialize(gs_gstate * pgs, gs_memory_t * mem)
 void
 gs_gstate_copied(gs_gstate * pgs)
 {
+    int i;
+
     rc_increment(pgs->halftone);
-    rc_increment(pgs->dev_ht);
+    for (i=0; i < HT_OBJTYPE_COUNT; i++)
+        rc_increment(pgs->dev_ht[i]);
     rc_increment(pgs->cie_render);
     rc_increment(pgs->black_generation);
     rc_increment(pgs->undercolor_removal);
@@ -175,7 +179,7 @@ gs_gstate_copied(gs_gstate * pgs)
     rc_increment(pgs->icc_link_cache);
     rc_increment(pgs->icc_profile_cache);
     rc_increment(pgs->icc_manager);
-    rc_increment(pgs->black_text_state);
+    rc_increment(pgs->black_textvec_state);
 }
 
 /* Adjust reference counts before assigning one gs_gstate to another. */
@@ -183,6 +187,7 @@ void
 gs_gstate_pre_assign(gs_gstate *pto, const gs_gstate *pfrom)
 {
     const char *const cname = "gs_gstate_pre_assign";
+    int i;
 
 #define RCCOPY(element)\
     rc_pre_assign(pto->element, pfrom->element, cname)
@@ -196,14 +201,15 @@ gs_gstate_pre_assign(gs_gstate *pto, const gs_gstate *pfrom)
     RCCOPY(undercolor_removal);
     RCCOPY(black_generation);
     RCCOPY(cie_render);
-    RCCOPY(dev_ht);
+    for (i=0; i < HT_OBJTYPE_COUNT; i++)
+        RCCOPY(dev_ht[i]);
     RCCOPY(halftone);
     RCCOPY(devicergb_cs);
     RCCOPY(devicecmyk_cs);
     RCCOPY(icc_link_cache);
     RCCOPY(icc_profile_cache);
     RCCOPY(icc_manager);
-    RCCOPY(black_text_state);
+    RCCOPY(black_textvec_state);
 #undef RCCOPY
 }
 
@@ -212,7 +218,8 @@ void
 gs_gstate_release(gs_gstate * pgs)
 {
     const char *const cname = "gs_gstate_release";
-    gx_device_halftone *pdht = pgs->dev_ht;
+    gx_device_halftone *pdht;
+    int i;
 
 #define RCDECR(element)\
     rc_decrement(pgs->element, cname);\
@@ -227,19 +234,22 @@ gs_gstate_release(gs_gstate * pgs)
     RCDECR(black_generation);
     RCDECR(cie_render);
     /*
-     * If we're going to free the device halftone, make sure we free the
+     * If we're going to free a device halftone, make sure we free the
      * dependent structures as well.
      */
-    if (pdht != 0 && pdht->rc.ref_count == 1) {
-        gx_device_halftone_release(pdht, pdht->rc.memory);
+    for (i=0; i < HT_OBJTYPE_COUNT; i++) {
+        pdht = pgs->dev_ht[i];
+        if (pdht != NULL && pdht->rc.ref_count == 1) {
+            gx_device_halftone_release(pdht, pdht->rc.memory);
+        }
+        RCDECR(dev_ht[i]);
     }
-    RCDECR(dev_ht);
     RCDECR(halftone);
     RCDECR(devicergb_cs);
     RCDECR(devicecmyk_cs);
     RCDECR(icc_link_cache);
     RCDECR(icc_profile_cache);
     RCDECR(icc_manager);
-    RCDECR(black_text_state);
+    RCDECR(black_textvec_state);
 #undef RCDECR
 }

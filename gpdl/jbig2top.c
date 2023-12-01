@@ -1,4 +1,4 @@
-/* Copyright (C) 2019-2021 Artifex Software, Inc.
+/* Copyright (C) 2019-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -89,9 +89,6 @@ jbig2_detect_language(const char *s, int len)
 static const pl_interp_characteristics_t jbig2_characteristics = {
     "JBIG2",
     jbig2_detect_language,
-    "Artifex",
-    "0.01",
-    "18 Nov 2019"
 };
 
 /* Get implementation's characteristics */
@@ -273,7 +270,7 @@ bytes_until_uel(const stream_cursor_read *pr)
             p++;
         if (p == q)
             break;
-        avail = pr->limit - pr->ptr;
+        avail = q - p;
         if (memcmp(p, "\033%-12345X", min(avail, 9)) == 0) {
             /* At least a partial match to a UEL. Everything up to
              * the start of the match is up for grabs. */
@@ -608,5 +605,6 @@ const pl_interp_implementation_t jbig2_implementation = {
   jbig2_impl_report_errors,
   jbig2_impl_dnit_job,
   jbig2_impl_deallocate_interp_instance,
-  NULL
+  NULL, /* jbig2_impl_reset */
+  NULL  /* interp_client_data */
 };

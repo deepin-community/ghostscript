@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -51,7 +51,7 @@ gsicc_link_t* gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
                                      gsicc_rendering_param_t *rendering_params,
                                      gs_memory_t *memory, bool devicegraytok);
 void gsicc_release_link(gsicc_link_t *icclink);
-void gsicc_link_free(gsicc_link_t *icc_link, const gs_memory_t *memory);
+void gsicc_link_free(gsicc_link_t *icc_link);
 bool gsicc_profiles_equal(cmm_profile_t *profile1, cmm_profile_t *profile2);
 void gsicc_get_icc_buff_hash(unsigned char *buffer, int64_t *hash, unsigned int buff_size);
 int64_t gsicc_get_hash(cmm_profile_t *profile);
@@ -66,5 +66,5 @@ bool gsicc_support_named_color(const gs_color_space *pcs, const gs_gstate *pgs);
 int  gsicc_get_device_profile_comps(const cmm_dev_profile_t *dev_profile);
 gsicc_link_t * gsicc_alloc_link_dev(gs_memory_t *memory, cmm_profile_t *src_profile,
     cmm_profile_t *des_profile, gsicc_rendering_param_t *rendering_params);
-void gsicc_free_link_dev(gs_memory_t *memory, gsicc_link_t *link);
+void gsicc_free_link_dev(gsicc_link_t *link);
 #endif

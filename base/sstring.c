@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -101,6 +101,7 @@ s_AXD_process(stream_state * st, stream_cursor_read * pr,
                 if (pw->ptr == pw->limit)
                     return 1;
                 *++(pw->ptr) = ss->odd << 4;
+                ss->odd = -1;
             }
             /* falls through */
         case 1:

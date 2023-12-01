@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -302,17 +302,10 @@ static const pl_interp_characteristics_t * /* always returns a descriptor */
 ps_impl_characteristics(const pl_interp_implementation_t *impl)     /* implementation of interpreter to alloc */
 {
     /* version and build date are not currently used */
-#define PSVERSION NULL
-#define PSBUILDDATE NULL
   static const pl_interp_characteristics_t ps_characteristics = {
     "POSTSCRIPT",
     ps_detect_language,
-    "Artifex",
-    PSVERSION,
-    PSBUILDDATE
   };
-#undef PSVERSION
-#undef PSBUILDDATE
 
   return &ps_characteristics;
 }
@@ -338,7 +331,7 @@ ps_impl_allocate_interp_instance(pl_interp_implementation_t *impl, gs_memory_t *
     /* We start gs with the nullpage device, and replace the device with the
      * set_device call from the language independent code.
      */
-    gsargs[nargs++] = "-dNODISPLAY";
+    gsargs[nargs++] = "-sDEVICE=nullpage";
     /* As we're "printer targetted, use a jobserver */
     gsargs[nargs++] = "-dJOBSERVER";
 
@@ -350,6 +343,13 @@ ps_impl_allocate_interp_instance(pl_interp_implementation_t *impl, gs_memory_t *
         gs_free_object(mem, psi, "ps_impl_allocate_interp_instance");
         return code;
     }
+
+    /* The above call to psapi_new_instance will have set the ps interpreter
+     * to expect 'local' encoding. When running under PL, this means we'll
+     * end up decoding the input stuff to utf8, and then feed that into the
+     * gs instance, where it will decode it again! Avoid this, by setting
+     * gs to expect UTF8 input. */
+    psapi_set_arg_encoding(psi->psapi_instance, PS_ARG_ENCODING_UTF8);
 
     impl->interp_client_data = psi;
 
@@ -427,6 +427,32 @@ ps_impl_init_job(pl_interp_implementation_t *impl,
         (void)code1;
     }
 
+    /* Make sure the PageSpotColors is set to -1 for PS */
+    {
+        gs_c_param_list* params;
+        int page_spot_colors = -1;
+        int code2;
+
+        params = gs_c_param_list_alloc(psi->memory, "ps_impl_init_job");
+        if (params == NULL)
+            return_error(gs_error_VMerror);
+
+        gs_c_param_list_write(params, psi->memory);
+        gs_param_list_set_persistent_keys((gs_param_list*)params, false);
+
+        code2 = param_write_int((gs_param_list*)params, "PageSpotColors", &(page_spot_colors));
+        if (code2 < 0) {
+            gs_c_param_list_free(psi->memory, params, "ps_impl_init_job");
+            return code2;
+        }
+
+        gs_c_param_list_read(params);
+
+        code2 = psapi_set_device_param(psi->psapi_instance, (gs_param_list*)params);
+        gs_c_param_list_free(psi->memory, params, "ps_impl_init_job");
+        if (code2 < 0)
+            return code2;
+    }
     return code;
 }
 
@@ -663,5 +689,6 @@ const pl_interp_implementation_t ps_implementation = {
   ps_impl_report_errors,
   ps_impl_dnit_job,
   ps_impl_deallocate_interp_instance,
-  NULL
+  NULL, /* ps_impl_reset */
+  NULL  /* interp_client_data */
 };

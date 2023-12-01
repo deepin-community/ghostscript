@@ -48,9 +48,6 @@ pjl_impl_characteristics(const pl_interp_implementation_t * impl)        /* impl
     static const pl_interp_characteristics_t pjl_characteristics = {
         "PJL",
         pjl_detect_language,
-        "Artifex",
-        PJLVERSION,
-        PJLBUILDDATE
     };
     return &pjl_characteristics;
 }
@@ -181,5 +178,6 @@ pl_interp_implementation_t pjl_implementation = {
     pjl_impl_report_errors,
     pjl_impl_dnit_job,
     pjl_impl_deallocate_interp_instance,
-    NULL, /* instance */
+    NULL, /* pjl_impl_reset */
+    NULL, /* interp_client_data */
 };

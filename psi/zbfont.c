@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -109,7 +109,7 @@ zfont_encode_char(gs_font *pfont, gs_char chr, gs_glyph_space_t gspace)
 
             if (gspace == GLYPH_SPACE_NOGEN)
                 return GS_NO_GLYPH;
-            gs_sprintf(buf, "j%ld", chr); /* 'j' is arbutrary. */
+            gs_snprintf(buf, sizeof(buf), "j%ld", chr); /* 'j' is arbutrary. */
             code = name_ref(pfont->memory, (const byte *)buf, strlen(buf), &tname, 1);
             if (code < 0) {
                 /* Can't propagate the error due to interface limitation,
@@ -131,17 +131,25 @@ zfont_glyph_name(gs_font *font, gs_glyph index, gs_const_string *pstr)
         char cid_name[sizeof(gs_glyph) * 3 + 1];
         int code;
 
-        gs_sprintf(cid_name, "%lu", (ulong) index);
+        gs_snprintf(cid_name, sizeof(cid_name), "%lu", (ulong) index);
         code = name_ref(font->memory, (const byte *)cid_name, strlen(cid_name),
                         &nref, 1);
         if (code < 0)
             return code;
-    } else
+    } else {
         name_index_ref(font->memory, index, &nref);
+        if (nref.value.pname == NULL)
+            return_error(gs_error_unknownerror);
+    }
     name_string_ref(font->memory, &nref, &sref);
     pstr->data = sref.value.const_bytes;
     pstr->size = r_size(&sref);
     return 0;
+}
+
+void get_zfont_glyph_name( int (**proc)(gs_font *font, gs_glyph glyph, gs_const_string *pstr) )
+{
+    *proc = zfont_glyph_name;
 }
 
 static gs_char

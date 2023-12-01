@@ -82,16 +82,17 @@ out:
     return code;
 }
 
-/* CLJ device methods */
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static gx_device_procs cljc_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                gx_default_rgb_map_rgb_color, gx_default_rgb_map_color_rgb);
+static void
+cljet5c_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb_bg(dev);
+}
 
 /* the CLJ device */
 const gx_device_printer gs_cljet5c_device =
 {
-    prn_device_body(gx_device_printer, cljc_procs, "cljet5c",
+    prn_device_body(gx_device_printer, cljet5c_initialize_device_procs, "cljet5c",
                     85, 110, X_DPI, Y_DPI,
                     0.167, 0.167,
                     0.167, 0.167,

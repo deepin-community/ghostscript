@@ -117,13 +117,30 @@ typedef int (*pdf_font_write_contents_proc_t)
  */
 typedef struct pdf_encoding_element_s {
     gs_glyph glyph;
-    gs_const_string str;
+    byte *data;
+    uint size;
     bool is_difference;		/* true if must be written in Differences */
 } pdf_encoding_element_t;
+
+static inline int pdf_copy_string_to_encoding(gx_device_pdf *pdev, gs_const_string *gnstr, pdf_encoding_element_t *pet)
+{
+    byte *p = NULL;
+
+    p = gs_alloc_bytes(pdev->pdf_memory->non_gc_memory, gnstr->size, "pdf_copy_string_to_encoding");
+    if (p == NULL)
+        return_error(gs_error_VMerror);
+    memcpy(p, gnstr->data, gnstr->size);
+    if (pet->data != NULL)
+        gs_free_object(pdev->pdf_memory->non_gc_memory, pet->data, "pdf_copy_string_to_encoding free existing glyph name");
+    pet->data = p;
+    pet->size = gnstr->size;
+    return 0;
+}
+
 #define private_st_pdf_encoding1() /* gdevpdtf.c */\
   gs_private_st_const_strings1(st_pdf_encoding1,\
     pdf_encoding_element_t, "pdf_encoding_element_t",\
-    pdf_encoding1_enum_ptrs, pdf_encoding1_reloc_ptrs, str)
+    pdf_encoding1_enum_ptrs, pdf_encoding1_reloc_ptrs, bah)
 #define private_st_pdf_encoding_element() /* gdevpdtf.c */\
   gs_private_st_element(st_pdf_encoding_element, pdf_encoding_element_t,\
     "pdf_encoding_element_t[]", pdf_encoding_elt_enum_ptrs,\
@@ -227,8 +244,8 @@ struct pdf_font_resource_s {
                       sizeof(long) * 8 / 3 + 1 + 4 /* <id> 0 R */
                       ) + 1	/* \0 terminator */
             ];
-            gs_const_string CMapName; /* copied from the original CMap, */
-                                /* or references the table of standard names */
+            byte *CMapName_data;
+            uint CMapName_size;
             uint font_index;	/* The index of the descendent font in the source CMap. */
             bool cmap_is_standard;
             int WMode;		/* of CMap */

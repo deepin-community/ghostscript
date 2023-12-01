@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -39,6 +39,13 @@ typedef enum {
     PDF14_OP_STATE_FILL = 1,
     PDF14_OP_STATE_STROKE = 2,
 } PDF14_OP_FS_STATE;
+
+typedef enum {
+    PDF14_BLEND_CS_UNSPECIFIED = 0,
+    PDF14_BLEND_CS_TARGET_CIELAB,
+    PDF14_BLEND_CS_OUTPUTINTENT,
+    PDF14_BLEND_CS_SPECIFIED
+} pdf14_blend_cs_t;
 
 /*
  * This structure contains procedures for processing routine which differ
@@ -100,7 +107,7 @@ struct pdf14_mask_s {
 /* A structure to hold information about the group color related
  * procs and other information. These may change depending upon
  * if the blending space is different than the base space.
- * The structure is a list that is updated upo every transparency
+ * The structure is a list that is updated upon every transparency
  * group push and pop */
 
 typedef struct pdf14_group_color_s pdf14_group_color_t;
@@ -116,7 +123,7 @@ struct pdf14_group_color_s {
     uint max_color; /* Causes issues if these are not maintained */
     const gx_color_map_procs *(*get_cmap_procs)(const gs_gstate *,
                                                      const gx_device *);
-    const gx_cm_color_map_procs *(*group_color_mapping_procs)(const gx_device *);
+    const gx_cm_color_map_procs *(*group_color_mapping_procs)(const gx_device *, const gx_device **);
     gx_color_index (*encode)(gx_device *, const gx_color_value value[]);
     int (*decode)(gx_device *, gx_color_index, gx_color_value *);
     int (*group_color_comp_index)(gx_device *, const char *, int, int);
@@ -232,7 +239,7 @@ typedef struct pdf14_device_s {
     gx_device * pclist_device;
     bool free_devicen;              /* Used to avoid freeing a deviceN parameter from target clist device */
     bool sep_device;
-    bool using_blend_cs;
+    pdf14_blend_cs_t blend_cs_state;
     bool overprint_sim;
     bool target_support_devn;
 
@@ -264,6 +271,7 @@ typedef struct pdf14_device_s {
     const gx_color_map_procs *(*save_get_cmap_procs)(const gs_gstate *,
                                                      const gx_device *);
     gx_device_color_info saved_target_color_info;
+    int interpolate_threshold;
     dev_proc_encode_color(*saved_target_encode_color);
     dev_proc_decode_color(*saved_target_decode_color);
     dev_proc_get_color_mapping_procs(*saved_target_get_color_mapping_procs);

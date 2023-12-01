@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -189,6 +189,14 @@ gs_font_finalize(const gs_memory_t *cmem, void *vptr)
             prev->next = next;
     } else if (ppfirst != 0 && *ppfirst == pfont)
         *ppfirst = next;
+
+    if (pfont->FontType != ft_composite) {
+        gs_font_base *pbfont = (gs_font_base *)pfont;
+        if (uid_is_XUID(&pbfont->UID)) {
+            uid_free(&pbfont->UID, pbfont->memory, "gs_font_finalize");
+        }
+    }
+
     gs_notify_release(&pfont->notify_list);
 }
 static
@@ -234,8 +242,8 @@ gs_font_dir_alloc2(gs_memory_t * struct_mem, gs_memory_t * bits_mem)
         pdir = gs_font_dir_alloc2_limits(struct_mem, bits_mem,
                                          smax_SMALL, bmax_SMALL, mmax_SMALL,
                                          cmax_SMALL, blimit_SMALL);
-    if (pdir == 0)
-        return 0;
+    if (pdir == NULL)
+        return NULL;
     pdir->ccache.mark_glyph = cc_no_mark_glyph;
     pdir->ccache.mark_glyph_data = 0;
     return pdir;
@@ -249,16 +257,15 @@ gs_font_dir_alloc2_limits(gs_memory_t * struct_mem, gs_memory_t * bits_mem,
                         "font_dir_alloc(dir)");
     int code;
 
-    if (pdir == 0)
-        return 0;
+    if (pdir == NULL)
+        return NULL;
     memset(pdir, 0, sizeof(*pdir));
+    pdir->memory = struct_mem;
     code = gx_char_cache_alloc(struct_mem, bits_mem, pdir,
                                bmax, mmax, cmax, upper);
     if (code < 0) {
-        gs_free_object(struct_mem, pdir->ccache.table, "font_dir_alloc(chars)");
-        gs_free_object(struct_mem, pdir->fmcache.mdata, "font_dir_alloc(mdata)");
         gs_free_object(struct_mem, pdir, "font_dir_alloc(dir)");
-        return 0;
+        return NULL;
     }
     pdir->orig_fonts = 0;
     pdir->scaled_fonts = 0;
@@ -267,7 +274,6 @@ gs_font_dir_alloc2_limits(gs_memory_t * struct_mem, gs_memory_t * bits_mem,
     pdir->align_to_pixels = false;
     pdir->glyph_to_unicode_table = NULL;
     pdir->grid_fit_tt = 1;
-    pdir->memory = struct_mem;
     pdir->tti = 0;
     pdir->ttm = 0;
     pdir->san = 0;
@@ -283,9 +289,16 @@ gs_font_dir_finalize(const gs_memory_t *cmem, void *vptr)
     gx_bits_cache_chunk *chunk = pdir->ccache.chunks;
     gx_bits_cache_chunk *start_chunk = chunk;
     gx_bits_cache_chunk *prev_chunk;
+    int i;
 
     if (pdir == cmem->gs_lib_ctx->font_dir) {
         cmem->gs_lib_ctx->font_dir = NULL;
+    }
+
+    for (i = 0; i < pdir->fmcache.mmax; i++) {
+        if (uid_is_XUID(&pdir->fmcache.mdata[i].UID)) {
+            gs_free_object(pdir->memory->stable_memory, pdir->fmcache.mdata[i].UID.xvalues, "gs_font_dir_finalize");
+        }
     }
 
     /* free character cache machinery */
@@ -306,6 +319,13 @@ gs_font_dir_finalize(const gs_memory_t *cmem, void *vptr)
         gs_free_object(pdir->ccache.bits_memory, prev_chunk, "gs_font_dir_finalize");
     }
     pdir->ccache.chunks = NULL;
+}
+void
+gs_font_dir_free(gs_font_dir *dir)
+{
+    if (dir == NULL)
+        return;
+    gs_free_object(dir->memory, dir, "gs_font_dir_free");
 }
 
 /* Allocate and minimally initialize a font. */

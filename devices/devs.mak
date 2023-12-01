@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2023 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -180,7 +180,8 @@ DEVGEN=$(DEVGENDIR)$(D)
 #	png16		4-bit color Portable Network Graphics (PNG)
 #	png256		8-bit color Portable Network Graphics (PNG)
 #	png16m		24-bit color Portable Network Graphics (PNG)
-#	pngalpha	32-bit RGBA color Portable Network Graphics (PNG)
+#	pngalpha	32-bit RGBA color Portable Network Graphics (PNG) (aa)
+#	png16malpha	32-bit RGBA color Portable Network Graphics (PNG)
 #	tiffgray	TIFF 8-bit gray, no compression
 #	tiff12nc	TIFF 12-bit RGB, no compression
 #	tiff24nc 	TIFF 24-bit RGB, no compression (NeXT standard format)
@@ -658,48 +659,40 @@ $(DEVOBJ)gdevpsdu.$(OBJ) : $(DEVVECSRC)gdevpsdu.c $(GXERR)\
 
 # Plain text writer
 
-gdevagl_h=$(DEVVECSRC)gdevagl.h
-
-txtwrite_=$(DEVOBJ)gdevtxtw.$(OBJ) $(DEVOBJ)gdevagl.$(OBJ) $(DEVOBJ)doc_common.$(OBJ)
+txtwrite_=$(DEVOBJ)gdevtxtw.$(OBJ) $(DEVOBJ)doc_common.$(OBJ)
 
 $(DD)txtwrite.dev : $(ECHOGS_XE) $(txtwrite_) $(GDEV)\
- $(gdevagl_h) $(DEVS_MAK) $(MAKEDIRS)
+ $(gsagl_h) $(DEVS_MAK) $(MAKEDIRS)
 	$(SETDEV2) $(DD)txtwrite $(txtwrite_)
 
 $(DEVOBJ)gdevtxtw.$(OBJ) : $(DEVVECSRC)gdevtxtw.c $(GDEV) $(gdevkrnlsclass_h) \
   $(memory__h) $(string__h) $(gp_h) $(gsparam_h) $(gsutil_h) \
   $(gsdevice_h) $(gxfont_h) $(gxfont0_h) $(gstext_h) $(gxfcid_h)\
-  $(gxgstate_h) $(gxpath_h) $(gdevagl_h) $(DEVS_MAK) $(MAKEDIRS) $(DEVVECSRC)doc_common.h
+  $(gxgstate_h) $(gxpath_h) $(gsagl_h) $(DEVS_MAK) $(DEVVECSRC)doc_common.h $(MAKEDIRS)
 	$(DEVCC) $(DEVO_)gdevtxtw.$(OBJ) $(C_) $(DEVVECSRC)gdevtxtw.c
-
-$(DEVOBJ)gdevagl.$(OBJ) : $(DEVVECSRC)gdevagl.c $(GDEV)\
- $(gdevagl_h) $(DEVS_MAK) $(MAKEDIRS)
-	$(DEVCC) $(DEVO_)gdevagl.$(OBJ) $(C_) $(DEVVECSRC)gdevagl.c
-
 
 # Docx writer
 
-gdevagl_h=$(DEVVECSRC)gdevagl.h
+docxwrite_=$(DEVOBJ)gdevdocxw.$(OBJ) $(DEVOBJ)doc_common.$(OBJ)
 
-docxwrite_=$(DEVOBJ)gdevdocxw.$(OBJ) $(DEVOBJ)gdevagl.$(OBJ) $(DEVOBJ)doc_common.$(OBJ)
-
-$(DD)docxwrite.dev : $(ECHOGS_XE) $(docxwrite_) $(GDEV)\
- $(gdevagl_h) $(DEVS_MAK) $(MAKEDIRS) $(EXTRACT_OBJS)
+$(DD)docxwrite.dev : $(ECHOGS_XE) $(docxwrite_) $(GLD)gsagl.dev $(GDEV)\
+ $(gsagl_h) $(DEVS_MAK) $(EXTRACT_OBJS) $(MAKEDIRS)
 	$(SETDEV2) $(DD)docxwrite $(docxwrite_) $(EXTRACT_OBJS)
+	$(ADDMOD) $(DD)docxwrite -include $(GLD)gsagl
 
 $(DEVOBJ)gdevdocxw.$(OBJ) : $(DEVVECSRC)gdevdocxw.c $(GDEV) $(gdevkrnlsclass_h) \
   $(memory__h) $(string__h) $(gp_h) $(gsparam_h) $(gsutil_h) \
   $(gsdevice_h) $(gxfont_h) $(gxfont0_h) $(gstext_h) $(gxfcid_h)\
-  $(gxgstate_h) $(gxpath_h) $(gdevagl_h) $(DEVS_MAK) $(MAKEDIRS) \
-  $(DEVVECSRC)doc_common.h
-	$(DEVCC) $(DEVO_)gdevdocxw.$(OBJ) $(C_) $(DEVVECSRC)gdevdocxw.c
+  $(gxgstate_h) $(gxpath_h) $(gsagl_h) $(DEVS_MAK) \
+  $(DEVVECSRC)doc_common.h  $(MAKEDIRS)
+	$(DEVCC) $(DEVO_)gdevdocxw.$(OBJ) $(I_)$(EXTRACT_DIR)$(D)include$(_I) $(C_) $(DEVVECSRC)gdevdocxw.c
 
 # Shared code used by txtwrite and docxwrite.
 
 $(DEVOBJ)doc_common.$(OBJ) : $(DEVVECSRC)doc_common.c $(GDEV) $(gdevkrnlsclass_h) \
   $(memory__h) $(string__h) $(gp_h) $(gsparam_h) $(gsutil_h) \
   $(gsdevice_h) $(gxfont_h) $(gxfont0_h) $(gstext_h) $(gxfcid_h)\
-  $(gxgstate_h) $(gxpath_h) $(gdevagl_h) $(DEVS_MAK) $(MAKEDIRS) $(DEVVECSRC)doc_common.h
+  $(gxgstate_h) $(gxpath_h) $(gsagl_h) $(DEVS_MAK) $(DEVVECSRC)doc_common.h $(MAKEDIRS)
 	$(DEVCC) $(DEVO_)doc_common.$(OBJ) $(C_) $(DEVVECSRC)doc_common.c
 
 
@@ -713,7 +706,7 @@ pdfwrite4_=$(DEVOBJ)gdevpdfi.$(OBJ) $(DEVOBJ)gdevpdfj.$(OBJ) $(DEVOBJ)gdevpdfk.$
 pdfwrite5_=$(DEVOBJ)gdevpdfm.$(OBJ)
 pdfwrite6_=$(DEVOBJ)gdevpdfo.$(OBJ) $(DEVOBJ)gdevpdfp.$(OBJ) $(DEVOBJ)gdevpdft.$(OBJ)
 pdfwrite7_=$(DEVOBJ)gdevpdfr.$(OBJ)
-pdfwrite8_=$(DEVOBJ)gdevpdfu.$(OBJ) $(DEVOBJ)gdevpdfv.$(OBJ) $(DEVOBJ)gdevagl.$(OBJ)
+pdfwrite8_=$(DEVOBJ)gdevpdfu.$(OBJ) $(DEVOBJ)gdevpdfv.$(OBJ)
 pdfwrite9_=$(DEVOBJ)gsflip.$(OBJ)
 pdfwrite10_=$(DEVOBJ)scantab.$(OBJ) $(DEVOBJ)sfilter2.$(OBJ)
 pdfwrite_=$(pdfwrite1_) $(pdfwrite2_) $(pdfwrite3_) $(pdfwrite4_)\
@@ -743,7 +736,7 @@ $(DD)eps2write.dev : $(DD)pdfwrite.dev $(GDEV) \
 $(DD)pdfwrite.dev : $(ECHOGS_XE) $(pdfwrite_)\
  $(GLD)cmyklib.dev $(GLD)cfe.dev $(GLD)lzwe.dev\
  $(GLD)rle.dev $(GLD)sdcte.dev $(GLD)sdeparam.dev $(GLD)smd5.dev\
- $(GLD)szlibe.dev $(GLD)psdf.dev $(GLD)sarc4.dev $(DD)pdtext.dev $(GDEV) \
+ $(GLD)szlibe.dev $(GLD)psdf.dev $(GLD)gsagl.dev $(GLD)sarc4.dev $(DD)pdtext.dev $(GDEV) \
  $(DEVS_MAK) $(MAKEDIRS)
 	$(SETDEV2) $(DD)pdfwrite $(pdfwrite1_)
 	$(ADDMOD) $(DD)pdfwrite $(pdfwrite2_)
@@ -759,7 +752,7 @@ $(DD)pdfwrite.dev : $(ECHOGS_XE) $(pdfwrite_)\
 	$(ADDMOD) $(DD)pdfwrite -include $(GLD)cmyklib $(GLD)cfe $(GLD)lzwe
 	$(ADDMOD) $(DD)pdfwrite -include $(GLD)rle $(GLD)sdcte $(GLD)sdeparam
 	$(ADDMOD) $(DD)pdfwrite -include $(GLD)smd5 $(GLD)szlibe $(GLD)sarc4.dev
-	$(ADDMOD) $(DD)pdfwrite -include $(GLD)psdf
+	$(ADDMOD) $(DD)pdfwrite -include $(GLD)psdf $(GLD)gsagl
 	$(ADDMOD) $(DD)pdfwrite -include $(DD)pdtext
 
 gdevpdfb_h=$(DEVVECSRC)gdevpdfb.h
@@ -875,7 +868,7 @@ $(DEVOBJ)gdevpdfu.$(OBJ) : $(DEVVECSRC)gdevpdfu.c $(GXERR)\
  $(sa85x_h) $(scfx_h) $(sdct_h) $(slzwx_h) $(spngpx_h)\
  $(srlx_h) $(sarc4_h) $(smd5_h) $(sstring_h) $(strimpl_h) $(szlibx_h)\
  $(strmio_h) \
- $(opdfread_h) $(gdevagl_h) $(gs_mro_e_h) $(gs_mgl_e_h) \
+ $(opdfread_h) $(gsagl_h) $(gs_mro_e_h) $(gs_mgl_e_h) \
  $(DEVS_MAK) $(MAKEDIRS)
 	$(GDEVLWFJB2JPXCC) $(DEVO_)gdevpdfu.$(OBJ) $(C_) $(DEVVECSRC)gdevpdfu.c
 
@@ -1173,7 +1166,7 @@ $(DD)chameleon.dev : $(chameleon_) $(GLD)page.dev $(GLD)cielib.dev $(GDEV) \
 
 $(DEVOBJ)gdevchameleon.$(OBJ) : $(DEVSRC)gdevchameleon.c $(PDEVH)\
  $(gsparam_h) $(gdevdcrd_h) $(gscrd_h) $(gscrdp_h) $(gxlum_h) $(gxdcconv_h)\
- $(gsutil_h) $(DEVS_MAK) $(MAKEDIRS)
+ $(gsutil_h) $(gsicc_manage_h) $(DEVS_MAK) $(MAKEDIRS)
 	$(DEVCC) $(DEVO_)gdevchameleon.$(OBJ) $(C_) $(DEVSRC)gdevchameleon.c
 
 ### ------------------------- .BMP file formats ------------------------- ###
@@ -1251,11 +1244,17 @@ $(DD)psdrgb.dev : $(psd_) $(GLD)page.dev $(GDEV) $(DEVS_MAK) $(MAKEDIRS)
 $(DD)psdcmyk.dev : $(psd_) $(GLD)page.dev $(GDEV) $(DEVS_MAK) $(MAKEDIRS)
 	$(SETDEV) $(DD)psdcmyk $(psd_)
 
+$(DD)psdcmyktags.dev : $(psd_) $(GLD)page.dev $(GDEV) $(DEVS_MAK) $(MAKEDIRS)
+	$(SETDEV) $(DD)psdcmyktags $(psd_)
+
 $(DD)psdrgb16.dev : $(DEVS_MAK) $(psd_) $(GLD)page.dev $(GDEV)
 	$(SETDEV) $(DD)psdrgb16 $(psd_)
 
 $(DD)psdcmyk16.dev : $(DEVS_MAK) $(psd_) $(GLD)page.dev $(GDEV)
 	$(SETDEV) $(DD)psdcmyk16 $(psd_)
+
+$(DD)psdcmyktags16.dev : $(DEVS_MAK) $(psd_) $(GLD)page.dev $(GDEV)
+	$(SETDEV) $(DD)psdcmyktags16 $(psd_)
 
 $(DEVOBJ)gdevpsd.$(OBJ) : $(DEVSRC)gdevpsd.c $(PDEVH) $(math__h)\
  $(gdevdcrd_h) $(gscrd_h) $(gscrdp_h) $(gsparam_h) $(gxlum_h)\
@@ -1481,7 +1480,7 @@ libpng_dev=$(PNGGENDIR)$(D)libpng.dev
 png_i_=-include $(PNGGENDIR)$(D)libpng
 
 $(DEVOBJ)gdevpng.$(OBJ) : $(DEVSRC)gdevpng.c\
- $(gdevprn_h) $(gdevpccm_h) $(gscdefs_h) $(png__h) $(gxdevsop_h) $(DEVS_MAK) $(MAKEDIRS)
+ $(gdevprn_h) $(gdevpccm_h) $(gscdefs_h) $(png__h) $(gxdevsop_h) $(gscms_h) $(DEVS_MAK) $(MAKEDIRS)
 	$(CC_) $(I_)$(DEVI_) $(II)$(PI_)$(_I) $(PCF_) $(GLF_) $(DEVO_)gdevpng.$(OBJ) $(C_) $(DEVSRC)gdevpng.c
 
 $(DD)pngmono.dev : $(libpng_dev) $(png_) $(GLD)page.dev $(GDEV) \
@@ -1523,6 +1522,11 @@ $(DD)pngalpha.dev : $(libpng_dev) $(png_) $(GLD)page.dev $(GDEV) \
  $(DEVS_MAK) $(MAKEDIRS)
 	$(SETPDEV2) $(DD)pngalpha $(png_)
 	$(ADDMOD) $(DD)pngalpha $(png_i_)
+
+$(DD)png16malpha.dev : $(libpng_dev) $(png_) $(GLD)page.dev $(GDEV) \
+ $(DEVS_MAK) $(MAKEDIRS)
+	$(SETPDEV2) $(DD)png16malpha $(png_)
+	$(ADDMOD) $(DD)png16malpha $(png_i_)
 
 ### --------------- Portable Network Graphics file format --------------- ###
 ### Requires zlib 0.95 (or more recent versions).                         ###
@@ -1807,8 +1811,8 @@ $(DD)tiffsep1.dev : $(tiffsep_) $(DD)tiffs.dev $(minftrsz_h)\
 
 plan_=$(DEVOBJ)gdevplan.$(OBJ) $(DEVOBJ)gdevppla.$(OBJ) $(DEVOBJ)gdevmpla.$(OBJ)
 
-$(DEVOBJ)gdevplan.$(OBJ) : $(DEVSRC)gdevplan.c $(PDEVH)\
- $(gdevmpla_h) $(gdevplnx_h) $(gdevppla_h)\
+$(DEVOBJ)gdevplan.$(OBJ) : $(DEVSRC)gdevplan.c $(PDEVH) $(gxdevsop_h)\
+ $(gdevmpla_h) $(gdevplnx_h) $(gdevppla_h) $(gxdownscale_h) $(gsicc_cache_h)\
  $(gscdefs_h) $(gscspace_h) $(gxgetbit_h) $(gxiparam_h) $(gxlum_h) \
  $(DEVS_MAK) $(MAKEDIRS)
 	$(DEVCC) $(DEVO_)gdevplan.$(OBJ) $(C_) $(DEVSRC)gdevplan.c
@@ -1896,12 +1900,26 @@ $(DD)pwgraster.dev : $(lcups_dev) $(lcupsi_dev) $(cups_) $(GDEV) $(GLD)page.dev 
 	$(ADDMOD) $(DD)pwgraster -include $(lcupsi_dev)
 	$(ADDMOD) $(DD)pwgraster -include $(GLD)page
 
+$(DD)appleraster.dev : $(lcups_dev) $(lcupsi_dev) $(cups_) $(GDEV) $(GLD)page.dev \
+ $(DEVS_MAK) $(MAKEDIRS)
+	$(SETPDEV2) $(DD)appleraster $(cups_)
+	$(ADDMOD) $(DD)appleraster -include $(lcups_dev)
+	$(ADDMOD) $(DD)appleraster -include $(lcupsi_dev)
+	$(ADDMOD) $(DD)appleraster -include $(GLD)page
+
+$(DD)urf.dev : $(lcups_dev) $(lcupsi_dev) $(cups_) $(GDEV) $(GLD)page.dev \
+ $(DEVS_MAK) $(MAKEDIRS)
+	$(SETPDEV2) $(DD)urf $(cups_)
+	$(ADDMOD) $(DD)urf -include $(lcups_dev)
+	$(ADDMOD) $(DD)urf -include $(lcupsi_dev)
+	$(ADDMOD) $(DD)urf -include $(GLD)page
+
 $(DEVOBJ)gdevcups.$(OBJ) : $(LCUPSSRCDIR)$(D)gdevcups.c $(std_h) $(gxdevsop_h) $(DEVS_MAK) $(MAKEDIRS)
 	$(CUPS_CC) $(DEVO_)gdevcups.$(OBJ) $(C_) $(CFLAGS) $(CUPSCFLAGS) \
-	    $(I_)$(GLSRC) \
-	    $(I_)$(DEVSRC) \
-            $(I_)$(DEVOBJ) $(I_)$(LCUPSSRCDIR)$(D)libs \
-            $(LCUPSSRCDIR)$(D)gdevcups.c
+		$(I_)$(GLSRC)$(_I) \
+		$(I_)$(DEVSRC)$(_I) $(I_)$(LIBCUPSSRCDIR)$(D)libs$(_I) \
+		$(I_)$(DEVOBJ)$(_I) \
+		$(LCUPSSRCDIR)$(D)gdevcups.c
 
 ### ---------------------------- Tracing -------------------------------- ###
 
@@ -1950,6 +1968,10 @@ $(DD)pdfimage32.dev : $(DEVOBJ)gdevpdfimg.$(OBJ) $(GLD)page.dev $(GDEV) $(DEVS_M
 $(DD)PCLm.dev : $(DEVOBJ)gdevpdfimg.$(OBJ) $(GLD)page.dev $(GDEV) $(DEVS_MAK) $(MAKEDIRS)
 	$(SETPDEV2) $(DD)PCLm $(DEVOBJ)gdevpdfimg.$(OBJ)
 	$(ADDMOD) $(DD)PCLm -include $(GLD)page
+
+$(DD)PCLm8.dev : $(DEVOBJ)gdevpdfimg.$(OBJ) $(GLD)page.dev $(GDEV) $(DEVS_MAK) $(MAKEDIRS)
+	$(SETPDEV2) $(DD)PCLm8 $(DEVOBJ)gdevpdfimg.$(OBJ)
+	$(ADDMOD) $(DD)PCLm8 -include $(GLD)page
 
 $(DEVOBJ)gdevpdfimg.$(OBJ) : $(DEVSRC)gdevpdfimg.c $(AK) $(gdevkrnlsclass_h) \
   $(DEVS_MAK) $(arch_h) $(stdint__h) $(gdevprn_h) $(gxdownscale_h) \

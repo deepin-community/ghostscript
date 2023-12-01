@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -113,12 +113,15 @@ setup_device_and_mem_for_thread(gs_memory_t *chunk_base_mem, gx_device *dev, boo
      * will spot the same profile being used, and treat it as a no-op. Otherwise it will try to find
      * a profile with the 'special' name "OI_PROFILE" and throw an error.
      */
-    if (!gscms_is_threadsafe() || (dev->icc_struct != NULL &&
-        ((dev->icc_struct->device_profile[GS_DEFAULT_DEVICE_PROFILE] != NULL &&
-          strncmp(dev->icc_struct->device_profile[GS_DEFAULT_DEVICE_PROFILE]->name,
-              OI_PROFILE, strlen(OI_PROFILE)) == 0)
-        || (dev->icc_struct->proof_profile != NULL &&
-        strncmp(dev->icc_struct->proof_profile->name, OI_PROFILE, strlen(OI_PROFILE)) == 0)))) {
+#define DEV_PROFILE_IS(DEV, PROFILE, MATCH) \
+    ((DEV)->icc_struct != NULL &&\
+     (DEV)->icc_struct->PROFILE != NULL &&\
+     strcmp((DEV)->icc_struct->PROFILE->name, MATCH) == 0)
+
+    if (bg_print ||
+        !gscms_is_threadsafe() ||
+        DEV_PROFILE_IS(dev, device_profile[GS_DEFAULT_DEVICE_PROFILE], OI_PROFILE) ||
+        DEV_PROFILE_IS(dev, proof_profile, OI_PROFILE)) {
         ndev->icc_struct = gsicc_new_device_profile_array(ndev);
         if (!ndev->icc_struct) {
             emprintf1(ndev->memory,
@@ -252,7 +255,7 @@ setup_device_and_mem_for_thread(gs_memory_t *chunk_base_mem, gx_device *dev, boo
             }
             rc_increment(*cachep);
                 ncdev->icc_cache_cl = *cachep;
-        } else if ((ncdev->icc_cache_cl = gsicc_cache_new(thread_mem)) == NULL)
+        } else if ((ncdev->icc_cache_cl = gsicc_cache_new(thread_mem->thread_safe_memory)) == NULL)
             goto out_cleanup;
     }
     if (bg_print) {
@@ -837,7 +840,7 @@ clist_get_band_from_thread(gx_device *dev, int band_needed, gx_process_page_opti
 /* rendering adjacent to the first band (forward or backward) */
 static int
 clist_get_bits_rect_mt(gx_device *dev, const gs_int_rect * prect,
-                         gs_get_bits_params_t *params, gs_int_rect **unread)
+                         gs_get_bits_params_t *params)
 {
     gx_device_printer *pdev = (gx_device_printer *)dev;
     gx_device_clist *cldev = (gx_device_clist *)dev;
@@ -861,7 +864,7 @@ clist_get_bits_rect_mt(gx_device *dev, const gs_int_rect * prect,
     /* This page might not want multiple threads */
     /* Also we don't support plane extraction using multiple threads */
     if (pdev->num_render_threads_requested < 1 || (options & GB_SELECT_PLANES))
-        return clist_get_bits_rectangle(dev, prect, params, unread);
+        return clist_get_bits_rectangle(dev, prect, params);
 
     if (prect->p.x < 0 || prect->q.x > dev->width ||
         y < 0 || end_y > dev->height
@@ -878,12 +881,12 @@ clist_get_bits_rect_mt(gx_device *dev, const gs_int_rect * prect,
         /* Haven't done any rendering yet, try to set up the threads */
         if (clist_setup_render_threads(dev, y, NULL) < 0)
             /* problem setting up the threads, revert to single threaded */
-            return clist_get_bits_rectangle(dev, prect, params, unread);
+            return clist_get_bits_rectangle(dev, prect, params);
     } else {
         if (crdev->render_threads == NULL) {
             /* If we get here with with ymin and ymax > 0 it's because we closed the threads */
             /* while doing a page due to an error. Use single threaded mode.         */
-            return clist_get_bits_rectangle(dev, prect, params, unread);
+            return clist_get_bits_rectangle(dev, prect, params);
         }
     }
     /* If we already have the band's data, just return it */
@@ -905,7 +908,7 @@ clist_get_bits_rect_mt(gx_device *dev, const gs_int_rect * prect,
     band_rect.p.y = 0;
     band_rect.q.y = lines_rasterized;
     code = dev_proc(bdev, get_bits_rectangle)
-        (bdev, &band_rect, params, unread);
+        (bdev, &band_rect, params);
     cdev->buf_procs.destroy_buf_device(bdev);
     if (code < 0)
         goto free_thread_out;
@@ -924,7 +927,7 @@ clist_get_bits_rect_mt(gx_device *dev, const gs_int_rect * prect,
      * rectangles, punt.
      */
     if (!(options & GB_RETURN_COPY) || code > 0)
-        return gx_default_get_bits_rectangle(dev, prect, params, unread);
+        return gx_default_get_bits_rectangle(dev, prect, params);
     options = params->options;
     if (!(options & GB_RETURN_COPY)) {
         /* Redo the first piece with copying. */
@@ -952,7 +955,7 @@ clist_get_bits_rect_mt(gx_device *dev, const gs_int_rect * prect,
             band_rect.p.y = my;
             band_rect.q.y = my + lines_rasterized;
             code = dev_proc(bdev, get_bits_rectangle)
-                (bdev, &band_rect, &band_params, unread);
+                (bdev, &band_rect, &band_params);
             if (code < 0)
                 break;
             params->options = band_params.options;
@@ -995,7 +998,7 @@ clist_process_page(gx_device *dev, gx_process_page_options_t *options)
             return code;
     }
 
-    render_plane.index = -1;
+    gx_render_plane_init(&render_plane, dev, -1);
     for (y = 0; y < dev->height; y += lines_rasterized)
     {
         line_count = band_height;

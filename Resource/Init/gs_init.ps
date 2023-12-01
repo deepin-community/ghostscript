@@ -1,4 +1,4 @@
-% Copyright (C) 2001-2021 Artifex Software, Inc.
+% Copyright (C) 2001-2023 Artifex Software, Inc.
 % All Rights Reserved.
 %
 % This software is provided AS-IS with no warranty, either express or
@@ -34,7 +34,7 @@
 % Interpreter library version number
 % NOTE: the interpreter code requires that the first non-comment token
 % in this file be an integer, and that it match the compiled-in version!
-9540
+10012
 
 % Check the interpreter revision.
 dup revision ne
@@ -283,9 +283,7 @@ userdict /=string 256 string put
    (\)\n) revisiondate 10 mod revisiondate 10 idiv 10 mod (-)
    revisiondate 100 idiv 10 mod revisiondate 1000 idiv 10 mod (-)
    revisiondate 10000 idiv ( \()
-   revision 10 mod (.)
-   revision 1000 mod 10 idiv (.)
-   revision 1000 idiv ( )
+   .revisionstring ( )
    product
    counttomark
     { (%stdout) (w) file exch 0 .writecvp
@@ -476,6 +474,7 @@ userdict /#copies 1 put
 % We have to guard against the BeginPage procedure not popping its operand.
 % This is really stupid, but the Genoa CET does it.
 /.beginpage {		% - .beginpage -
+  .updatematrices
   .currentshowpagecount {
     .currentpagedevice pop
     dup //null ne { /BeginPage .knownget } { pop //false } ifelse {
@@ -491,6 +490,7 @@ userdict /#copies 1 put
 
 % Guard similarly against EndPage not popping its operand.
 /.endpage {		% <reason> .endpage <print_bool>
+  .updatematrices
   .currentshowpagecount {
     1 index .currentpagedevice pop
     dup //null ne { /EndPage .knownget } { pop //false } ifelse {
@@ -2415,7 +2415,7 @@ currentdict /.locksafeglobal .undef
   [
   /.bitadd /.charboxpath /.cond /.runandhide /.popdevicefilter
   /.execfile /.filenamesplit /.file_name_parent
-  /.setdefaultmatrix /.isprocfilter /.unread /.psstringencode
+  /.setdefaultmatrix /.updatematrices /.isprocfilter /.unread /.psstringencode
   /.buildsampledfunction /.isencapfunction /.currentaccuratecurves /.currentcurvejoin /.currentdashadapt /.currentdotlength
   /.currentlimitclamp /.dotorientation /.setaccuratecurves /.setcurvejoin /.setdashadapt /.setdotorientation
   /.setlimitclamp /.currentscreenlevels /.dashpath /.pathbbox /.identeq /.identne /.tokenexec /.forgetsave /.pantonecallback
@@ -2462,7 +2462,6 @@ currentdict /.locksafeglobal .undef
   /.init_otto_font_file
   /.composefontdict
   /.type1build
-  /.origdefinefont /.origundefinefont /.origfindfont
   /.buildnativefontmap
   /.completefont
   /.definefakefonts

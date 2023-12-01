@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -157,7 +157,7 @@ pdf_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
 
         if (pcd_XObject == 0)
             return_error(gs_error_VMerror);
-        gs_sprintf(key, "/R%ld", pcs_image->id);
+        gs_snprintf(key, sizeof(key), "/R%ld", pcs_image->id);
         /* This is non-obvious code. Previously we would put the image object (pcs_image)
          * into the Resources dit. When we come to write out the Resources dict
          * that code writes a reference (index 0 R) using the ID from the object.
@@ -203,7 +203,7 @@ pdf_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
     {
         char buf[MAX_REF_CHARS + 6 + 1]; /* +6 for /R# Do\n */
 
-        gs_sprintf(buf, "/R%ld Do\n", pcs_image->id);
+        gs_snprintf(buf, sizeof(buf), "/R%ld Do\n", pcs_image->id);
         cos_stream_add_bytes(pdev, pcos, (const byte *)buf, strlen(buf));
     }
 
@@ -231,6 +231,14 @@ pdf_store_pattern1_params(gx_device_pdf *pdev, pdf_resource_t *pres,
     bbox[1] = t->BBox.p.y;
     bbox[2] = t->BBox.q.x;
     bbox[3] = t->BBox.q.y;
+    if (pdev->accumulating_charproc) {
+        /* Assume here we can only be installing a pattern while acumulating a
+         * charproc if the font is a coloured type 3 font. In this case we will
+         * have set the CTM to be the identity scaled by 100 (!). See gdevpdtt.c
+         * install_PS_charproc_accumulator() for details.
+         */
+        gs_make_identity(&smat2);
+    }
     /* The graphics library assumes a shifted origin to provide
        positive bitmap pixel indices. Compensate it now. */
     smat2.tx += pinst->step_matrix.tx;
@@ -242,7 +250,7 @@ pdf_store_pattern1_params(gx_device_pdf *pdev, pdf_resource_t *pres,
      * form is nested inside a form, the default space is the space of the
      * first form, and therefore we do *not* remove the resolution scaling.
      */
-    if (pdev->FormDepth == 0 || (pdev->FormDepth > 0 && pdev->PatternsSinceForm > 0)) {
+    if ((pdev->FormDepth == 0 || (pdev->FormDepth > 0 && pdev->PatternsSinceForm > 0)) && !pdev->accumulating_charproc) {
         gs_matrix scaled;
 
         gs_make_scaling(1 / scale_x, 1 / scale_y, &scaled);
@@ -250,6 +258,9 @@ pdf_store_pattern1_params(gx_device_pdf *pdev, pdf_resource_t *pres,
     } else {
         smat = smat2;
     }
+    if ((smat.xx == 0.0 && smat.yy == 0.0) && (smat.xy == 0.0 && smat.yx == 0.0))
+        return_error(gs_error_undefinedresult);
+
     if (pdev->ForOPDFRead) {
         if (pdev->PatternDepth) {
             gs_matrix_multiply(&smat, &pdev->AccumulatedPatternMatrix, &smat2);
@@ -360,6 +371,9 @@ pdf_put_uncolored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
             if (code < 0)
                 return code;
             *ppres = pdf_find_resource_by_gs_id(pdev, resourcePattern, pdc->mask.id);
+            if (*ppres == NULL)
+                return_error(gs_error_undefined);
+
             *ppres = pdf_substitute_pattern(*ppres);
             if (!pdev->AR4_save_bug && pdev->CompatibilityLevel <= 1.3) {
                 /* We reconnized AR4 behavior as reserving "q Q" stack elements
@@ -608,7 +622,7 @@ pdf_put_linear_shading(gx_device_pdf *pdev, cos_dict_t *pscd, const float *Coord
     if (Extend[0] | Extend[1]) {
         char extend_str[1 + 5 + 1 + 5 + 1 + 1]; /* [bool bool] */
 
-        gs_sprintf(extend_str, "[%s %s]",
+        gs_snprintf(extend_str, sizeof(extend_str), "[%s %s]",
                 (Extend[0] ? "true" : "false"),
                 (Extend[1] ? "true" : "false"));
         code = cos_dict_put_c_key_string(pscd, "/Extend",

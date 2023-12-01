@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -29,7 +29,7 @@
 #define NUM_DEVICE_PROFILES 4
 #define NUM_SOURCE_PROFILES 3
 #define GS_DEFAULT_DEVICE_PROFILE 0
-#define GS_GRAPHIC_DEVICE_PROFILE 1
+#define GS_VECTOR_DEVICE_PROFILE 1
 #define GS_IMAGE_DEVICE_PROFILE 2
 #define GS_TEXT_DEVICE_PROFILE 3
 
@@ -38,6 +38,8 @@
 
 #define DEV_NEUTRAL_8 5
 #define DEV_NEUTRAL_16 5
+
+#define ARTIFEX_sRGB_HASH 0xfbea006420fca6be
 
 /* Define the preferred size of the output by the CMS */
 /* This can be different than the size of gx_color_value
@@ -210,7 +212,7 @@ typedef enum {
     GS_UNTOUCHED_TAG = 0x0,	/* UNTOUCHED *must* be 0 -- transparency code relies on this */
     GS_TEXT_TAG = 0x1,
     GS_IMAGE_TAG = 0x2,
-    GS_PATH_TAG = 0x4,
+    GS_VECTOR_TAG = 0x4,
     GS_UNKNOWN_TAG = 0x40,
     GS_DEVICE_ENCODES_TAGS = 0x80
 } gs_graphics_type_tag_t;
@@ -291,6 +293,9 @@ struct cmm_dev_profile_s {
         bool pageneutralcolor;      /* Only valid if graydetection true */
         bool usefastcolor;         /* Used when we want to use no cm */
         bool blacktext;           /* Force text to be pure black */
+        bool blackvector;         /* Force vectors to be pure black */
+        float blackthresholdL;    /* Luminance threshold */
+        float blackthresholdC;    /* Chrominance threshold */
         bool supports_devn;        /* If the target handles devn colors */
         gs_overprint_control_t overprint_control;	/* enable is the default */
         gsicc_namelist_t *spotnames;  /* If our device profiles are devn */

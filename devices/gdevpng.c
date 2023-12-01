@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -56,6 +56,7 @@
 #include "gscdefs.h"
 #include "gxdownscale.h"
 #include "gxdevsop.h"
+#include "gscms.h"
 
 /* ------ The device descriptors ------ */
 
@@ -93,7 +94,7 @@ struct gx_device_png_s {
 
 const gx_device_png gs_pngmono_device =
 { /* The print_page proc is compatible with allowing bg printing */
-  prn_device_body(gx_device_png, prn_bg_procs, "pngmono",
+  prn_device_body(gx_device_png, gdev_prn_initialize_device_procs_mono_bg, "pngmono",
            DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
            X_DPI, Y_DPI,
            0, 0, 0, 0,		/* margins */
@@ -105,11 +106,19 @@ const gx_device_png gs_pngmono_device =
 /* 4-bit planar (EGA/VGA-style) color. */
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs png16_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                pc_4bit_map_rgb_color, pc_4bit_map_color_rgb);
+static void
+png16_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, map_rgb_color, pc_4bit_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, pc_4bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, pc_4bit_map_rgb_color);
+    set_dev_proc(dev, decode_color, pc_4bit_map_color_rgb);
+}
+
 const gx_device_png gs_png16_device = {
-  prn_device_body(gx_device_png, png16_procs, "png16",
+  prn_device_body(gx_device_png, png16_initialize_device_procs, "png16",
            DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
            X_DPI, Y_DPI,
            0, 0, 0, 0,		/* margins */
@@ -121,11 +130,19 @@ const gx_device_png gs_png16_device = {
 /* (Uses a fixed palette of 3,3,2 bits.) */
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs png256_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                pc_8bit_map_rgb_color, pc_8bit_map_color_rgb);
+static void
+png256_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, map_rgb_color, pc_8bit_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, pc_8bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, pc_8bit_map_rgb_color);
+    set_dev_proc(dev, decode_color, pc_8bit_map_color_rgb);
+}
+
 const gx_device_png gs_png256_device = {
-  prn_device_body(gx_device_png, png256_procs, "png256",
+  prn_device_body(gx_device_png, png256_initialize_device_procs, "png256",
            DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
            X_DPI, Y_DPI,
            0, 0, 0, 0,		/* margins */
@@ -136,13 +153,19 @@ const gx_device_png gs_png256_device = {
 /* 8-bit gray */
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs pnggray_procs =
-prn_color_params_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                       gx_default_gray_map_rgb_color,
-                       gx_default_gray_map_color_rgb,
-                       png_get_params_downscale, png_put_params_downscale);
+static void
+pnggray_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_gray_bg(dev);
+
+    set_dev_proc(dev, get_params, png_get_params_downscale);
+    set_dev_proc(dev, put_params, png_put_params_downscale);
+    set_dev_proc(dev, encode_color, gx_default_8bit_map_gray_color);
+    set_dev_proc(dev, decode_color, gx_default_8bit_map_color_gray);
+}
+
 const gx_device_png gs_pnggray_device =
-{prn_device_body(gx_device_png, pnggray_procs, "pnggray",
+{prn_device_body(gx_device_png, pnggray_initialize_device_procs, "pnggray",
                  DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                  X_DPI, Y_DPI,
                  0, 0, 0, 0,	/* margins */
@@ -153,14 +176,19 @@ const gx_device_png gs_pnggray_device =
 /* Monochrome (with error diffusion) */
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs pngmonod_procs =
-prn_color_params_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                       gx_default_gray_map_rgb_color,
-                       gx_default_gray_map_color_rgb,
-                       png_get_params_downscale_mfs,
-                       png_put_params_downscale_mfs);
+static void
+pngmonod_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_gray_bg(dev);
+
+    set_dev_proc(dev, get_params, png_get_params_downscale_mfs);
+    set_dev_proc(dev, put_params, png_put_params_downscale_mfs);
+    set_dev_proc(dev, encode_color, gx_default_8bit_map_gray_color);
+    set_dev_proc(dev, decode_color, gx_default_8bit_map_color_gray);
+}
+
 const gx_device_png gs_pngmonod_device =
-{prn_device_body(gx_device_png, pngmonod_procs, "pngmonod",
+{prn_device_body(gx_device_png, pngmonod_initialize_device_procs, "pngmonod",
                  DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                  X_DPI, Y_DPI,
                  0, 0, 0, 0,	/* margins */
@@ -171,13 +199,23 @@ const gx_device_png gs_pngmonod_device =
 /* 24-bit color. */
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs png16m_procs =
-prn_color_params_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                       gx_default_rgb_map_rgb_color,
-                       gx_default_rgb_map_color_rgb,
-                       png_get_params_downscale, png_put_params_downscale);
+static void
+png16m_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb_bg(dev);
+
+    set_dev_proc(dev, get_params, png_get_params_downscale);
+    set_dev_proc(dev, put_params, png_put_params_downscale);
+
+    /* The prn macros used in previous versions of the code leave
+     * encode_color and decode_color set to NULL (which are then rewritten
+     * by the system to the default. For compatibility we do the same. */
+    set_dev_proc(dev, encode_color, gx_default_rgb_map_rgb_color);
+    set_dev_proc(dev, decode_color, gx_default_rgb_map_color_rgb);
+}
+
 const gx_device_png gs_png16m_device =
-{prn_device_body(gx_device_png, png16m_procs, "png16m",
+{prn_device_body(gx_device_png, png16m_initialize_device_procs, "png16m",
                  DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                  X_DPI, Y_DPI,
                  0, 0, 0, 0,	/* margins */
@@ -187,12 +225,21 @@ const gx_device_png gs_png16m_device =
 
 /* 48 bit color. */
 
+static void
+png48_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb_bg(dev);
+
+    /* The prn macros used in previous versions of the code leave
+     * encode_color and decode_color set to NULL (which are then rewritten
+     * by the system to the default. For compatibility we do the same. */
+    set_dev_proc(dev, encode_color, gx_default_rgb_map_rgb_color);
+    set_dev_proc(dev, decode_color, gx_default_rgb_map_color_rgb);
+}
+
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs png48_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                gx_default_rgb_map_rgb_color, gx_default_rgb_map_color_rgb);
 const gx_device_png gs_png48_device =
-{prn_device_body(gx_device_png, png48_procs, "png48",
+{prn_device_body(gx_device_png, png48_initialize_device_procs, "png48",
                  DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                  X_DPI, Y_DPI,
                  0, 0, 0, 0,	/* margins */
@@ -215,79 +262,30 @@ struct gx_device_pngalpha_s {
     gx_downscaler_params downscale;
     int background;
 };
-static const gx_device_procs pngalpha_procs =
+
+static void
+pngalpha_initialize_device_procs(gx_device *dev)
 {
-        pngalpha_open,
-        NULL,	/* get_initial_matrix */
-        NULL,	/* sync_output */
-        /* Since the print_page doesn't alter the device, this device can print in the background */
-        gdev_prn_bg_output_page,
-        gdev_prn_close,
-        pngalpha_encode_color,	/* map_rgb_color */
-        pngalpha_decode_color,  /* map_color_rgb */
-        NULL,   /* fill_rectangle */
-        NULL,	/* tile_rectangle */
-        NULL,	/* copy_mono */
-        NULL,	/* copy_color */
-        NULL,	/* draw_line */
-        NULL,	/* get_bits */
-        pngalpha_get_params,
-        pngalpha_put_params,
-        NULL,	/* map_cmyk_color */
-        NULL,	/* get_xfont_procs */
-        NULL,	/* get_xfont_device */
-        NULL,	/* map_rgb_alpha_color */
-        gx_page_device_get_page_device,
-        NULL,	/* get_alpha_bits */
-        pngalpha_copy_alpha,
-        NULL,	/* get_band */
-        NULL,	/* copy_rop */
-        NULL,	/* fill_path */
-        NULL,	/* stroke_path */
-        NULL,	/* fill_mask */
-        NULL,	/* fill_trapezoid */
-        NULL,	/* fill_parallelogram */
-        NULL,	/* fill_triangle */
-        NULL,	/* draw_thin_line */
-        NULL,	/* begin_image */
-        NULL,	/* image_data */
-        NULL,	/* end_image */
-        NULL,	/* strip_tile_rectangle */
-        NULL,	/* strip_copy_rop, */
-        NULL,	/* get_clipping_box */
-        NULL,	/* begin_typed_image */
-        NULL,	/* get_bits_rectangle */
-        NULL,	/* map_color_rgb_alpha */
-        NULL,	/* create_compositor */
-        NULL,	/* get_hardware_params */
-        NULL,	/* text_begin */
-        NULL,	/* finish_copydevice */
-        NULL, 	/* begin_transparency_group */
-        NULL, 	/* end_transparency_group */
-        NULL, 	/* begin_transparency_mask */
-        NULL, 	/* end_transparency_mask */
-        NULL, 	/* discard_transparency_layer */
-        gx_default_DevRGB_get_color_mapping_procs,
-        gx_default_DevRGB_get_color_comp_index,
-        pngalpha_encode_color,
-        pngalpha_decode_color,
-        NULL, 	/* pattern_manage */
-        NULL, 	/* fill_rectangle_hl_color */
-        NULL, 	/* include_color_space */
-        NULL, 	/* fill_linear_color_scanline */
-        NULL, 	/* fill_linear_color_trapezoid */
-        NULL, 	/* fill_linear_color_triangle */
-        NULL, 	/* update_spot_equivalent_colors */
-        NULL, 	/* ret_devn_params */
-        pngalpha_fillpage,
-        NULL,	/* push_transparency_state */
-        NULL,	/* pop_transparency_state */
-        pngalpha_put_image,
-        pngalpha_spec_op               /* dev_spec_op */\
-};
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, open_device, pngalpha_open);
+    set_dev_proc(dev, map_rgb_color, pngalpha_encode_color);
+    set_dev_proc(dev, map_color_rgb, pngalpha_decode_color);
+    set_dev_proc(dev, encode_color, pngalpha_encode_color);
+    set_dev_proc(dev, decode_color, pngalpha_decode_color);
+    set_dev_proc(dev, get_params, pngalpha_get_params);
+    set_dev_proc(dev, put_params, pngalpha_put_params);
+    set_dev_proc(dev, copy_alpha, pngalpha_copy_alpha);
+    set_dev_proc(dev, get_color_mapping_procs, gx_default_DevRGB_get_color_mapping_procs);
+    set_dev_proc(dev, get_color_comp_index, gx_default_DevRGB_get_color_comp_index);
+    set_dev_proc(dev, fillpage, pngalpha_fillpage);
+    set_dev_proc(dev, put_image, pngalpha_put_image);
+    set_dev_proc(dev, dev_spec_op, pngalpha_spec_op);
+}
 
 const gx_device_pngalpha gs_pngalpha_device = {
-        std_device_part1_(gx_device_pngalpha, &pngalpha_procs, "pngalpha",
+        std_device_part1_(gx_device_pngalpha,
+                pngalpha_initialize_device_procs, "pngalpha",
                 &st_device_printer, open_init_closed),
         /* color_info */
         {3 /* max components */,
@@ -305,7 +303,42 @@ const gx_device_pngalpha gs_pngalpha_device = {
          { 0 } /* component bits */,
          { 0 } /* component mask */,
          "DeviceRGB" /* process color name */,
-         GX_CINFO_OPMODE_UNKNOWN /* opmode */,
+         GX_CINFO_OPMSUPPORTED_UNKNOWN /* opmsupported */,
+         0 /* process_cmps */,
+         0 /* icc_locations */
+        },
+        std_device_part2_(
+          (int)((float)(DEFAULT_WIDTH_10THS) * (X_DPI) / 10 + 0.5),
+          (int)((float)(DEFAULT_HEIGHT_10THS) * (Y_DPI) / 10 + 0.5),
+           X_DPI, Y_DPI),
+        offset_margin_values(0, 0, 0, 0, 0, 0),
+        std_device_part3_(),
+        prn_device_body_rest_(png_print_page),
+        GX_DOWNSCALER_PARAMS_DEFAULTS,
+        0xffffff	/* white background */
+};
+
+const gx_device_pngalpha gs_png16malpha_device = {
+        std_device_part1_(gx_device_pngalpha,
+                pngalpha_initialize_device_procs, "png16malpha",
+                &st_device_printer, open_init_closed),
+        /* color_info */
+        {3 /* max components */,
+         3 /* number components */,
+         GX_CINFO_POLARITY_ADDITIVE /* polarity */,
+         32 /* depth */,
+         -1 /* gray index */,
+         255 /* max gray */,
+         255 /* max color */,
+         256 /* dither grays */,
+         256 /* dither colors */,
+         { 1, 1 } /* antialias info text, graphics */,
+         GX_CINFO_UNKNOWN_SEP_LIN /* separable_and_linear */,
+         { 0 } /* component shift */,
+         { 0 } /* component bits */,
+         { 0 } /* component mask */,
+         "DeviceRGB" /* process color name */,
+         GX_CINFO_OPMSUPPORTED_UNKNOWN /* opmsupported */,
          0 /* process_cmps */,
          0 /* icc_locations */
         },
@@ -600,14 +633,19 @@ do_png_print_page(gx_device_png * pdev, gp_file * file, bool monod)
         num_palette = 0;
     }
     /* add comment */
+#ifdef CLUSTER
+    strncpy(software_key, "GPL Ghostscript", sizeof(software_key));
+    strncpy(software_text, "GPL Ghostscript", sizeof(software_text));
+#else
     strncpy(software_key, "Software", sizeof(software_key));
     {
         int major = (int)(gs_revision / 1000);
         int minor = (int)(gs_revision - (major * 1000)) / 10;
         int patch = gs_revision % 10;
 
-        gs_sprintf(software_text, "%s %d.%02d.%d", gs_product, major, minor, patch);
+        gs_snprintf(software_text, sizeof(software_text), "%s %d.%02d.%d", gs_product, major, minor, patch);
     }
+#endif
     text_png.compression = -1;	/* uncompressed */
     text_png.key = software_key;
     text_png.text = software_text;
@@ -638,13 +676,18 @@ do_png_print_page(gx_device_png * pdev, gp_file * file, bool monod)
 
     if (pdev->icc_struct != NULL && pdev->icc_struct->device_profile[GS_DEFAULT_DEVICE_PROFILE] != NULL) {
         cmm_profile_t *icc_profile = pdev->icc_struct->device_profile[GS_DEFAULT_DEVICE_PROFILE];
-        /* PNG can only be RGB or gray.  No CIELAB :(  */
-        if (icc_profile->data_cs == gsRGB || icc_profile->data_cs == gsGRAY) {
-            if (icc_profile->num_comps == pdev->color_info.num_components &&
-                !(pdev->icc_struct->usefastcolor)) {
-                png_set_iCCP(png_ptr, info_ptr, icc_profile->name,
-                    PNG_COMPRESSION_TYPE_DEFAULT, icc_profile->buffer,
-                    icc_profile->buffer_size);
+        if (icc_profile->hash_is_valid && icc_profile->hashcode == ARTIFEX_sRGB_HASH) {
+            /* sRGB case. Just use the tag */
+            png_set_sRGB(png_ptr, info_ptr, PNG_sRGB_INTENT_RELATIVE);
+        } else {
+            /* PNG can only be RGB or gray.  No CIELAB :(  */
+            if (icc_profile->data_cs == gsRGB || icc_profile->data_cs == gsGRAY) {
+                if (icc_profile->num_comps == pdev->color_info.num_components &&
+                    !(pdev->icc_struct->usefastcolor)) {
+                    png_set_iCCP(png_ptr, info_ptr, icc_profile->name,
+                        PNG_COMPRESSION_TYPE_DEFAULT, icc_profile->buffer,
+                        icc_profile->buffer_size);
+                }
             }
         }
     }
@@ -664,14 +707,19 @@ do_png_print_page(gx_device_png * pdev, gp_file * file, bool monod)
     /* Set up the ICC information */
     if (pdev->icc_struct != NULL && pdev->icc_struct->device_profile[GS_DEFAULT_DEVICE_PROFILE] != NULL) {
         cmm_profile_t *icc_profile = pdev->icc_struct->device_profile[GS_DEFAULT_DEVICE_PROFILE];
-        /* PNG can only be RGB or gray.  No CIELAB :(  */
-        if (icc_profile->data_cs == gsRGB || icc_profile->data_cs == gsGRAY) {
-            if (icc_profile->num_comps == pdev->color_info.num_components &&
-                !(pdev->icc_struct->usefastcolor)) {
-                info_ptr->iccp_name = icc_profile->name;
-                info_ptr->iccp_profile = icc_profile->buffer;
-                info_ptr->iccp_proflen = icc_profile->buffer_size;
-                info_ptr->valid |= PNG_INFO_iCCP;
+        if (icc_profile->hash_is_valid && icc_profile->hashcode == ARTIFEX_sRGB_HASH) {
+            /* sRGB case. Just use the tag */
+            png_set_sRGB(png_ptr, info_ptr, PNG_sRGB_INTENT_RELATIVE);
+        } else {
+            /* PNG can only be RGB or gray.  No CIELAB :(  */
+            if (icc_profile->data_cs == gsRGB || icc_profile->data_cs == gsGRAY) {
+                if (icc_profile->num_comps == pdev->color_info.num_components &&
+                    !(pdev->icc_struct->usefastcolor)) {
+                    info_ptr->iccp_name = icc_profile->name;
+                    info_ptr->iccp_profile = icc_profile->buffer;
+                    info_ptr->iccp_proflen = icc_profile->buffer_size;
+                    info_ptr->valid |= PNG_INFO_iCCP;
+                }
             }
         }
     }
@@ -824,6 +872,7 @@ pngalpha_create_buf_device(gx_device **pbdev, gx_device *target, int y,
 
     ptarget= (gx_device_printer *)target;
     set_dev_proc(*pbdev, copy_alpha, ptarget->orig_procs.copy_alpha);
+    set_dev_proc(*pbdev, dev_spec_op, ptarget->orig_procs.dev_spec_op);
     set_dev_proc(*pbdev, fillpage, pngalpha_fillpage);
     return code;
 }
@@ -895,7 +944,7 @@ pngalpha_encode_color(gx_device * dev, const gx_color_value cv[])
 /* Map a color index to a r-g-b color. */
 static int
 pngalpha_decode_color(gx_device * dev, gx_color_index color,
-                             gx_color_value prgb[3])
+                             gx_color_value prgb[])
 {
     prgb[0] = gx_color_value_from_byte((color >> 24) & 0xff);
     prgb[1] = gx_color_value_from_byte((color >> 16) & 0xff);
@@ -975,6 +1024,8 @@ pngalpha_copy_alpha(gx_device * dev, const byte * data, int data_x,
         int code = 0;
         gx_color_value color_cv[GX_DEVICE_COLOR_MAX_COMPONENTS];
         int ry;
+        gs_int_rect rect;
+        gs_get_bits_params_t params;
 
         fit_copy(dev, data, data_x, raster, id, x, y, width, height);
         row = data;
@@ -986,6 +1037,10 @@ pngalpha_copy_alpha(gx_device * dev, const byte * data, int data_x,
             goto out;
         }
         (*dev_proc(dev, decode_color)) (dev, color, color_cv);
+        rect.p.x = 0;
+        rect.q.x = dev->width;
+        params.x_offset = 0;
+        params.raster = bitmap_raster(dev->width * dev->color_info.depth);
         for (ry = y; ry < y + height; row += raster, ++ry) {
             byte *line;
             int sx, rx;
@@ -995,9 +1050,19 @@ pngalpha_copy_alpha(gx_device * dev, const byte * data, int data_x,
             byte l_dbyte = ((l_dbit) ? (byte)(*(l_dptr) & (0xff00 >> (l_dbit))) : 0);
             int l_xprev = x;
 
-            code = (*dev_proc(dev, get_bits)) (dev, ry, lin, &line);
+            rect.p.y = ry;
+            rect.q.y = ry+1;
+
+            params.options = (GB_ALIGN_ANY |
+                              (GB_RETURN_COPY | GB_RETURN_POINTER) |
+                              GB_OFFSET_0 |
+                              GB_RASTER_STANDARD | GB_PACKING_CHUNKY |
+                              GB_COLORS_NATIVE | GB_ALPHA_NONE);
+            params.data[0] = lin;
+            code = (*dev_proc(dev, get_bits_rectangle))(dev, &rect, &params);
             if (code < 0)
                 break;
+            line = params.data[0];
             for (sx = data_x, rx = x; sx < data_x + width; ++sx, ++rx) {
                 gx_color_index previous = gx_no_color_index;
                 gx_color_index composite;

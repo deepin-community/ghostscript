@@ -27,5 +27,11 @@
     <ClCompile Include="..\gpdl\tifftop.c">
       <Filter>gpdl</Filter>
     </ClCompile>
+    <ClCompile Include="..\so\sotop.c">
+      <Filter>gpdl</Filter>
+    </ClCompile>
+    <ClCompile Include="..\gpdl\txttop.c">
+      <Filter>gpdl</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -142,19 +142,23 @@ pdfocr_get_params_downscale(gx_device * dev, gs_param_list * plist)
 }
 
 /* ------ The pdfocr8 device ------ */
+static void
+pdfocr8_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_gray(dev);
 
-static const gx_device_procs pdfocr8_procs =
-prn_color_params_procs(pdf_ocr_open,
-                       gdev_prn_output_page_seekable,
-                       pdf_ocr_close,
-                       gx_default_gray_map_rgb_color,
-                       gx_default_gray_map_color_rgb,
-                       pdfocr_get_params_downscale,
-                       pdfocr_put_params_downscale);
+    set_dev_proc(dev, open_device, pdf_ocr_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page_seekable);
+    set_dev_proc(dev, close_device, pdf_ocr_close);
+    set_dev_proc(dev, get_params, pdfocr_get_params_downscale);
+    set_dev_proc(dev, put_params, pdfocr_put_params_downscale);
+    set_dev_proc(dev, encode_color, gx_default_8bit_map_gray_color);
+    set_dev_proc(dev, decode_color, gx_default_8bit_map_color_gray);
+}
 
 const gx_device_pdf_image gs_pdfocr8_device = {
     prn_device_body(gx_device_pdf_image,
-                    pdfocr8_procs,
+                    pdfocr8_initialize_device_procs,
                     "pdfocr8",
                     DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                     600, 600,   /* 600 dpi by default */
@@ -171,19 +175,21 @@ const gx_device_pdf_image gs_pdfocr8_device = {
 };
 
 /* ------ The pdfocr24 device ------ */
+static void
+pdfocr24_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb(dev);
 
-static const gx_device_procs pdfocr24_procs =
-prn_color_params_procs(pdf_ocr_open,
-                       gdev_prn_output_page_seekable,
-                       pdf_ocr_close,
-                       gx_default_rgb_map_rgb_color,
-                       gx_default_rgb_map_color_rgb,
-                       pdfocr_get_params_downscale,
-                       pdfocr_put_params_downscale);
+    set_dev_proc(dev, open_device, pdf_ocr_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page_seekable);
+    set_dev_proc(dev, close_device, pdf_ocr_close);
+    set_dev_proc(dev, get_params, pdfocr_get_params_downscale);
+    set_dev_proc(dev, put_params, pdfocr_put_params_downscale);
+}
 
 const gx_device_pdf_image gs_pdfocr24_device = {
     prn_device_body(gx_device_pdf_image,
-                    pdfocr24_procs,
+                    pdfocr24_initialize_device_procs,
                     "pdfocr24",
                     DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                     600, 600,   /* 600 dpi by default */
@@ -200,17 +206,23 @@ const gx_device_pdf_image gs_pdfocr24_device = {
 };
 
 /* ------ The pdfocr32 device ------ */
+static void
+pdfocr32_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_cmyk8(dev);
 
-static const gx_device_procs pdfocr32_procs = {
-    pdf_ocr_open, NULL, NULL, gdev_prn_output_page_seekable, pdf_ocr_close,
-    NULL, cmyk_8bit_map_color_cmyk, NULL, NULL, NULL, NULL, NULL, NULL,
-    pdfocr_get_params_downscale_cmyk, pdfocr_put_params_downscale_cmyk,
-    cmyk_8bit_map_cmyk_color, NULL, NULL, NULL, gx_page_device_get_page_device
-};
+    set_dev_proc(dev, open_device, pdf_ocr_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page_seekable);
+    set_dev_proc(dev, close_device, pdf_ocr_close);
+    set_dev_proc(dev, get_params, pdfocr_get_params_downscale_cmyk);
+    set_dev_proc(dev, put_params, pdfocr_put_params_downscale_cmyk);
+    set_dev_proc(dev, decode_color, cmyk_8bit_map_color_cmyk);
+    set_dev_proc(dev, encode_color, cmyk_8bit_map_cmyk_color);
+}
 
 const gx_device_pdf_image gs_pdfocr32_device = {
     prn_device_body(gx_device_pdf_image,
-                    pdfocr32_procs,
+                    pdfocr32_initialize_device_procs,
                     "pdfocr32",
                     DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                     600, 600,   /* 600 dpi by default */
@@ -532,20 +544,20 @@ flush_word(gx_device_pdf_image *dev)
 
     size = bbox[3]-bbox[1];
     if (dev->ocr.cur_size != size) {
-        gs_sprintf(buffer, "/Ft0 %.3f Tf", size);
+        gs_snprintf(buffer, sizeof(buffer), "/Ft0 %.3f Tf", size);
         stream_puts(dev->strm, buffer);
         dev->ocr.cur_size = size;
     }
     scale = (bbox[2]-bbox[0]) / size / len * 200;
     if (dev->ocr.cur_scale != scale) {
-        gs_sprintf(buffer, " %.3f Tz", scale);
+        gs_snprintf(buffer, sizeof(buffer), " %.3f Tz", scale);
         stream_puts(dev->strm, buffer);
         dev->ocr.cur_scale = scale;
     }
-    gs_sprintf(buffer, " 1 0 0 1 %.3f %.3f Tm[<", bbox[0], bbox[1]);
+    gs_snprintf(buffer, sizeof(buffer), " 1 0 0 1 %.3f %.3f Tm[<", bbox[0], bbox[1]);
     stream_puts(dev->strm, buffer);
     for (i = 0; i < len; i++) {
-        gs_sprintf(buffer, "%04x", dev->ocr.word_chars[i]);
+        gs_snprintf(buffer, sizeof(buffer), "%04x", dev->ocr.word_chars[i]);
         stream_puts(dev->strm, buffer);
     }
     stream_puts(dev->strm, ">]TJ\n");
@@ -595,19 +607,19 @@ ocr_callback(void *arg, const char *rune_,
 
     size = bbox[3]-bbox[1];
     if (ppdev->ocr.cur_size != size) {
-        gs_sprintf(buffer, "/Ft0 %f Tf ", size);
+        gs_snprintf(buffer, sizeof(buffer), "/Ft0 %f Tf ", size);
         stream_puts(ppdev->strm, buffer);
         ppdev->ocr.cur_size = size;
     }
     scale = (bbox[2]-bbox[0]) / size * 200;
     if (ppdev->ocr.cur_scale != scale) {
-        gs_sprintf(buffer, " %f Tz ", scale);
+        gs_snprintf(buffer, sizeof(buffer), " %f Tz ", scale);
         stream_puts(ppdev->strm, buffer);
         ppdev->ocr.cur_scale = scale;
     }
-    gs_sprintf(buffer, "1 0 0 1 %f %f Tm ", bbox[0], bbox[1]);
+    gs_snprintf(buffer, sizeof(buffer), "1 0 0 1 %f %f Tm ", bbox[0], bbox[1]);
     stream_puts(ppdev->strm, buffer);
-    gs_sprintf(buffer, "<%04x>Tj\n", unicode);
+    gs_snprintf(buffer, sizeof(buffer), "<%04x>Tj\n", unicode);
     stream_puts(ppdev->strm, buffer);
 #else
     bbox[0] = word_bbox[0] * scale / ppdev->ocr.xres;

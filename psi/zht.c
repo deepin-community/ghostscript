@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -126,7 +126,7 @@ static int
 zsetscreen(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
-    gs_screen_halftone screen;
+    gs_screen_halftone screen = { 0 };
     gx_ht_order order;
     int code = zscreen_params(op, &screen);
     gs_memory_t *mem;
@@ -221,7 +221,7 @@ set_screen_continue(i_ctx_t *i_ctx_p)
     code = gs_screen_next(senum, value);
     if (code < 0)
         return code;
-    pop(1);
+    ref_stack_pop(&o_stack, 1);
     return screen_sample(i_ctx_p);
 }
 /* Finish setscreen. */

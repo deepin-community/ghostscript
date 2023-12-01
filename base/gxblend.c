@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -1345,10 +1345,8 @@ art_blend_pixel_8_inline(byte *gs_restrict dst, const byte *gs_restrict backdrop
                 break;
             }
         default:
-#ifndef GS_THREADSAFE
             dlprintf1("art_blend_pixel_8: blend mode %d not implemented\n",
                       blend_mode);
-#endif
             memcpy(dst, src, n_chan);
             break;
     }
@@ -1556,10 +1554,8 @@ art_blend_pixel_16_inline(uint16_t *gs_restrict dst, const uint16_t *gs_restrict
                 break;
             }
         default:
-#ifndef GS_THREADSAFE
             dlprintf1("art_blend_pixel_16: blend mode %d not implemented\n",
                       blend_mode);
-#endif
             memcpy(dst, src, n_chan*2);
             break;
     }
@@ -2565,6 +2561,12 @@ art_pdf_composite_knockout_8(byte *gs_restrict dst,
         byte blend[ART_MAX_CHAN];
         byte a_b, a_s;
         unsigned int a_r;
+        /* Using a volatile variable set to 0 here works around
+           a gcc (10.3.0) compiler optimiser bug that appears to
+           drop the "if (a_r != 0)" test below, meaning we can end
+           up dividing by a_r when it is zero.
+         */
+        volatile const unsigned int vzero = 0;
         int src_scale;
         int c_b, c_s;
 
@@ -2575,7 +2577,7 @@ art_pdf_composite_knockout_8(byte *gs_restrict dst,
         tmp = (0xff - a_b) * (0xff - a_s) + 0x80;
         a_r = 0xff - (((tmp >> 8) + tmp) >> 8);
 
-        if (a_r != 0) {
+        if (a_r != vzero) {
             /* Compute a_s / a_r in 16.16 format */
             src_scale = ((a_s << 16) + (a_r >> 1)) / a_r;
 
@@ -2646,6 +2648,12 @@ art_pdf_composite_knockout_16(uint16_t *gs_restrict dst,
         uint16_t blend[ART_MAX_CHAN];
         uint16_t a_b, a_s;
         unsigned int a_r;
+        /* Using a volatile variable set to 0 here works around
+           a gcc (10.3.0) compiler optimiser bug that appears to
+           drop the "if (a_r != 0)" test below, meaning we can end
+           up dividing by a_r when it is zero.
+         */
+        volatile const unsigned int vzero = 0;
         int src_scale;
         int c_b, c_s;
 
@@ -2656,7 +2664,7 @@ art_pdf_composite_knockout_16(uint16_t *gs_restrict dst,
         tmp = (0xffff - a_b) * (0xffff - a_s) + 0x8000;
         a_r = 0xffff - (((tmp >> 16) + tmp) >> 16);
 
-        if (a_r != 0) {
+        if (a_r != vzero) {
             /* Compute a_s / a_r in 16.16 format */
             src_scale = ((a_s << 16) + (a_r >> 1)) / a_r;
 
@@ -2706,9 +2714,9 @@ do_dump_raw_buffer(const gs_memory_t *mem, int num_rows, int width, int n_chan,
     if ((n_chan == 2) || (n_chan == 3)) {
         int x;
         dlprintf2("%02d)%s.pam\n",global_index,filename);dflush();
-        gs_sprintf(full_file_name,"%02d)%s.pam",global_index,filename);
+        gs_snprintf(full_file_name,sizeof(full_file_name),"%02d)%s.pam",global_index,filename);
         fid = gp_fopen(mem,full_file_name,"wb");
-        fprintf(fid, "P7\nWIDTH %d\nHEIGHT %d\nDEPTH 2\nMAXVAL %d\nTUPLTYPE GRAYSCALE_ALPHA\nENDHDR\n",
+        gp_fprintf(fid, "P7\nWIDTH %d\nHEIGHT %d\nDEPTH 2\nMAXVAL %d\nTUPLTYPE GRAYSCALE_ALPHA\nENDHDR\n",
                 width, num_rows, deep ? 65535 : 255);
         if (deep) {
             for(y=0; y<num_rows; y++)
@@ -2727,9 +2735,9 @@ do_dump_raw_buffer(const gs_memory_t *mem, int num_rows, int width, int n_chan,
         gp_fclose(fid);
         if (n_chan == 3) {
             dlprintf2("%02d)%s_shape.pgm\n",global_index,filename);dflush();
-            gs_sprintf(full_file_name,"%02d)%s_shape.pgm",global_index,filename);
+            gs_snprintf(full_file_name,sizeof(full_file_name),"%02d)%s_shape.pgm",global_index,filename);
             fid = gp_fopen(mem,full_file_name,"wb");
-            fprintf(fid, "P5\n%d %d %d\n",
+            gp_fprintf(fid, "P5\n%d %d %d\n",
                     width, num_rows, deep ? 65535 : 255);
             if (deep) {
                 for(y=0; y<num_rows; y++)
@@ -2749,9 +2757,9 @@ do_dump_raw_buffer(const gs_memory_t *mem, int num_rows, int width, int n_chan,
     if ((n_chan == 4) || (n_chan == 5) || (n_chan == 6)) {
         int x;
         dprintf2("%02d)%s.pam\n",global_index,filename);dflush();
-        gs_sprintf(full_file_name,"%02d)%s.pam",global_index,filename);
+        gs_snprintf(full_file_name,sizeof(full_file_name),"%02d)%s.pam",global_index,filename);
         fid = gp_fopen(mem,full_file_name,"wb");
-        fprintf(fid, "P7\nWIDTH %d\nHEIGHT %d\nDEPTH 4\nMAXVAL %d\nTUPLTYPE RGB_ALPHA\nENDHDR\n",
+        gp_fprintf(fid, "P7\nWIDTH %d\nHEIGHT %d\nDEPTH 4\nMAXVAL %d\nTUPLTYPE RGB_ALPHA\nENDHDR\n",
                 width, num_rows, deep ? 65535 : 255);
         if (deep) {
             for(y=0; y<num_rows; y++)
@@ -2769,9 +2777,9 @@ do_dump_raw_buffer(const gs_memory_t *mem, int num_rows, int width, int n_chan,
         }
         gp_fclose(fid);
         if (n_chan > 4) {
-            gs_sprintf(full_file_name,"%02d)%s_shape.pgm",global_index,filename);
+            gs_snprintf(full_file_name,sizeof(full_file_name),"%02d)%s_shape.pgm",global_index,filename);
             fid = gp_fopen(mem,full_file_name,"wb");
-            fprintf(fid, "P5\n%d %d %d\n",
+            gp_fprintf(fid, "P5\n%d %d %d\n",
                     width, num_rows, deep ? 65535 : 255);
             if (deep) {
                 for(y=0; y<num_rows; y++)
@@ -2788,9 +2796,9 @@ do_dump_raw_buffer(const gs_memory_t *mem, int num_rows, int width, int n_chan,
             gp_fclose(fid);
         }
         if (n_chan == 6) {
-            gs_sprintf(full_file_name,"%02d)%s_tags.pgm",global_index,filename);
+            gs_snprintf(full_file_name,sizeof(full_file_name),"%02d)%s_tags.pgm",global_index,filename);
             fid = gp_fopen(mem, full_file_name,"wb");
-            fprintf(fid, "P5\n%d %d 255\n", width, num_rows);
+            gp_fprintf(fid, "P5\n%d %d 255\n", width, num_rows);
             if (deep) {
                 for(y=0; y<num_rows; y++)
                     for(x=0; x<width; x++)
@@ -2807,7 +2815,7 @@ do_dump_raw_buffer(const gs_memory_t *mem, int num_rows, int width, int n_chan,
 #endif
     max_bands = ( n_chan < 57 ? n_chan : 56);   /* Photoshop handles at most 56 bands */
     dlprintf6("%02d)%s_%dx%dx%dx%d.raw\n",global_index,filename,width,num_rows,deep ? 16 : 8,max_bands);dflush();
-    gs_sprintf(full_file_name,"%02d)%s_%dx%dx%dx%d.raw",global_index,filename,width,num_rows,deep ? 16 : 8,max_bands);
+    gs_snprintf(full_file_name,sizeof(full_file_name),"%02d)%s_%dx%dx%dx%d.raw",global_index,filename,width,num_rows,deep ? 16 : 8,max_bands);
     fid = gp_fopen(mem, full_file_name,"wb");
 
     if (be && deep) {
@@ -5131,6 +5139,12 @@ do_mark_fill_rectangle(gx_device * dev, int x, int y, int w, int h,
     int first_blend_spot = num_comp;
     pdf14_mark_fill_rect_fn fn;
 
+    /* If we are going out to a CMYK or CMYK + spots pdf14 device (i.e.
+       subtractive) and we are doing overprint with drawn_comps == 0
+       then this is a no-operation */
+    if (overprint && drawn_comps == 0 && !buf->group_color_info->isadditive)
+        return 0;
+
     /* This is a fix to handle the odd case where overprint is active
        but drawn comps is zero due to the colorants that are present
        in the sep or devicen color space.  For example, if the color
@@ -5242,7 +5256,7 @@ do_mark_fill_rectangle(gx_device * dev, int x, int y, int w, int h,
                 fn = mark_fill_rect_add_nospots_common;
         } else
             fn = mark_fill_rect_add_nospots;
-    } else if (!additive && num_spots == 0 && num_comp == 4 && num_spots == 0 &&
+    } else if (!additive && num_spots == 0 && num_comp == 4 &&
         first_blend_spot == 0 && blend_mode == BLEND_MODE_Normal &&
         !overprint && tag_off == 0 && alpha_g_off == 0 && shape_off == 0)
         fn = mark_fill_rect_sub4_fast;
@@ -5766,6 +5780,12 @@ do_mark_fill_rectangle16(gx_device * dev, int x, int y, int w, int h,
     int num_spots = buf->num_spots;
     int first_blend_spot = num_comp;
     pdf14_mark_fill_rect16_fn fn;
+
+   /* If we are going out to a CMYK or CMYK + spots pdf14 device (i.e.
+   subtractive) and we are doing overprint with drawn_comps == 0
+   then this is a no-operation */
+    if (overprint && drawn_comps == 0 && !buf->group_color_info->isadditive)
+        return 0;
 
   /* This is a fix to handle the odd case where overprint is active
    but drawn comps is zero due to the colorants that are present

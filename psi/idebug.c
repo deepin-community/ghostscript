@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -74,7 +74,7 @@ debug_print_full_ref(const gs_memory_t *mem, const ref * pref)
             dmprintf1(mem, "boolean %x", pref->value.boolval);
             break;
         case t_device:
-            dmprintf1(mem, "device "PRI_INTPTR, (intptr_t) pref->value.pdevice);
+            dmprintf1(mem, "device "PRI_INTPTR, (intptr_t) pref->value.pdevice->device);
             break;
         case t_dictionary:
             dmprintf3(mem, "dict(%u/%u)"PRI_INTPTR,
@@ -132,6 +132,7 @@ debug_print_full_ref(const gs_memory_t *mem, const ref * pref)
         case t_string:
             dmprintf2(mem, "string(%u)"PRI_INTPTR"", size, (intptr_t)pref->value.bytes);
             break;
+        case t_pdfctx:
         case t_struct:
           strct:{
                 obj_header_t *obj = (obj_header_t *) pref->value.pstruct;

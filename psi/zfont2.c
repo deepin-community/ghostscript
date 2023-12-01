@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -2632,7 +2632,7 @@ parse_font(i_ctx_t *i_ctx_p,  ref *topdict,
         /* Simple font */
         unsigned int i, gid, enc_format = 0;
         int sid;
-        ref name, cstr, charstrings_dict, encoding, notdef;
+        ref ccoderef, name, cstr, cffcharstrings_dict, charstrings_dict, encoding, notdef;
         unsigned char gid2char[256];
         unsigned supp_enc_offset = 0;
 
@@ -2642,9 +2642,16 @@ parse_font(i_ctx_t *i_ctx_p,  ref *topdict,
             return code;
         if ((code = dict_create(charstrings_index.count + 1, &charstrings_dict)) < 0)
             return code;
+        if ((code = dict_create(charstrings_index.count + 1, &cffcharstrings_dict)) < 0)
+            return code;
         if ((code = idict_put_c_name(i_ctx_p, topdict, STR2MEM("CharStrings"), &charstrings_dict)) < 0)
             return code;
-        if ((code = idict_put(&charstrings_dict, &notdef, &cstr)) < 0)
+        if ((code = idict_put_c_name(i_ctx_p, topdict, STR2MEM("CFFCharStrings"), &cffcharstrings_dict)) < 0)
+            return code;
+        make_int(&ccoderef, 0);
+        if ((code = idict_put(&charstrings_dict, &notdef, &ccoderef)) < 0)
+            return code;
+        if ((code = idict_put(&cffcharstrings_dict, &ccoderef, &cstr)) < 0)
             return code;
         if (offsets.encoding_off <= 1) {
             if ((code = ialloc_ref_array(&encoding, a_readonly, 256, "cff_parser.encoding")) < 0)
@@ -2705,12 +2712,15 @@ parse_font(i_ctx_t *i_ctx_p,  ref *topdict,
                 return sid;
             if ((code = make_name_from_sid(i_ctx_p, &name, strings, data, sid)) < 0) {
                char buf[40];
-               int len = gs_sprintf(buf, "sid-%d", sid);
+               int len = gs_snprintf(buf, sizeof(buf), "sid-%d", sid);
 
                if ((code = name_ref(imemory, (unsigned char *)buf, len, &name, 1)) < 0)
                    return code;
             }
-            if ((code = idict_put(&charstrings_dict, &name, &cstr)) < 0)
+            make_int(&ccoderef, gid);
+            if ((code = idict_put(&charstrings_dict, &name, &ccoderef)) < 0)
+                return code;
+            if ((code = idict_put(&cffcharstrings_dict, &ccoderef, &cstr)) < 0)
                 return code;
             if (offsets.encoding_off > 1 && gid < 256) {
                 encoding.value.refs[gid2char[gid]] = name;
@@ -2859,7 +2869,7 @@ zparsecff(i_ctx_t *i_ctx_p)
         if ((code = peek_index(&topdict_data, &topdict_len, &topdicts, &data, i_font)) < 0)
             return code;
 
-        if ((code = dict_create(20, &topdict)) < 0)
+        if ((code = dict_create(21, &topdict)) < 0)
             return code;
 
         if ((code = idict_put(&fontset, &name, &topdict)) < 0)

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -37,6 +37,7 @@
 #include "gxcspace.h"
 #include "gsicc_manage.h"
 #include "gscms.h"
+#include "gxgetbit.h"
 
 /* Include the extern for the device list. */
 extern_gs_lib_device_list();
@@ -161,17 +162,6 @@ gx_device_reloc_ptr(gx_device * dev, gc_state_t * gcst)
     return RELOC_OBJ(dev);	/* gcst implicit */
 }
 
-/* Set up the device procedures in the device structure. */
-/* Also copy old fields to new ones. */
-void
-gx_device_set_procs(gx_device * dev)
-{
-    if (dev->static_procs != 0) {	/* 0 if already populated */
-        dev->procs = *dev->static_procs;
-        dev->static_procs = 0;
-    }
-}
-
 /* Flush buffered output to the device */
 int
 gs_flushpage(gs_gstate * pgs)
@@ -247,10 +237,27 @@ gs_copyscanlines(gx_device * dev, int start_y, byte * data, uint size,
     uint count = size / line_size;
     uint i;
     byte *dest = data;
+    gs_int_rect rect;
+    gs_get_bits_params_t params;
+
+    rect.p.x = 0;
+    rect.q.x = dev->width;
+    params.x_offset = 0;
+    params.raster = bitmap_raster(dev->width * dev->color_info.depth);
 
     for (i = 0; i < count; i++, dest += line_size) {
-        int code = (*dev_proc(dev, get_bits)) (dev, start_y + i, dest, NULL);
+        int code;
 
+        rect.p.y = start_y+i;
+        rect.q.y = start_y+i+1;
+
+        params.options = (GB_ALIGN_ANY |
+                          GB_RETURN_COPY |
+                          GB_OFFSET_0 |
+                          GB_RASTER_STANDARD | GB_PACKING_CHUNKY |
+                          GB_COLORS_NATIVE | GB_ALPHA_NONE);
+        params.data[0] = dest;
+        code = (*dev_proc(dev, get_bits_rectangle))(dev, &rect, &params);
         if (code < 0) {
             /* Might just be an overrun. */
             if (start_y + i == dev->height)
@@ -356,7 +363,7 @@ gx_device_make_struct_type(gs_memory_struct_type_t *st,
 {
     if (dev->stype)
         *st = *dev->stype;
-    else if (dev_proc(dev, get_xfont_procs) == gx_forward_get_xfont_procs)
+    else if (dev_proc(dev, get_page_device) == gx_forward_get_page_device)
         *st = st_device_forward;
     else
         *st = st_device;
@@ -409,34 +416,29 @@ gs_copydevice2(gx_device ** pnew_dev, const gx_device * dev, bool keep_open,
         gs_free_object(mem->non_gc_memory, a_std, "gs_copydevice(stype)");
         return_error(gs_error_VMerror);
     }
-    gx_device_init(new_dev, dev, mem, false);
-    gx_device_set_procs(new_dev);
+    code = gx_device_init(new_dev, dev, mem, false);
     new_dev->stype = new_std;
     new_dev->stype_is_dynamic = new_std != std;
     /*
      * keep_open is very dangerous.  On the other hand, so is copydevice in
      * general, since it just copies the bits without any regard to pointers
-     * (including self-pointers) that they may contain.  We handle this by
-     * making the default finish_copydevice forbid copying of anything other
-     * than the device prototype.
+     * (including self-pointers) that they may contain.
      */
     new_dev->is_open = dev->is_open && keep_open;
-    fill_dev_proc(new_dev, finish_copydevice, gx_default_finish_copydevice);
-    /* We really want to be able to interrogate the device for capabilities
-     * and/or preferences right from when it is created, so set dev_spec_op
-     * now (if not already set).
-     */
-    fill_dev_proc(new_dev, dev_spec_op, gx_default_dev_spec_op);
-    code = dev_proc(new_dev, finish_copydevice)(new_dev, dev);
     if (code < 0) {
         gs_free_object(mem, new_dev, "gs_copydevice(device)");
 #if 0 /* gs_free_object above calls gx_device_finalize,
-         which closes the device and releaszes its stype, i.e. a_std. */
+         which closes the device and releases its stype, i.e. a_std. */
         if (a_std)
             gs_free_object(dev->memory->non_gc_memory, a_std, "gs_copydevice(stype)");
 #endif
         return code;
     }
+    /* We really want to be able to interrogate the device for capabilities
+     * and/or preferences right from when it is created, so set dev_spec_op
+     * now (if not already set).
+     */
+    fill_dev_proc(new_dev, dev_spec_op, gx_default_dev_spec_op);
     *pnew_dev = new_dev;
     return 0;
 }
@@ -619,15 +621,25 @@ gs_setdevice_no_init(gs_gstate * pgs, gx_device * dev)
 }
 
 /* Initialize a just-allocated device. */
-void
+int
 gx_device_init(gx_device * dev, const gx_device * proto, gs_memory_t * mem,
                bool internal)
 {
     memcpy(dev, proto, proto->params_size);
-    dev->memory = mem;
+    dev->initialize_device_procs = proto->initialize_device_procs;
+    if (dev->initialize_device_procs != NULL)
+        dev->initialize_device_procs(dev);
+    dev->memory = mem;		/* must precede initialize_device call so devices can use it */
+    if (dev->procs.initialize_device) {
+        int code = dev->procs.initialize_device(dev);
+        if (code < 0)
+            return code;
+    }
     dev->retained = !internal;
     rc_init(dev, mem, (internal ? 0 : 1));
     rc_increment(dev->icc_struct);
+
+    return 0;
 }
 
 void
@@ -635,6 +647,14 @@ gx_device_init_on_stack(gx_device * dev, const gx_device * proto,
                         gs_memory_t * mem)
 {
     memcpy(dev, proto, proto->params_size);
+    dev->initialize_device_procs = proto->initialize_device_procs;
+    dev->initialize_device_procs(dev);
+    if (dev->procs.initialize_device) {
+        /* A condition of devices inited on the stack is that they can
+         * never fail to initialize! */
+        (void)dev->procs.initialize_device(dev);
+    }
+    gx_device_fill_in_procs(dev);
     dev->memory = mem;
     dev->retained = 0;
     dev->pad = proto->pad;
@@ -648,8 +668,10 @@ void
 gs_make_null_device(gx_device_null *dev_null, gx_device *dev,
                     gs_memory_t * mem)
 {
-    gx_device_init((gx_device *)dev_null, (const gx_device *)&gs_null_device,
-                   mem, true);
+    /* Can never fail */
+    (void)gx_device_init((gx_device *)dev_null,
+                         (const gx_device *)&gs_null_device,
+                         mem, true);
     gx_device_fill_in_procs((gx_device *)dev_null);
     gx_device_set_target((gx_device_forward *)dev_null, dev);
     if (dev) {
@@ -671,7 +693,6 @@ gs_make_null_device(gx_device_null *dev_null, gx_device *dev,
         set_dev_proc(dn, begin_transparency_mask, gx_default_begin_transparency_mask);
         set_dev_proc(dn, end_transparency_mask, gx_default_end_transparency_mask);
         set_dev_proc(dn, discard_transparency_layer, gx_default_discard_transparency_layer);
-        set_dev_proc(dn, pattern_manage, gx_default_pattern_manage);
         set_dev_proc(dn, push_transparency_state, gx_default_push_transparency_state);
         set_dev_proc(dn, pop_transparency_state, gx_default_pop_transparency_state);
         set_dev_proc(dn, put_image, gx_default_put_image);
@@ -787,16 +808,24 @@ gx_set_device_only(gs_gstate * pgs, gx_device * dev)
 uint
 gx_device_raster(const gx_device * dev, bool pad)
 {
-    ulong bits = (ulong) dev->width * dev->color_info.depth;
+    int depth = dev->color_info.depth;
+    ulong bits = (ulong) dev->width * depth;
     ulong raster;
     int l2align;
 
-    if (dev->is_planar)
-    {
-        int has_tags = device_encodes_tags(dev);
-        bits /= (dev->color_info.num_components + has_tags);
-    }
+    if (dev->is_planar) {
+        int num_components = dev->color_info.num_components;
+        /* bpc accounts for unused bits, e.g. depth==4, num_comp==3, or depth==8, num_comps==5 */
+        int bpc = depth / num_components;
 
+        /* depth can be <= num_components if planar and MEM_SET_PARAMS has changed it */
+        if (depth <= num_components || bpc >= 8) {
+            bits /= num_components;
+        } else {
+            /* depth is original depth, not the plane_depth since it is > num_components */
+            bits /= (depth / bpc);
+        }
+    }
     raster = (uint)((bits + 7) >> 3);
     if (!pad)
         return raster;
@@ -1173,13 +1202,15 @@ int gx_device_delete_output_file(const gx_device * dev, const char *fname)
     const char *fmt;
     char *pfname = (char *)gs_alloc_bytes(dev->memory, gp_file_name_sizeof, "gx_device_delete_output_file(pfname)");
     int code;
+    size_t len;
 
     if (pfname == NULL) {
         code = gs_note_error(gs_error_VMerror);
         goto done;
     }
 
-    code = gx_parse_output_file_name(&parsed, &fmt, fname, strlen(fname),
+    len = strlen(fname);
+    code = gx_parse_output_file_name(&parsed, &fmt, fname, len,
                                          dev->memory);
     if (code < 0) {
         goto done;
@@ -1194,11 +1225,11 @@ int gx_device_delete_output_file(const gx_device * dev, const char *fname)
         while (*fmt != 'l' && *fmt != '%')
             --fmt;
         if (*fmt == 'l')
-            gs_sprintf(pfname, parsed.fname, count1);
+            gs_snprintf(pfname, gp_file_name_sizeof, parsed.fname, count1);
         else
-            gs_sprintf(pfname, parsed.fname, (int)count1);
+            gs_snprintf(pfname, gp_file_name_sizeof, parsed.fname, (int)count1);
     } else if (parsed.len && strchr(parsed.fname, '%'))	/* filename with "%%" but no "%nnd" */
-        gs_sprintf(pfname, parsed.fname);
+        gs_snprintf(pfname, gp_file_name_sizeof, parsed.fname);
     else
         pfname[0] = 0; /* 0 to use "fname", not "pfname" */
     if (pfname[0]) {
@@ -1271,11 +1302,11 @@ gx_device_open_output_file(const gx_device * dev, char *fname,
         while (*fmt != 'l' && *fmt != '%')
             --fmt;
         if (*fmt == 'l')
-            gs_sprintf(pfname, parsed.fname, count1);
+            gs_snprintf(pfname, gp_file_name_sizeof, parsed.fname, count1);
         else
-            gs_sprintf(pfname, parsed.fname, (int)count1);
+            gs_snprintf(pfname, gp_file_name_sizeof, parsed.fname, (int)count1);
     } else if (parsed.len && strchr(parsed.fname, '%'))	/* filename with "%%" but no "%nnd" */
-        gs_sprintf(pfname, parsed.fname);
+        gs_snprintf(pfname, gp_file_name_sizeof, parsed.fname);
     else
         pfname[0] = 0; /* 0 to use "fname", not "pfname" */
     if (pfname[0]) {
@@ -1360,7 +1391,7 @@ bool gx_color_info_equal(const gx_device_color_info * p1, const gx_device_color_
         return false;
     if (p1->max_components != p2->max_components)
         return false;
-    if (p1->opmode != p2->opmode)
+    if (p1->opmsupported != p2->opmsupported)
         return false;
     if (p1->polarity != p2->polarity)
         return false;
@@ -1401,4 +1432,26 @@ gdev_space_params_cmp(const gdev_space_params sp1,
     return(1);
 
   return(0);
+}
+
+static void
+release_nts_lock(gx_device *dev)
+{
+    (void)gs_lib_ctx_nts_adjust(dev->memory, -1);
+}
+
+int gx_init_non_threadsafe_device(gx_device *dev)
+{
+    int code;
+
+    if (dev == NULL || dev->finalize != NULL)
+        return gs_error_unknownerror;
+
+    code = gs_lib_ctx_nts_adjust(dev->memory, 1);
+    if (code < 0)
+        return code;
+
+    dev->finalize = release_nts_lock;
+
+    return 0;
 }

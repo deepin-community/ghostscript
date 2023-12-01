@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -20,9 +20,6 @@
 
 #include "gxblend.h"
 #include "gsequivc.h"
-
-/* See Comments in gdevtsep.c or gdevpsd.c as to the purpose of this */
-#define LIMIT_TO_ICC 1
 
 /*
  * Type definitions associated with the fixed color model names.
@@ -110,12 +107,12 @@ extern fixed_colorant_name DeviceCMYKComponents[];
  * Convert standard color spaces into DeviceN colorants.
  * Note;  This routine require SeparationOrder map.
  */
-void gray_cs_to_devn_cm(gx_device * dev, int * map, frac gray, frac out[]);
+void gray_cs_to_devn_cm(const gx_device * dev, int * map, frac gray, frac out[]);
 
-void rgb_cs_to_devn_cm(gx_device * dev, int * map,
+void rgb_cs_to_devn_cm(const gx_device * dev, int * map,
                 const gs_gstate *pgs, frac r, frac g, frac b, frac out[]);
 
-void cmyk_cs_to_devn_cm(gx_device * dev, const int * map,
+void cmyk_cs_to_devn_cm(const gx_device * dev, const int * map,
                 frac c, frac m, frac y, frac k, frac out[]);
 
 /*
@@ -182,6 +179,12 @@ int devn_get_params(gx_device * pdev, gs_param_list * plist,
 int devn_printer_put_params(gx_device * pdev, gs_param_list * plist,
                         gs_devn_params * pdevn_params,
                         equivalent_cmyk_color_params * pequiv_colors);
+
+int
+devn_generic_put_params(gx_device *pdev, gs_param_list *plist,
+                        gs_devn_params *pdevn_params, equivalent_cmyk_color_params *pequiv_colors,
+                        int is_printer);
+
 
 /*
  * Utility routine for handling DeviceN related parameters.  This routine

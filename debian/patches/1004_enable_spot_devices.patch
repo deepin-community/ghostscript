@@ -5,7 +5,7 @@ Last-Update: 2021-07-18
 This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
 --- a/configure.ac
 +++ b/configure.ac
-@@ -2623,7 +2623,7 @@
+@@ -2736,7 +2736,7 @@
  AC_SUBST(EXTRACT_DIR)
  
  # the "display" device isn't an ideal fit in the list below, but it saves adding a "list" for just that one entry

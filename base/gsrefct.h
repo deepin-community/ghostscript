@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2022 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -21,6 +21,7 @@
 
 #include "memento.h"
 #include "std.h"
+#include "gdebug.h"
 
 /*
  * A reference-counted object must include the following header:
@@ -115,6 +116,7 @@ rc_free_proc(rc_free_struct_only);
   BEGIN\
     (vp)->rc.ref_count++;\
     IF_RC_DEBUG(rc_trace_increment(vp, &(vp)->rc));\
+    (void)Memento_adjustRef((vp), 1);\
   END
 #define rc_increment(vp)\
   BEGIN\
@@ -135,6 +137,7 @@ rc_free_proc(rc_free_struct_only);
   BEGIN\
     IF_RC_DEBUG(rc_trace_adjust(vp, &(vp)->rc, delta, cname));\
     (vp)->rc.ref_count += (delta);\
+    (void)Memento_adjustRef((vp), delta);\
   END
 #define rc_unshare_struct(vp, typ, pstype, mem, errstat, cname)\
   BEGIN\

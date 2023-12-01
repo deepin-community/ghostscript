@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -40,6 +40,8 @@
 #include "gdevp14.h"
 #include "gxgetbit.h"
 #include "gscoord.h"
+#include "gsicc_blacktext.h"
+#include "gscspace.h"
 
 #if RAW_PATTERN_DUMP
 unsigned int global_pat_index = 0;
@@ -101,97 +103,57 @@ static dev_proc_fill_rectangle_hl_color(pattern_accum_fill_rectangle_hl_color);
 dev_proc_dev_spec_op(pattern_accum_dev_spec_op);
 
 /* The device descriptor */
+static void
+pattern_accum_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, open_device, pattern_accum_open);
+    set_dev_proc(dev, close_device, pattern_accum_close);
+    set_dev_proc(dev, fill_rectangle, pattern_accum_fill_rectangle);
+    set_dev_proc(dev, copy_mono, pattern_accum_copy_mono);
+    set_dev_proc(dev, copy_color, pattern_accum_copy_color);
+    set_dev_proc(dev, get_clipping_box, gx_get_largest_clipping_box);
+    set_dev_proc(dev, get_bits_rectangle, pattern_accum_get_bits_rectangle);
+    set_dev_proc(dev, fill_rectangle_hl_color, pattern_accum_fill_rectangle_hl_color);
+    set_dev_proc(dev, dev_spec_op, pattern_accum_dev_spec_op);
+    set_dev_proc(dev, copy_planes, pattern_accum_copy_planes);
+
+    /* It would be much nicer if gx_device_init set the following
+     * defaults for us, but that doesn't work for some reason. */
+    set_dev_proc(dev, copy_alpha, gx_default_copy_alpha);
+    set_dev_proc(dev, fill_path, gx_default_fill_path);
+    set_dev_proc(dev, stroke_path, gx_default_stroke_path);
+    set_dev_proc(dev, fill_mask, gx_default_fill_mask);
+    set_dev_proc(dev, fill_trapezoid, gx_default_fill_trapezoid);
+    set_dev_proc(dev, fill_parallelogram, gx_default_fill_parallelogram);
+    set_dev_proc(dev, fill_triangle, gx_default_fill_triangle);
+    set_dev_proc(dev, draw_thin_line, gx_default_draw_thin_line);
+    set_dev_proc(dev, strip_tile_rectangle, gx_default_strip_tile_rectangle);
+    set_dev_proc(dev, begin_typed_image, gx_default_begin_typed_image);
+    set_dev_proc(dev, composite, gx_default_composite);
+    set_dev_proc(dev, text_begin, gx_default_text_begin);
+    set_dev_proc(dev, strip_copy_rop2, gx_default_strip_copy_rop2);
+    set_dev_proc(dev, strip_tile_rect_devn, gx_default_strip_tile_rect_devn);
+    set_dev_proc(dev, transform_pixel_region, gx_default_transform_pixel_region);
+    set_dev_proc(dev, fill_stroke_path, gx_default_fill_stroke_path);
+    set_dev_proc(dev, lock_pattern, gx_default_lock_pattern);
+    set_dev_proc(dev, copy_alpha_hl_color, gx_default_copy_alpha_hl_color);
+}
+
 static const gx_device_pattern_accum gs_pattern_accum_device =
-{std_device_std_body_type_open(gx_device_pattern_accum, 0,
-                          "pattern accumulator", &st_device_pattern_accum,
-                          0, 0, 72, 72),
- {
-     /* NOTE: all drawing procedures must be defaulted, not forwarded. */
-     pattern_accum_open,
-     NULL,                              /* get_initial_matrix */
-     NULL,                              /* sync_output */
-     NULL,                              /* output_page */
-     pattern_accum_close,
-     NULL,                              /* map_rgb_color */
-     NULL,                              /* map_color_rgb */
-     pattern_accum_fill_rectangle,
-     gx_default_tile_rectangle,
-     pattern_accum_copy_mono,
-     pattern_accum_copy_color,
-     NULL,                              /* obselete_draw_line */
-     gx_default_get_bits,
-     NULL,                              /* get_params */
-     NULL,                              /* put_params */
-     NULL,                              /* map_cmyk_color */
-     NULL,                              /* get_xfont_procs */
-     NULL,                              /* get_xfont_device */
-     NULL,                              /* map_rgb_alpha_color */
-     NULL,                              /* get_page_device */
-     NULL,                              /* get_alpha_bits */
-     gx_default_copy_alpha,
-     NULL,                              /* get_band */
-     gx_default_copy_rop,
-     gx_default_fill_path,
-     gx_default_stroke_path,
-     gx_default_fill_mask,
-     gx_default_fill_trapezoid,
-     gx_default_fill_parallelogram,
-     gx_default_fill_triangle,
-     gx_default_draw_thin_line,
-     gx_default_begin_image,
-     gx_default_image_data,
-     gx_default_end_image,
-     gx_default_strip_tile_rectangle,
-     gx_default_strip_copy_rop,
-     gx_get_largest_clipping_box,
-     gx_default_begin_typed_image,
-     pattern_accum_get_bits_rectangle,
-     NULL,                              /* map_color_rgb_alpha */
-     gx_default_create_compositor,
-     NULL,                              /* create_compositor */
-     gx_default_text_begin,
-     gx_default_finish_copydevice,
-     NULL,                              /* begin_transparency_group */
-     NULL,                              /* end_transparency_group */
-     NULL,                              /* begin_transparency_mask */
-     NULL,                              /* end_transparency_mask */
-     NULL,                              /* discard_transparency_layer */
-     NULL,                              /* get_color_mapping_procs */
-     NULL,                              /* get_color_comp_index */
-     NULL,                              /* encode_color */
-     NULL,                              /* decode_color */
-     NULL,                              /* pattern_manage */
-     pattern_accum_fill_rectangle_hl_color, /* fill_rectangle_hl_color */
-     NULL,                              /* include_color_space */
-     NULL,                              /* fill_linear_color_scanline */
-     NULL,                              /* fill_linear_color_trapezoid */
-     NULL,                              /* fill_linear_color_triangle */
-     NULL,                              /* update_spot_equivalent_colors */
-     NULL,                              /* ret_devn_params */
-     NULL,                              /* fillpage */
-     NULL,                              /* push_transparency_state */
-     NULL,                              /* pop_transparency_state */
-     NULL,                              /* put_image */
-     pattern_accum_dev_spec_op,         /* dev_spec_op */
-     pattern_accum_copy_planes,         /* copy_planes */
-     NULL,                              /* get_profile */
-     NULL,                              /* set_graphics_type_tag */
-     gx_default_strip_copy_rop2,
-     gx_default_strip_tile_rect_devn,
-     NULL,                              /* alpha_hl_color */
-     NULL,                              /* process_page */
-     gx_default_transform_pixel_region, /* NOT the default forwarding one */
-     gx_default_fill_stroke_path,
-},
- 0,                             /* target */
- 0, 0, 0, 0                     /* bitmap_memory, bits, mask, instance */
+{std_device_std_body_type_open(gx_device_pattern_accum,
+                               pattern_accum_initialize_device_procs,
+                               "pattern accumulator",
+                               &st_device_pattern_accum,
+                               0, 0, 72, 72)
 };
+
+extern dev_proc_open_device(clist_open);
 
 int
 pattern_clist_open_device(gx_device *dev)
 {
     /* This function is defiled only for clist_init_bands. */
-    return gs_clist_device_procs.open_device(dev);
+    return clist_open(dev);
 }
 
 static dev_proc_create_buf_device(dummy_create_buf_device)
@@ -296,9 +258,9 @@ gx_pattern_accum_alloc(gs_memory_t * mem, gs_memory_t * storage_memory,
             emprintf(mem, "not using clist even though clist is requested\n");
 #endif
         pinst->is_clist = false;
-        gx_device_init((gx_device *)adev,
-                       (const gx_device *)&gs_pattern_accum_device,
-                       mem, true);
+        (void)gx_device_init((gx_device *)adev,
+                             (const gx_device *)&gs_pattern_accum_device,
+                             mem, true);
         adev->instance = pinst;
         adev->bitmap_memory = storage_memory;
         fdev = (gx_device_forward *)adev;
@@ -336,6 +298,7 @@ gx_pattern_accum_alloc(gs_memory_t * mem, gs_memory_t * storage_memory,
     fdev->is_planar = tdev->is_planar;
     fdev->graphics_type_tag = tdev->graphics_type_tag;
     fdev->interpolate_control = tdev->interpolate_control;
+    fdev->non_strict_bounds = tdev->non_strict_bounds;
     gx_device_forward_fill_in_procs(fdev);
     return fdev;
 }
@@ -461,6 +424,7 @@ pattern_accum_open(gx_device * dev)
 #undef PDSET
                     bits->color_info = padev->color_info;
                     bits->bitmap_memory = mem;
+
                     if (target->is_planar > 0)
                     {
                         gx_render_plane_t planes[GX_DEVICE_COLOR_MAX_COMPONENTS];
@@ -673,6 +637,8 @@ blank_unmasked_bits(gx_device * mask,
     int code = 0;
     byte *ptr;
     int blank = (polarity == GX_CINFO_POLARITY_ADDITIVE ? 255 : 0);
+    gs_int_rect rect;
+    gs_get_bits_params_t params;
 
     if ((p->options & required_options) != required_options)
         return_error(gs_error_rangecheck);
@@ -681,23 +647,41 @@ blank_unmasked_bits(gx_device * mask,
     if (min == NULL)
         return_error(gs_error_VMerror);
 
+    rect.p.x = 0;
+    rect.q.x = mask->width;
+    params.x_offset = 0;
+    params.raster = bitmap_raster(mask->width * mask->color_info.depth);
+
     if (p->options & GB_PACKING_CHUNKY)
     {
-        if ((depth & 7) != 0 || depth > 64)
-            return_error(gs_error_rangecheck);
+        if ((depth & 7) != 0 || depth > 64) {
+            code = gs_note_error(gs_error_rangecheck);
+            goto fail;
+        }
         ptr = p->data[0];
         depth >>= 3;
         raster -= w*depth;
         for (y = 0; y < h; y++)
         {
             byte *mine;
-            code = dev_proc(mask, get_bits)(mask, y+y0, min, &mine);
+
+            rect.p.y = y+y0;
+            rect.q.y = y+y0+1;
+            params.options = (GB_ALIGN_ANY |
+                              (GB_RETURN_COPY | GB_RETURN_POINTER) |
+                              GB_OFFSET_0 |
+                              GB_RASTER_STANDARD | GB_PACKING_CHUNKY |
+                              GB_COLORS_NATIVE | GB_ALPHA_NONE);
+            params.data[0] = min;
+            code = (*dev_proc(mask, get_bits_rectangle))(mask, &rect,
+                                                         &params);
             if (code < 0)
                 goto fail;
+            mine = params.data[0];
             for (x = 0; x < w; x++)
             {
                 int xx = x+x0;
-                if (((mine[xx>>3]>>(x&7)) & 1) == 0) {
+                if (((mine[xx>>3]<<(x&7)) & 128) == 0) {
                     switch (depth)
                     {
                     case 8:
@@ -728,15 +712,29 @@ blank_unmasked_bits(gx_device * mask,
         /* Planar, only handle 8 or 16 bits */
         int bytes_per_component = (depth/num_comps) >> 3;
 
-        if (depth/num_comps != 8 && depth/num_comps != 16)
-            return_error(gs_error_rangecheck);
+        if (depth/num_comps != 8 && depth/num_comps != 16) {
+            code = gs_note_error(gs_error_rangecheck);
+            goto fail;
+        }
         for (y = 0; y < h; y++)
         {
             int c;
             byte *mine;
-            code = dev_proc(mask, get_bits)(mask, y+y0, min, &mine);
+
+            rect.p.y = y+y0;
+            rect.q.y = y+y0+1;
+            params.options = (GB_ALIGN_ANY |
+                              (GB_RETURN_COPY | GB_RETURN_POINTER) |
+                              GB_OFFSET_0 |
+                              GB_RASTER_STANDARD | GB_PACKING_CHUNKY |
+                              GB_COLORS_NATIVE | GB_ALPHA_NONE);
+            params.data[0] = min;
+            code = (*dev_proc(mask, get_bits_rectangle))(mask, &rect,
+                                                         &params);
             if (code < 0)
                 goto fail;
+            mine = params.data[0];
+
             for (c = 0; c < num_comps; c++)
             {
                 if (p->data[c] == NULL)
@@ -767,7 +765,7 @@ fail:
 /****** SHOULD USE MASK TO DEFINE UNREAD AREA *****/
 static int
 pattern_accum_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
-                       gs_get_bits_params_t * params, gs_int_rect ** unread)
+                       gs_get_bits_params_t * params)
 {
     gx_device_pattern_accum *const padev = (gx_device_pattern_accum *) dev;
     int code;
@@ -777,7 +775,7 @@ pattern_accum_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
         if (padev->mask)
             params2.options &= ~GB_RETURN_POINTER;
         code = (*dev_proc(padev->target, get_bits_rectangle))
-            (padev->target, prect, &params2, unread);
+            (padev->target, prect, &params2);
         /* If we have a mask, then unmarked pixels of the bits
          * will be undefined. Strictly speaking it makes no
          * sense for us to return any value here, but the only
@@ -986,6 +984,41 @@ gx_pattern_cache_free_entry(gx_pattern_cache * pcache, gx_color_tile * ctile)
     }
 }
 
+/*
+    Historically, the pattern cache has used a very simple hashing
+    scheme whereby pattern A goes into slot idx = (A.id % num_tiles).
+    Unfortunately, now we allow tiles to be 'locked' into the
+    pattern cache, we might run into the case where we want both
+    tiles A and B to be in the cache at once where:
+      (A.id % num_tiles) == (B.id % num_tiles).
+
+    We have a maximum of 2 locked tiles, and one of those can be
+    placed while the other one is locked. So we only need to cope
+    with a single 'collision'.
+
+    We therefore allow tiles to either go in at idx or at
+    (idx + 1) % num_tiles. This means we need to be prepared to
+    search a bit further for them, hence we now have 2 helper
+    functions to do this.
+*/
+
+/* We can have at most 1 locked tile while looking for a place to
+ * put another tile. */
+gx_color_tile *
+gx_pattern_cache_find_tile_for_id(gx_pattern_cache *pcache, gs_id id)
+{
+    gx_color_tile *ctile  = &pcache->tiles[id % pcache->num_tiles];
+    gx_color_tile *ctile2 = &pcache->tiles[(id+1) % pcache->num_tiles];
+    if (ctile->id == id || ctile->id == gs_no_id)
+        return ctile;
+    if (ctile2->id == id || ctile2->id == gs_no_id)
+        return ctile2;
+    if (!ctile->is_locked)
+        return ctile;
+    return ctile2;
+}
+
+
 /* Given the size of a new pattern tile, free entries from the cache until  */
 /* enough space is available (or nothing left to free).                     */
 /* This will allow 1 oversized entry                                        */
@@ -1130,7 +1163,7 @@ gx_pattern_cache_add_entry(gs_gstate * pgs,
         used = size_b + size_c;
     }
     id = pinst->id;
-    ctile = &pcache->tiles[id % pcache->num_tiles];
+    ctile = gx_pattern_cache_find_tile_for_id(pcache, id);
     gx_pattern_cache_free_entry(pcache, ctile);         /* ensure that this cache slot is empty */
     ctile->id = id;
     ctile->is_planar = pinst->is_planar;
@@ -1200,15 +1233,13 @@ gx_pattern_cache_add_entry(gs_gstate * pgs,
 int
 gx_pattern_cache_entry_set_lock(gs_gstate *pgs, gs_id id, bool new_lock_value)
 {
-    gx_pattern_cache *pcache;
     gx_color_tile *ctile;
     int code = ensure_pattern_cache(pgs);
 
     if (code < 0)
         return code;
-    pcache = pgs->pattern_cache;
-    ctile = &pcache->tiles[id % pcache->num_tiles];
-    if (ctile->id != id)
+    ctile = gx_pattern_cache_find_tile_for_id(pgs->pattern_cache, id);
+    if (ctile == NULL)
         return_error(gs_error_undefined);
     ctile->is_locked = new_lock_value;
     return 0;
@@ -1225,7 +1256,7 @@ gx_pattern_cache_get_entry(gs_gstate * pgs, gs_id id, gx_color_tile ** pctile)
     if (code < 0)
         return code;
     pcache = pgs->pattern_cache;
-    ctile = &pcache->tiles[id % pcache->num_tiles];
+    ctile = gx_pattern_cache_find_tile_for_id(pcache, id);
     gx_pattern_cache_free_entry(pgs->pattern_cache, ctile);
     ctile->id = id;
     *pctile = ctile;
@@ -1252,7 +1283,7 @@ gx_pattern_cache_add_dummy_entry(gs_gstate *pgs,
     if (code < 0)
         return code;
     pcache = pgs->pattern_cache;
-    ctile = &pcache->tiles[id % pcache->num_tiles];
+    ctile = gx_pattern_cache_find_tile_for_id(pcache, id);
     gx_pattern_cache_free_entry(pcache, ctile);
     ctile->id = id;
     ctile->depth = depth;
@@ -1298,10 +1329,10 @@ dump_raw_pattern(int height, int width, int n_chan, int depth,
     is_planar = mdev->is_planar;
     max_bands = ( n_chan < 57 ? n_chan : 56);   /* Photoshop handles at most 56 bands */
     if (is_planar) {
-        gs_sprintf(full_file_name, "%d)PATTERN_PLANE_%dx%dx%d.raw", global_pat_index,
+        gs_snprintf(full_file_name, sizeof(full_file_name), "%d)PATTERN_PLANE_%dx%dx%d.raw", global_pat_index,
                 mdev->raster, height, max_bands);
     } else {
-        gs_sprintf(full_file_name, "%d)PATTERN_CHUNK_%dx%dx%d.raw", global_pat_index,
+        gs_snprintf(full_file_name, sizeof(full_file_name), "%d)PATTERN_CHUNK_%dx%dx%d.raw", global_pat_index,
                 width, height, max_bands);
     }
     fid = gp_fopen(memory,full_file_name,"wb");
@@ -1497,8 +1528,8 @@ gx_pattern_load(gx_device_color * pdc, const gs_gstate * pgs,
     if (code < 0)
         goto fail;
     if (pinst->templat.uses_transparency) {
-        if_debug0m('v', mem, "gx_pattern_load: pushing the pdf14 compositor device into this graphics state\n");
-        if ((code = gs_push_pdf14trans_device(saved, true, false, 0, 0)) < 0)   /* FIXME: do we need spot_color_count ??? */
+        if_debug1m('v', mem, "gx_pattern_load: pushing the pdf14 compositor device into this graphics state pat_id = %ld\n", pinst->id);
+        if ((code = gs_push_pdf14trans_device(saved, true, false, 0, 0)) < 0)   /* spot_color_count taken from pdf14 target values */
             return code;
         saved->device->is_open = true;
     } else {
@@ -1557,7 +1588,7 @@ gx_pattern_load(gx_device_color * pdc, const gs_gstate * pgs,
                 /* Send the compositor command to close the PDF14 device */
                 code = gs_pop_pdf14trans_device(saved, true);
                 if (code < 0)
-                    return code;
+                    goto fail;
             } else {
                 /* Not a clist, get PDF14 buffer information */
                 code =
@@ -1568,7 +1599,7 @@ gx_pattern_load(gx_device_color * pdc, const gs_gstate * pgs,
                 /* PDF14 device (and buffer) is destroyed when pattern cache
                    entry is removed */
                 if (code < 0)
-                    return code;
+                    goto fail;
             }
     }
     /* We REALLY don't like the following cast.... */
@@ -1617,6 +1648,8 @@ fail:
         cdev->common.data = 0;
     }
     dev_proc(adev, close_device)((gx_device *)adev);
+    gx_device_set_target(adev, NULL);
+    rc_decrement(adev, "gx_pattern_load");
     gs_gstate_free_chain(saved);
     return code;
 }
@@ -1640,10 +1673,29 @@ gs_pattern1_remap_color(const gs_client_color * pc, const gs_color_space * pcs,
         return 0;
     }
     if (pinst->templat.PaintType == 2) {       /* uncolored */
-        if (pcs->base_space)
-            code = (pcs->base_space->type->remap_color)
-                (pc, pcs->base_space, pdc, pgs, dev, select);
-        else
+        if (pcs->base_space) {
+            if (dev->icc_struct != NULL && dev->icc_struct->blackvector) {
+                gs_client_color temppc;
+                gs_color_space *graycs = gs_cspace_new_DeviceGray(pgs->memory);
+
+                if (graycs == NULL) {
+                    code = (pcs->base_space->type->remap_color)
+                        (pc, pcs->base_space, pdc, pgs, dev, select);
+                } else {
+                    if (gsicc_is_white_blacktextvec((gs_gstate*) pgs,
+                        dev, (gs_color_space*) pcs, (gs_client_color*) pc))
+                        temppc.paint.values[0] = 1.0;
+                    else
+                        temppc.paint.values[0] = 0.0;
+                    code = (graycs->type->remap_color)
+                        (&temppc, graycs, pdc, pgs, dev, select);
+                    rc_decrement_cs(graycs, "gs_pattern1_remap_color");
+                }
+            } else {
+                code = (pcs->base_space->type->remap_color)
+                    (pc, pcs->base_space, pdc, pgs, dev, select);
+            }
+        } else
             code = gs_note_error(gs_error_unregistered);
         if (code < 0)
             return code;
@@ -1683,6 +1735,26 @@ pattern_accum_dev_spec_op(gx_device *dev, int dso, void *data, int size)
         if (strcmp(request->Param, "NoInterpolateImagemasks") == 0) {
             return param_write_bool(plist, "NoInterpolateImagemasks", &bool_true);
         }
+    }
+    /* Bug 704670.  Pattern accumulator should not allow whatever targets
+       lie beneath it to do any bbox adjustments. If we are here, the
+       pattern accumulator is actually drawing into a buffer
+       and it is not accumulating into a clist device. In this case, if it
+       was a pattern clist, we would be going to the special op for the clist
+       device of the pattern, which will have the proper extent and adjust
+       the bbox.  Here we just need to clip to the buffer into which we are drawing */
+    if (dso == gxdso_restrict_bbox) {
+        gs_int_rect* ibox = (gs_int_rect*)data;
+
+        if (ibox->p.y < 0)
+            ibox->p.y = 0;
+        if (ibox->q.y > padev->height)
+            ibox->q.y = padev->height;
+        if (ibox->p.x < 0)
+            ibox->p.x = 0;
+        if (ibox->q.x > padev->width)
+            ibox->q.x = padev->width;
+        return 0;
     }
 
     return dev_proc(target, dev_spec_op)(target, dso, data, size);
