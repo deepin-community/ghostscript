@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Include file for common DeviceN process color model devices. */
@@ -20,9 +20,6 @@
 
 #include "gxblend.h"
 #include "gsequivc.h"
-
-/* See Comments in gdevtsep.c or gdevpsd.c as to the purpose of this */
-#define LIMIT_TO_ICC 1
 
 /*
  * Type definitions associated with the fixed color model names.
@@ -92,6 +89,12 @@ typedef struct gs_devn_params_s {
      */
     gs_separation_map separation_order_map;
     /*
+     * Number of reserved components (such as for tags). This is used
+     * to prevent our auto_spot_colors code to expand into components
+     * that it should not.
+     */
+    int num_reserved_components;
+    /*
      * Pointer to our list of which colorant combinations are being used.
      */
     gs_separations pdf14_separations;
@@ -110,12 +113,12 @@ extern fixed_colorant_name DeviceCMYKComponents[];
  * Convert standard color spaces into DeviceN colorants.
  * Note;  This routine require SeparationOrder map.
  */
-void gray_cs_to_devn_cm(gx_device * dev, int * map, frac gray, frac out[]);
+void gray_cs_to_devn_cm(const gx_device * dev, int * map, frac gray, frac out[]);
 
-void rgb_cs_to_devn_cm(gx_device * dev, int * map,
+void rgb_cs_to_devn_cm(const gx_device * dev, int * map,
                 const gs_gstate *pgs, frac r, frac g, frac b, frac out[]);
 
-void cmyk_cs_to_devn_cm(gx_device * dev, const int * map,
+void cmyk_cs_to_devn_cm(const gx_device * dev, const int * map,
                 frac c, frac m, frac y, frac k, frac out[]);
 
 /*
@@ -182,6 +185,12 @@ int devn_get_params(gx_device * pdev, gs_param_list * plist,
 int devn_printer_put_params(gx_device * pdev, gs_param_list * plist,
                         gs_devn_params * pdevn_params,
                         equivalent_cmyk_color_params * pequiv_colors);
+
+int
+devn_generic_put_params(gx_device *pdev, gs_param_list *plist,
+                        gs_devn_params *pdevn_params, equivalent_cmyk_color_params *pequiv_colors,
+                        int is_printer);
+
 
 /*
  * Utility routine for handling DeviceN related parameters.  This routine

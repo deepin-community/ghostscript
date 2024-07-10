@@ -11,6 +11,9 @@ import com.artifex.gsjava.callbacks.IStdOutFunction;
 import com.artifex.gsjava.util.Reference;
 import com.artifex.gsjava.util.StringUtil;
 
+import java.io.File;
+import com.artifex.gsjava.util.BytePointer;
+
 /**
  * Class which contains native bindings to Ghostscript via the JNI.
  *
@@ -27,7 +30,27 @@ public class GSAPI {
 	 * Registers the needed native libraries.
 	 */
 	private static void registerLibraries() {
-		System.loadLibrary("gs_jni");
+		try {
+			// Try loading normally
+			System.loadLibrary("gs_jni");
+		} catch (UnsatisfiedLinkError e) {
+			// Load using absolute paths
+			if (System.getProperty("os.name").equalsIgnoreCase("Linux")) {
+				// Load on Linux
+				File libgpdl = new File("libgpdl.so");
+				System.load(libgpdl.getAbsolutePath());
+				File gsjni = new File("gs_jni.so");
+				System.load(gsjni.getAbsolutePath());
+			} else if (System.getProperty("os.name").equalsIgnoreCase("Mac OS X")) {
+				// Load on Mac
+				File libgpdl = new File("libgpdl.dylib");
+				System.load(libgpdl.getAbsolutePath());
+				File gsjni = new File("gs_jni.dylib");
+				System.load(gsjni.getAbsolutePath());
+			} else {
+				throw e;
+			}
+		}
 	}
 
 	/**
@@ -36,7 +59,7 @@ public class GSAPI {
 	public static final long GS_NULL = 0L;
 
 	/**
-	 * Error codes
+	 * Level 1 error codes
 	 */
 	public static final int GS_ERROR_OK = 0,
 							GS_ERROR_UNKNOWNERROR = -1,
@@ -66,13 +89,19 @@ public class GSAPI {
 							GS_ERROR_VMERROR = -25;
 
 	/**
-	 * Error codes
+	 * Level 2 error codes
 	 */
 	public static final int GS_ERROR_CONFIGURATION_ERROR = -26,
 							GS_ERROR_UNDEFINEDRESOURCE = -27,
 							GS_ERROR_UNREGISTERED = -28,
 							GS_ERROR_INVALIDCONTEXT = -29,
 							GS_ERROR_INVALID = -30;
+
+	/**
+	 * Psuedo-errors used internally
+	 */
+	public static final int GS_ERROR_HIT_DETECTED = -59,
+							GS_ERROR_FATAL = -100;
 
 	public static final int GS_COLORS_NATIVE = (1 << 0),
 							GS_COLORS_GRAY = (1 << 1),
@@ -257,13 +286,13 @@ public class GSAPI {
 		return gsapi_run_file(instance, StringUtil.toNullTerminatedByteArray(fileName), userErrors, pExitCode);
 	}
 
-	public static int gsapi_set_param(long instnace, String param, String value, int paramType) {
-		return gsapi_set_param(instnace, StringUtil.toNullTerminatedByteArray(param),
+	public static int gsapi_set_param(long instance, String param, String value, int paramType) {
+		return gsapi_set_param(instance, StringUtil.toNullTerminatedByteArray(param),
 				StringUtil.toNullTerminatedByteArray(value), paramType);
 	}
 
-	public static int gsapi_set_param(long instnace, String param, Object value, int paramType) {
-		return gsapi_set_param(instnace, StringUtil.toNullTerminatedByteArray(param), value, paramType);
+	public static int gsapi_set_param(long instance, String param, Object value, int paramType) {
+		return gsapi_set_param(instance, StringUtil.toNullTerminatedByteArray(param), value, paramType);
 	}
 
 	public static int gsapi_get_param(long instance, String param, long value, int paramType) {

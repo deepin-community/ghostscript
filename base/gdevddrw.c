@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Default polygon and image drawing device procedures */
@@ -422,11 +422,41 @@ gx_default_fill_trapezoid(gx_device * dev, const gs_fixed_edge * left,
     bool fill_direct = color_writes_pure(pdevc, lop);
 
     if (swap_axes) {
+        if (dev->width != 0 && dev->non_strict_bounds == 0)
+        {
+            /* Some devices init max->width to be int_max, which overflows when converted to fixed. */
+            int dw = dev->width > max_int_in_fixed ? max_int_in_fixed : dev->width;
+            if (ytop < 0)
+                return 0;
+            if (ybot < 0)
+                ybot = 0;
+            dw = int2fixed(dw);
+            if (ybot > dw)
+                return 0;
+            if (ytop > dw)
+                ytop = dw;
+        }
+
         if (fill_direct)
             return gx_fill_trapezoid_as_fd(dev, left, right, ybot, ytop, 0, pdevc, lop);
         else
             return gx_fill_trapezoid_as_nd(dev, left, right, ybot, ytop, 0, pdevc, lop);
     } else {
+        if (dev->height != 0 && dev->non_strict_bounds == 0)
+        {
+            /* Some devices init max->height to be int_max, which overflows when converted to fixed. */
+            int dh = dev->height > max_int_in_fixed ? max_int_in_fixed : dev->height;
+            if (ytop < 0)
+                return 0;
+            if (ybot < 0)
+                ybot = 0;
+            dh = int2fixed(dh);
+            if (ybot > dh)
+                return 0;
+            if (ytop > dh)
+                ytop = dh;
+        }
+
         if (fill_direct)
             return gx_fill_trapezoid_ns_fd(dev, left, right, ybot, ytop, 0, pdevc, lop);
         else
@@ -955,14 +985,6 @@ gx_default_draw_thin_line(gx_device * dev,
     }
 }
 
-/* Stub out the obsolete procedure. */
-int
-gx_default_draw_line(gx_device * dev,
-                     int x0, int y0, int x1, int y1, gx_color_index color)
-{
-    return -1;
-}
-
 /* ---------------- Image drawing ---------------- */
 
 /* GC structures for image enumerator */
@@ -972,58 +994,15 @@ static
 ENUM_PTRS_WITH(image_enum_common_enum_ptrs, gx_image_enum_common_t *eptr)
     return 0;
 case 0: return ENUM_OBJ(gx_device_enum_ptr(eptr->dev));
+ENUM_PTR(1,gx_image_enum_common_t,pgs);
 ENUM_PTRS_END
 
 static RELOC_PTRS_WITH(image_enum_common_reloc_ptrs, gx_image_enum_common_t *eptr)
 {
     eptr->dev = gx_device_reloc_ptr(eptr->dev, gcst);
+    RELOC_PTR(gx_image_enum_common_t,pgs);
 }
 RELOC_PTRS_END
-
-/*
- * gx_default_begin_image is only invoked for ImageType 1 images.  However,
- * the argument types are different, and if the device provides a
- * begin_typed_image procedure, we should use it.  See gxdevice.h.
- */
-static int
-gx_no_begin_image(gx_device * dev,
-                  const gs_gstate * pgs, const gs_image_t * pim,
-                  gs_image_format_t format, const gs_int_rect * prect,
-              const gx_drawing_color * pdcolor, const gx_clip_path * pcpath,
-                  gs_memory_t * memory, gx_image_enum_common_t ** pinfo)
-{
-    return -1;
-}
-int
-gx_default_begin_image(gx_device * dev,
-                       const gs_gstate * pgs, const gs_image_t * pim,
-                       gs_image_format_t format, const gs_int_rect * prect,
-              const gx_drawing_color * pdcolor, const gx_clip_path * pcpath,
-                       gs_memory_t * memory, gx_image_enum_common_t ** pinfo)
-{
-    /*
-     * Hand off to begin_typed_image, being careful to avoid a
-     * possible recursion loop.
-     */
-    dev_proc_begin_image((*save_begin_image)) = dev_proc(dev, begin_image);
-    gs_image_t image;
-    const gs_image_t *ptim;
-    int code;
-
-    set_dev_proc(dev, begin_image, gx_no_begin_image);
-    if (pim->format == format)
-        ptim = pim;
-    else {
-        image = *pim;
-        image.format = format;
-        ptim = &image;
-    }
-    code = (*dev_proc(dev, begin_typed_image))
-        (dev, pgs, NULL, (const gs_image_common_t *)ptim, prect, pdcolor,
-         pcpath, memory, pinfo);
-    set_dev_proc(dev, begin_image, save_begin_image);
-    return code;
-}
 
 int
 gx_default_begin_typed_image(gx_device * dev,
@@ -1032,42 +1011,8 @@ gx_default_begin_typed_image(gx_device * dev,
               const gx_drawing_color * pdcolor, const gx_clip_path * pcpath,
                       gs_memory_t * memory, gx_image_enum_common_t ** pinfo)
 {
-    /* If this is an ImageType 1 image using the gs_gstate's CTM,
-         * defer to begin_image.
-         */
-    if (pic->type->begin_typed_image == gx_begin_image1) {
-        const gs_image_t *pim = (const gs_image_t *)pic;
-
-        if (pmat == 0 ||
-            (pgs != 0 && !gs_matrix_compare(pmat, &ctm_only(pgs)))
-            ) {
-            int code = (*dev_proc(dev, begin_image))
-            (dev, pgs, pim, pim->format, prect, pdcolor,
-             pcpath, memory, pinfo);
-
-            if (code >= 0)
-                return code;
-        }
-    }
     return (*pic->type->begin_typed_image)
         (dev, pgs, pmat, pic, prect, pdcolor, pcpath, memory, pinfo);
-}
-
-/* Backward compatibility for obsolete driver procedures. */
-
-int
-gx_default_image_data(gx_device *dev, gx_image_enum_common_t * info,
-                      const byte ** plane_data,
-                      int data_x, uint raster, int height)
-{
-    return gx_image_data(info, plane_data, data_x, raster, height);
-}
-
-int
-gx_default_end_image(gx_device *dev, gx_image_enum_common_t * info,
-                     bool draw_last)
-{
-    return gx_image_end(info, draw_last);
 }
 
 int

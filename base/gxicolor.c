@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -81,7 +81,7 @@ color_halftone_callback(cal_halftone_data_t *ht, void *arg)
     gx_color_index dev_white = gx_device_white(dev);
     gx_color_index dev_black = gx_device_black(dev);
 
-    if (dev->is_planar) {
+    if (dev->num_planar_planes) {
         (*dev_proc(dev, copy_planes)) (dev, ht->data, ht->x + (ht->offset_x<<3), ht->raster,
             gx_no_bitmap_id, ht->x, ht->y, ht->w, ht->h,
             ht->plane_raster);
@@ -108,7 +108,7 @@ color_halftone_init(gx_image_enum *penum)
     if (!gx_device_must_halftone(penum->dev))
         return NULL;
 
-    if (penum->pgs == NULL || penum->pgs->dev_ht == NULL)
+    if (penum->pgs == NULL || penum->pgs->dev_ht[HT_OBJTYPE_DEFAULT] == NULL)
         return NULL;
     dda_ht = penum->dda.pixel0.x;
     if (penum->dxx > 0)
@@ -136,20 +136,20 @@ color_halftone_init(gx_image_enum *penum)
     if (cal_ht == NULL)
         goto fail;
 
-    for (k = 0; k < penum->pgs->dev_ht->num_comp; k++) {
-        d_order = &(penum->pgs->dev_ht->components[k].corder);
+    for (k = 0; k < penum->pgs->dev_ht[HT_OBJTYPE_DEFAULT]->num_comp; k++) {
+        d_order = &(penum->pgs->dev_ht[HT_OBJTYPE_DEFAULT]->components[k].corder);
         code = gx_ht_construct_threshold(d_order, penum->dev, penum->pgs, k);
         if (code < 0)
             goto fail;
         if (cal_halftone_add_screen(ctx,
                                     penum->memory->non_gc_memory,
                                     cal_ht,
-                                    penum->pgs->dev_ht->components[k].corder.threshold_inverted,
-                                    penum->pgs->dev_ht->components[k].corder.width,
-                                    penum->pgs->dev_ht->components[k].corder.full_height,
+                                    penum->pgs->dev_ht[HT_OBJTYPE_DEFAULT]->components[k].corder.threshold_inverted,
+                                    penum->pgs->dev_ht[HT_OBJTYPE_DEFAULT]->components[k].corder.width,
+                                    penum->pgs->dev_ht[HT_OBJTYPE_DEFAULT]->components[k].corder.full_height,
                                     -penum->pgs->screen_phase[k].x,
                                     -penum->pgs->screen_phase[k].y,
-                                    penum->pgs->dev_ht->components[k].corder.threshold) < 0)
+                                    penum->pgs->dev_ht[HT_OBJTYPE_DEFAULT]->components[k].corder.threshold) < 0)
             goto fail;
     }
 
@@ -289,7 +289,7 @@ gs_image_class_4_color(gx_image_enum * penum, irender_proc_t *render_fn)
            then we will may use the thresholding if it is a halftone
            device IFF we have one bit per component */
         if ((bpc == 1) && transfer_is_monotonic &&
-            (penum->dev->color_info.num_components == 1 || penum->dev->is_planar) &&
+            (penum->dev->color_info.num_components == 1 || penum->dev->num_planar_planes > 1) &&
             penum->bps == 8) {
 #ifdef WITH_CAL
             penum->cal_ht = color_halftone_init(penum);
@@ -698,11 +698,11 @@ image_render_color_thresh(gx_image_enum *penum_orig, const byte *buffer, int dat
                 xrun += penum->x_extent.x;
             vdi = penum->hci;
             contone_stride = penum->line_size;
-            offset_threshold = (- (((long)(penum->thresh_buffer)) +
-                                      penum->ht_offset_bits)) & 15;
+            offset_threshold = (- (((int)(intptr_t)(penum->thresh_buffer)) +
+                                   penum->ht_offset_bits)) & 15;
             for (k = 0; k < spp_out; k ++) {
-                offset_contone[k]   = (- (((long)(penum->line)) +
-                                          (long)contone_stride * k +
+                offset_contone[k]   = (- (((int)(intptr_t)(penum->line)) +
+                                          contone_stride * k +
                                           penum->ht_offset_bits)) & 15;
             }
             data_length = dest_width;
@@ -725,10 +725,10 @@ image_render_color_thresh(gx_image_enum *penum_orig, const byte *buffer, int dat
             xrun = dda_current(dda_ht);            /* really yrun, but just used here for landscape */
             dest_height = gxht_dda_length(&dda_ht, src_size);
             data_length = dest_height;
-            offset_threshold = (-(long)(penum->thresh_buffer)) & 15;
+            offset_threshold = (-(int)(intptr_t)(penum->thresh_buffer)) & 15;
             for (k = 0; k < spp_out; k ++) {
-                offset_contone[k]   = (- ((long)(penum->line) +
-                                          (long)contone_stride * k)) & 15;
+                offset_contone[k]   = (- ((int)(intptr_t)(penum->line) +
+                                          contone_stride * k)) & 15;
             }
             /* In the landscaped case, we want to accumulate multiple columns
                of data before sending to the device.  We want to have a full

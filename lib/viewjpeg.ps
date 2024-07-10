@@ -10,8 +10,8 @@
 % For more information about licensing, please refer to
 % http://www.ghostscript.com/licensing/. For information on
 % commercial licensing, go to http://www.artifex.com/licensing/ or
-% contact Artifex Software, Inc., 1305 Grant Avenue - Suite 200,
-% Novato, CA 94945, U.S.A., +1(415)492-9861.
+% contact Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+% CA 94129, USA.
 
 % View JPEG files with Ghostscript
 %
@@ -35,6 +35,9 @@
 
 % Usage example:
 %	(jpeg-6/testimg.jpg) viewJPEG
+% From version 9.50 you must supply permissions for this program
+% to read the input file(s) either by using -dNOSAFER or by
+% supplying --permit-file-read=<filename>
 
 /languagelevel where {pop languagelevel 2 lt}{true} ifelse {
   (JPEG needs PostScript Level 2!\n) print flush stop
@@ -157,7 +160,7 @@ end	% JPEGdict
 } bind def
 
 % This lets you do stuff on the command line like:
-% gs -sDEVICE=pdfwrite -o stuff%03d.pdf viewjpeg.ps -c "(image.jpg) << /PageSize 2 index viewJPEGgetsize 2 array astore  >> setpagedevice viewJPEG"
+% gs -sDEVICE=pdfwrite -o stuff%03d.pdf viewjpeg.ps -c "(image.jpg) << /PageSize 2 index viewJPEGgetsize 2 array astore /HWResolution [ 72 72 ] >> setpagedevice viewJPEG"
 % so the output size matches the original image.
 /viewJPEGgetsize {		% <file|string> ==> width height
     save

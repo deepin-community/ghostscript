@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -18,6 +18,8 @@
 #include "std.h"
 #include "gserrors.h"
 #include "gpsync.h"
+#include "gp.h"
+#include "globals.h"
 
 /* ------- Synchronization primitives -------- */
 
@@ -117,4 +119,27 @@ gp_thread_start(gp_thread_creation_callback_t proc, void *proc_data, gp_thread_i
 void
 gp_thread_finish(gp_thread_id thread)
 {
+}
+
+/* No threading -> no globals */
+gs_globals *gp_get_globals(void)
+{
+    return NULL;
+}
+
+void gp_global_lock(gs_globals *globals)
+{
+}
+
+void gp_global_unlock(gs_globals *globals)
+{
+}
+
+void gp_set_debug_mem_ptr(gs_memory_t *mem)
+{
+}
+
+gs_memory_t *gp_get_debug_mem_ptr(void)
+{
+    return NULL;
 }

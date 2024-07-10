@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* HP and Canon colour printer drivers */
@@ -253,6 +253,8 @@ static dev_proc_map_rgb_color (gdev_cmyk_map_rgb_color);
 static dev_proc_map_rgb_color (gdev_pcl_map_rgb_color);
 static dev_proc_map_color_rgb (gdev_pcl_map_color_rgb);
 static dev_proc_decode_color  (gdev_cmyk_map_color_cmyk);
+static dev_proc_encode_color  (gdev_pcl_map_gray_color);
+static dev_proc_decode_color  (gdev_pcl_map_color_gray);
 
 /* Print-page, parameters and miscellaneous procedures */
 static dev_proc_open_device(dj500c_open);
@@ -404,22 +406,22 @@ typedef struct {
 /* The basic structure for all printers. Note the presence of the cmyk, depth
    and correct fields even if soem are not used by all printers. */
 
-#define prn_colour_device_body(dtype, procs, dname, w10, h10, xdpi, ydpi, lm, bm, rm, tm, ncomp, depth, mg, mc, dg, dc, print_page, cmyk, correct)\
-    prn_device_body(dtype, procs, dname, w10, h10, xdpi, ydpi, lm, bm, rm, tm, ncomp, depth, mg, mc, dg, dc, print_page), cmyk, depth /* default */, correct
+#define prn_colour_device_body(dtype, init, dname, w10, h10, xdpi, ydpi, lm, bm, rm, tm, ncomp, depth, mg, mc, dg, dc, print_page, cmyk, correct)\
+    prn_device_body(dtype, init, dname, w10, h10, xdpi, ydpi, lm, bm, rm, tm, ncomp, depth, mg, mc, dg, dc, print_page), cmyk, depth /* default */, correct
 
 /* Note: the computation of color_info values here must match */
 /* the computation in the cdj_set_bpp procedure below. */
 
-#define prn_hp_colour_device(dtype, procs, dev_name, x_dpi, y_dpi, bpp, print_page, correct)\
-    prn_colour_device_body(dtype, procs, dev_name,\
+#define prn_hp_colour_device(dtype, init, dev_name, x_dpi, y_dpi, bpp, print_page, correct)\
+    prn_colour_device_body(dtype, init, dev_name,\
     DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS, x_dpi, y_dpi, 0, 0, 0, 0,\
     (bpp == 32 ? 4 : (bpp == 1 || bpp == 8) ? 1 : 3), bpp,\
     (bpp >= 8 ? 255 : 1), (bpp >= 8 ? 255 : bpp > 1 ? 1 : 0),\
     (bpp >= 8 ? 256 : 2), (bpp >= 8 ? 256 : bpp > 1 ? 2 : 0),\
     print_page, 0 /* cmyk */, correct)
 
-#define prn_cmyk_colour_device(dtype, procs, dev_name, x_dpi, y_dpi, bpp, print_page, correct)\
-    prn_colour_device_body(dtype, procs, dev_name,\
+#define prn_cmyk_colour_device(dtype, init, dev_name, x_dpi, y_dpi, bpp, print_page, correct)\
+    prn_colour_device_body(dtype, init, dev_name,\
     DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS, x_dpi, y_dpi, 0, 0, 0, 0,\
     ((bpp == 1 || bpp == 4) ? 1 : 4), bpp,\
     (bpp > 8 ? 255 : 1), (1 << (bpp >> 2)) - 1, /* max_gray, max_color */\
@@ -429,210 +431,227 @@ typedef struct {
 #define bjc_device(dtype, p, d, x, y, b, pp, c) \
     prn_cmyk_colour_device(dtype, p, d, x, y, b, pp, c)
 
-#define cdj_device(procs, dev_name, x_dpi, y_dpi, bpp, print_page, correction, shingling, depletion)\
-{ prn_hp_colour_device(gx_device_cdj, procs, dev_name, x_dpi, y_dpi, bpp, print_page, correction),\
+#define cdj_device(init, dev_name, x_dpi, y_dpi, bpp, print_page, correction, shingling, depletion)\
+{ prn_hp_colour_device(gx_device_cdj, init, dev_name, x_dpi, y_dpi, bpp, print_page, correction),\
     shingling,\
     depletion\
 }
 
-#define pjxl_device(procs, dev_name, x_dpi, y_dpi, bpp, print_page, printqual, rendertype)\
-{ prn_hp_colour_device(gx_device_pjxl, procs, dev_name, x_dpi, y_dpi, bpp, print_page, 0), \
+#define pjxl_device(init, dev_name, x_dpi, y_dpi, bpp, print_page, printqual, rendertype)\
+{ prn_hp_colour_device(gx_device_pjxl, init, dev_name, x_dpi, y_dpi, bpp, print_page, 0), \
     printqual,\
     rendertype\
 }
 
-#define pj_device(procs, dev_name, x_dpi, y_dpi, bpp, print_page)\
-{ prn_hp_colour_device(gx_device_pj, procs, dev_name, x_dpi, y_dpi, bpp, print_page, 0) }
+#define pj_device(init, dev_name, x_dpi, y_dpi, bpp, print_page)\
+{ prn_hp_colour_device(gx_device_pj, init, dev_name, x_dpi, y_dpi, bpp, print_page, 0) }
 
-#define bjc600_device(procs, dev_name, x_dpi, y_dpi, bpp, print_page, t, mf, mt, mws, mw, pq, dt, cc, pc, mp) \
-{ bjc_device(gx_device_bjc600, procs, dev_name, x_dpi, y_dpi, bpp, print_page, 0),\
+#define bjc600_device(init, dev_name, x_dpi, y_dpi, bpp, print_page, t, mf, mt, mws, mw, pq, dt, cc, pc, mp) \
+{ bjc_device(gx_device_bjc600, init, dev_name, x_dpi, y_dpi, bpp, print_page, 0),\
     t, 0., { mf, mt, mws, mw, pq, dt, cc, pc, mp }\
 }
-#define bjc800_device(procs, dev_name, x_dpi, y_dpi, bpp, print_page, t, mf, mt, mws, mw, pq, dt, cc, pc) \
-{ bjc_device(gx_device_bjc800, procs, dev_name, x_dpi, y_dpi, bpp, print_page, 0),\
+#define bjc800_device(init, dev_name, x_dpi, y_dpi, bpp, print_page, t, mf, mt, mws, mw, pq, dt, cc, pc) \
+{ bjc_device(gx_device_bjc800, init, dev_name, x_dpi, y_dpi, bpp, print_page, 0),\
     t, 0., { mf, mt, mws, mw, pq, dt, cc, pc }\
 }
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-#define hp_colour_procs(proc_colour_open, proc_get_params, proc_put_params) {\
-        proc_colour_open,\
-        gx_default_get_initial_matrix,\
-        gx_default_sync_output,\
-        gdev_prn_bg_output_page,\
-        gdev_prn_close,\
-        gdev_pcl_map_rgb_color,\
-        gdev_pcl_map_color_rgb,\
-        NULL,	/* fill_rectangle */\
-        NULL,	/* tile_rectangle */\
-        NULL,	/* copy_mono */\
-        NULL,	/* copy_color */\
-        NULL,	/* draw_line */\
-        gx_default_get_bits,\
-        proc_get_params,\
-        proc_put_params\
+static void
+hp_colour_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, map_rgb_color, gdev_pcl_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gdev_pcl_map_color_rgb);
+    set_dev_proc(dev, get_params, cdj_get_params);
+    set_dev_proc(dev, put_params, cdj_put_params);
+
+    if (dev->color_info.num_components == 1) {
+        set_dev_proc(dev, encode_color, gdev_pcl_map_gray_color);
+        set_dev_proc(dev, decode_color, gdev_pcl_map_color_gray);
+    } else {
+        set_dev_proc(dev, encode_color, gdev_pcl_map_rgb_color);
+        set_dev_proc(dev, decode_color, gdev_pcl_map_color_rgb);
+    }
 }
 
-/* Since the print_page doesn't alter the device, this device can print in the background */
-#define cmyk_colour_procs(proc_colour_open, proc_get_params, proc_put_params) {\
-        proc_colour_open,\
-        gx_default_get_initial_matrix,\
-        gx_default_sync_output,\
-        gdev_prn_bg_output_page,\
-        gdev_prn_close,\
-        NULL /* map_rgb_color */,\
-        NULL /* map_color_rgb */,\
-        NULL /* fill_rectangle */,\
-        NULL /* tile_rectangle */,\
-        NULL /* copy_mono */,\
-        NULL /* copy_color */,\
-        NULL /* draw_line */,\
-        gx_default_get_bits,\
-        proc_get_params,\
-        proc_put_params,\
-        gdev_cmyk_map_cmyk_color,\
-        NULL,	/* get_xfont_procs */\
-        NULL,	/* get_xfont_device */\
-        NULL,	/* map_rgb_alpha_color */\
-        NULL,	/* get_page_device */\
-        NULL,	/* get_alpha_bits */\
-        NULL,	/* copy_alpha */\
-        NULL,	/* get_band */\
-        NULL,	/* copy_rop */\
-        NULL,	/* fill_path */\
-        NULL,	/* stroke_path */\
-        NULL,	/* fill_mask */\
-        NULL,	/* fill_trapezoid */\
-        NULL,	/* fill_parallelogram */\
-        NULL,	/* fill_triangle */\
-        NULL,	/* draw_thin_line */\
-        NULL,	/* begin_image */\
-        NULL,	/* image_data */\
-        NULL,	/* end_image */\
-        NULL,	/* strip_tile_rectangle */\
-        NULL,	/* strip_copy_rop */\
-        NULL,	/* get_clipping_box */\
-        NULL,	/* begin_typed_image */\
-        NULL,	/* get_bits_rectangle */\
-        NULL,	/* map_color_rgb_alpha */\
-        NULL,	/* create_compositor */\
-        NULL,	/* get_hardware_params */\
-        NULL,	/* text_begin */\
-        NULL,	/* finish_copydevice */\
-        NULL,	/* begin_transparency_group */\
-        NULL,	/* end_transparency_group */\
-        NULL,	/* begin_transparency_mask */\
-        NULL,	/* end_transparency_mask */\
-        NULL,	/* discard_transparency_layer */\
-        NULL,	/* get_color_mapping_procs */\
-        NULL,	/* get_color_comp_index */\
-        gdev_cmyk_map_cmyk_color,	/* encode_color */\
-        gdev_cmyk_map_color_cmyk	/* decode_color */\
+static void
+cdj500_initialize_device_procs(gx_device *dev)
+{
+    hp_colour_initialize_device_procs(dev);
+
+    set_dev_proc(dev, open_device, dj500c_open);
 }
 
-static gx_device_procs cdj500_procs =
-hp_colour_procs(dj500c_open, cdj_get_params, cdj_put_params);
+static void
+cdj550_initialize_device_procs(gx_device *dev)
+{
+    hp_colour_initialize_device_procs(dev);
 
-static gx_device_procs cdj550_procs =
-hp_colour_procs(dj550c_open, cdj_get_params, cdj_put_params);
+    set_dev_proc(dev, open_device, dj550c_open);
+}
 
 #ifdef USE_CDJ550_CMYK
-static gx_device_procs cdj550cmyk_procs =
-cmyk_colour_procs(dj550c_open, cdj_get_params, cdj_put_params);
+static void
+cdj550cmyk_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, open_device, dj550c_open);
+    set_dev_proc(dev, get_params, cdj_get_params);
+    set_dev_proc(dev, put_params, cdj_put_params);
+    set_dev_proc(dev, map_cmyk_color, gdev_cmyk_map_cmyk_color);
+    set_dev_proc(dev, encode_color, gdev_cmyk_map_cmyk_color);
+    set_dev_proc(dev, decode_color, gdev_cmyk_map_color_cmyk);
+}
 #endif
 
-static gx_device_procs dj505j_procs =
-hp_colour_procs(dj505j_open, cdj_get_params, cdj_put_params);
+static void
+dj505j_initialize_device_procs(gx_device *dev)
+{
+    hp_colour_initialize_device_procs(dev);
 
-static gx_device_procs dnj650c_procs =
-hp_colour_procs(dnj650c_open, cdj_get_params, cdj_put_params);
+    set_dev_proc(dev, open_device, dj505j_open);
+}
 
-static gx_device_procs lj4dith_procs =
-hp_colour_procs(lj4dith_open, cdj_get_params, cdj_put_params);
+static void
+dnj650c_initialize_device_procs(gx_device *dev)
+{
+    hp_colour_initialize_device_procs(dev);
 
-static gx_device_procs pj_procs =
-hp_colour_procs(pj_open, gdev_prn_get_params, pj_put_params);
+    set_dev_proc(dev, open_device, dnj650c_open);
+}
 
-static gx_device_procs pjxl_procs =
-hp_colour_procs(pjxl_open, pjxl_get_params, pjxl_put_params);
+static void
+lj4dith_initialize_device_procs(gx_device *dev)
+{
+    hp_colour_initialize_device_procs(dev);
 
-static gx_device_procs pjxl300_procs =
-hp_colour_procs(pjxl300_open, pjxl_get_params, pjxl_put_params);
+    set_dev_proc(dev, open_device, lj4dith_open);
+}
 
-static gx_device_procs bjc_procs =
-cmyk_colour_procs(bjc_open, bjc_get_params, bjc_put_params);
+static void
+pj_initialize_device_procs(gx_device *dev)
+{
+    hp_colour_initialize_device_procs(dev);
 
-static gx_device_procs escp_procs =
-hp_colour_procs(escp_open, ep_get_params, ep_put_params);
+    set_dev_proc(dev, open_device, pj_open);
+    set_dev_proc(dev, get_params, gdev_prn_get_params);
+    set_dev_proc(dev, put_params, pj_put_params);
+}
+
+static void
+pjxl_initialize_device_procs(gx_device *dev)
+{
+    hp_colour_initialize_device_procs(dev);
+
+    set_dev_proc(dev, open_device, pjxl_open);
+    set_dev_proc(dev, get_params, pjxl_get_params);
+    set_dev_proc(dev, put_params, pjxl_put_params);
+}
+
+static void
+pjxl300_initialize_device_procs(gx_device *dev)
+{
+    hp_colour_initialize_device_procs(dev);
+
+    set_dev_proc(dev, open_device, pjxl300_open);
+    set_dev_proc(dev, get_params, pjxl_get_params);
+    set_dev_proc(dev, put_params, pjxl_put_params);
+}
+
+static void
+bjc_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, open_device, bjc_open);
+    set_dev_proc(dev, get_params, bjc_get_params);
+    set_dev_proc(dev, put_params, bjc_put_params);
+    set_dev_proc(dev, map_cmyk_color, gdev_cmyk_map_cmyk_color);
+    set_dev_proc(dev, encode_color, gdev_cmyk_map_cmyk_color);
+    set_dev_proc(dev, decode_color, gdev_cmyk_map_color_cmyk);
+}
+
+static void
+escp_initialize_device_procs(gx_device *dev)
+{
+    hp_colour_initialize_device_procs(dev);
+
+    set_dev_proc(dev, open_device, escp_open);
+    set_dev_proc(dev, get_params, ep_get_params);
+    set_dev_proc(dev, put_params, ep_put_params);
+}
 
 gx_device_cdj far_data gs_cdjmono_device =
-cdj_device(cdj500_procs, "cdjmono", 300, 300, 1,
+cdj_device(cdj500_initialize_device_procs, "cdjmono", 300, 300, 1,
            dj500c_print_page, 4, 0, 1);
 
 gx_device_cdj far_data gs_cdeskjet_device =
-cdj_device(cdj500_procs, "cdeskjet", 300, 300, 24,
+cdj_device(cdj500_initialize_device_procs, "cdeskjet", 300, 300, 24,
            dj500c_print_page, 4, 2, 1);
 
 gx_device_cdj far_data gs_cdjcolor_device =
-cdj_device(cdj500_procs, "cdjcolor", 300, 300, 24,
+cdj_device(cdj500_initialize_device_procs, "cdjcolor", 300, 300, 24,
            dj500c_print_page, 4, 2, 1);
 
 gx_device_cdj far_data gs_cdj500_device =
-cdj_device(cdj500_procs, "cdj500", 300, 300, BITSPERPIXEL,
+cdj_device(cdj500_initialize_device_procs, "cdj500", 300, 300, BITSPERPIXEL,
            dj500c_print_page, 4, 2, 1);
 
 gx_device_cdj far_data gs_cdj550_device =
-cdj_device(cdj550_procs, "cdj550", 300, 300, BITSPERPIXEL,
+cdj_device(cdj550_initialize_device_procs, "cdj550", 300, 300, BITSPERPIXEL,
            dj550c_print_page, 0, 2, 1);
 
 #ifdef USE_CDJ550_CMYK
 gx_device_cdj far_data gs_cdj550cmyk_device = {
-    prn_cmyk_colour_device(cdj550cmyk_procs, "cdj550cmyk", 300, 300,
+    prn_cmyk_colour_device(cdj550cmyk_initialize_device_procs, "cdj550cmyk", 300, 300,
         BITSPERPIXEL, dj550c_print_page, 0), 2, 1
 };
 #endif
 
 gx_device_cdj far_data gs_picty180_device =
-cdj_device(cdj550_procs, "picty180", 300, 300, BITSPERPIXEL,
+cdj_device(cdj550_initialize_device_procs, "picty180", 300, 300, BITSPERPIXEL,
            picty180_print_page, 0, 2, 1);
 
 gx_device_cdj far_data gs_dj505j_device =
-cdj_device(dj505j_procs, "dj505j", 300, 300, 1,
+cdj_device(dj505j_initialize_device_procs, "dj505j", 300, 300, 1,
            dj505j_print_page, 4, 0, 1);
 
 gx_device_pj far_data gs_declj250_device =
-pj_device(pj_procs, "declj250", 180, 180, BITSPERPIXEL,
+pj_device(pj_initialize_device_procs, "declj250", 180, 180, BITSPERPIXEL,
           declj250_print_page);
 
 gx_device_cdj far_data gs_dnj650c_device =
-cdj_device(dnj650c_procs, "dnj650c", 300, 300, BITSPERPIXEL,
+cdj_device(dnj650c_initialize_device_procs, "dnj650c", 300, 300, BITSPERPIXEL,
            dnj650c_print_page, 0, 2, 1);
 
 gx_device_cdj far_data gs_lj4dith_device =
-cdj_device(lj4dith_procs, "lj4dith", 600, 600, 8,
+cdj_device(lj4dith_initialize_device_procs, "lj4dith", 600, 600, 8,
            lj4dith_print_page, 4, 0, 1);
 
 gx_device_cdj far_data gs_lj4dithp_device =
-cdj_device(lj4dith_procs, "lj4dithp", 600, 600, 8,
+cdj_device(lj4dith_initialize_device_procs, "lj4dithp", 600, 600, 8,
            lj4dithp_print_page, 4, 0, 1);
 
 gx_device_pj far_data gs_pj_device =
-pj_device(pj_procs, "pj", 180, 180, BITSPERPIXEL,
+pj_device(pj_initialize_device_procs, "pj", 180, 180, BITSPERPIXEL,
           pj_print_page);
 
 gx_device_pjxl far_data gs_pjxl_device =
-pjxl_device(pjxl_procs, "pjxl", 180, 180, BITSPERPIXEL,
+pjxl_device(pjxl_initialize_device_procs, "pjxl", 180, 180, BITSPERPIXEL,
             pjxl_print_page, 0, 0);
 
 gx_device_pjxl far_data gs_pjxl300_device =
-pjxl_device(pjxl300_procs, "pjxl300", 300, 300, BITSPERPIXEL,
+pjxl_device(pjxl300_initialize_device_procs, "pjxl300", 300, 300, BITSPERPIXEL,
             pjxl300_print_page, 0, 0);
 
 gx_device_cdj far_data gs_escp_device =
-cdj_device(escp_procs, "escp", 360, 360, 8,
+cdj_device(escp_initialize_device_procs, "escp", 360, 360, 8,
            escp_print_page, 0, 0, 1);
 
 gx_device_cdj far_data gs_escpc_device =
-cdj_device(escp_procs, "escpc", 360, 360, 24,
+cdj_device(escp_initialize_device_procs, "escpc", 360, 360, 24,
            escp_print_page, 0, 0, 1);
 
 /* Args of bjc drivers are manualFeed, mediaType, printQuality, printColor,
@@ -640,7 +659,7 @@ cdj_device(escp_procs, "escpc", 360, 360, 24,
 
 gx_device_bjc600 far_data gs_bjc600_device =
     bjc600_device(
-        bjc_procs,
+        bjc_initialize_device_procs,
         BJC_BJC600,
         BJC600_DEFAULT_RESOLUTION,
         BJC600_DEFAULT_RESOLUTION,
@@ -659,7 +678,7 @@ gx_device_bjc600 far_data gs_bjc600_device =
 
 gx_device_bjc800 far_data gs_bjc800_device =
     bjc800_device(
-        bjc_procs,
+        bjc_initialize_device_procs,
         BJC_BJC800,
         BJC800_DEFAULT_RESOLUTION,
         BJC800_DEFAULT_RESOLUTION,
@@ -2010,6 +2029,7 @@ hp_colour_print_page(gx_device_printer * pdev, gp_file * prn_stream, int ptype)
 /*  int line_size = gdev_prn_rasterwidth(pdev, 0); */
   int line_size = gdev_prn_raster(pdev);
   int line_size_words = (line_size + W - 1) / W;
+  int line_size_padded;
   int paper_size = gdev_pcl_paper_size((gx_device *)pdev);
   int num_comps = pdev->color_info.num_components;
   int bits_per_pixel = pdev->color_info.depth;
@@ -2021,7 +2041,7 @@ hp_colour_print_page(gx_device_printer * pdev, gp_file * prn_stream, int ptype)
   int outbuff_size = 0;
   int compression = 0;
   int scan = 0;
-  int *errors[2];
+  int *errors[2] = { 0 }; /* Shut up coverity */
   int code = 0;
   const char *cid_string = (const char*) 0;
   byte *data[4], *plane_data[4][4], *out_data;
@@ -2068,8 +2088,17 @@ hp_colour_print_page(gx_device_printer * pdev, gp_file * prn_stream, int ptype)
           bits_per_pixel = expanded_bpp = 3;	/* Only 3 bits of each byte used */
   }
 
+  /* line_size = width * storage_bpp/8 (e.g. 9180) */
+  /* storage_bpp = number of bits to store a single pixel in the output (e.g. 24) */
+  /* plane_size = number of pixels we are going to process for each line (basically
+   * line_size/storage_bpp rounded up a bit to allow for padding the output buffer
+   * to word size). */
   plane_size = calc_buffsize(line_size, storage_bpp);
   eg.plane_size = plane_size;
+  /* line_size_padded = how many pixels we'd actually get in the padded storage. */
+  line_size_padded = plane_size * storage_bpp;
+  /* BUT, if we're going to process plane_size pixels rather than line_size/storage_bpp
+   * pixels, we ought to calculate future things based upon line_size_padded. */
 
   if (bits_per_pixel == 1) {		/* Data printed direct from i/p */
     databuff_size = 0;			/* so no data buffer required, */
@@ -2081,7 +2110,7 @@ hp_colour_print_page(gx_device_printer * pdev, gp_file * prn_stream, int ptype)
       num_comps * 8;			/* 8, 24 or 32 bits */
 
     if (cprn_device->cmyk > 0) {	/* Use CMYK dithering algorithm. */
-        errbuff_size = 4 * (5 + 1 + 1 + line_size + 1 + 2) * I;
+        errbuff_size = 4 * (5 + 1 + 1 + line_size_padded + 1 + 2) * I;
     } else {			/* Use original (RGB) dithering. */
         errbuff_size =			/* 4n extra values for line ends */
             calc_buffsize((plane_size * expanded_bpp + num_comps * 4) * I, 1);
@@ -3046,6 +3075,96 @@ gdev_pcl_map_color_rgb(gx_device *pdev, gx_color_index color,
       prgb[0] = w - gx_color_value_from_byte((color >> 16) & 0xff);
       prgb[1] = w - gx_color_value_from_byte((color >> 8) & 0xff);
       prgb[2] = w - gx_color_value_from_byte(color & 0xff);
+    }
+    break;
+  }
+  return 0;
+}
+
+static gx_color_index
+gdev_pcl_map_gray_color(gx_device *pdev, const gx_color_value cv[])
+{
+  gx_color_value r = cv[0];
+  if (gx_color_value_to_byte(r) == 0xff)
+    return (gx_color_index)0;         /* white */
+  else {
+    int correction = cprn_device->correction;
+    gx_color_value c = gx_max_color_value - r;
+    gx_color_value m = gx_max_color_value - r;
+
+    /* Colour correction for better blacks when using the colour ink
+     * cartridge (on the DeskJet 500C only). We reduce the cyan component
+     * by some fraction (eg. 4/5) to correct the slightly greenish cast
+     * resulting from an equal mix of the three inks */
+    if (correction && c > 0) {
+        c = ((c >> shift) * (c * correction)) /
+             ((c * (correction + 1)) >> shift);
+    }
+
+    switch (pdev->color_info.depth) {
+    case 1:
+      return (c > gx_max_color_value / 2 ?
+              (gx_color_index)1 : (gx_color_index)0);
+    case 8:
+      if (pdev->color_info.num_components >= 3)
+        return (gx_color_value_to_1bit(c) +
+                (gx_color_value_to_1bit(c) << 1) +
+                (gx_color_value_to_1bit(c) << 2));
+      else
+        return ((((ulong)c * red_weight +
+                  (ulong)m * (green_weight + blue_weight))
+                 >> (gx_color_value_bits + 2)));
+    case 16:
+        /* FIXME: Simple truncation is not ideal. Should round really. */
+      return (gx_color_value_to_5bits(c) +
+              (gx_color_value_to_6bits(c) << 5) +
+              (gx_color_value_to_5bits(c) << 11));
+    case 24:
+      return (gx_color_value_to_byte(c) +
+              (gx_color_value_to_byte(c) << 8) +
+              ((ulong)gx_color_value_to_byte(c) << 16));
+    case 32:
+      return ((ulong)gx_color_value_to_byte(c) << 24);
+    }
+  }
+  return (gx_color_index)0;   /* This never happens */
+}
+
+static int
+gdev_pcl_map_color_gray(gx_device *pdev, gx_color_index color,
+                        gx_color_value *cv)
+{
+  /* For the moment, we simply ignore any black correction */
+  switch (pdev->color_info.depth) {
+  case 1:
+    cv[0] = -((gx_color_value)color ^ 1);
+    break;
+  case 8:
+      if (pdev->color_info.num_components >= 3)
+        { gx_color_value c = (gx_color_value)color ^ 7;
+          cv[0] = -(c & 1);
+        }
+      else
+        { gx_color_value value = (gx_color_value)color ^ 0xff;
+          cv[0] = (value << 8) + value;
+        }
+    break;
+  case 16:
+    { gx_color_value c = (gx_color_value)color ^ 0xffff;
+      gx_color_value value = (c >> 6) & 0x3f;
+      cv[0] = ((value << 10) + (value << 4) + (value >> 2))
+        >> (16 - gx_color_value_bits);
+    }
+    break;
+  case 24:
+    { gx_color_index c = color ^ 0xffffff;
+      cv[0] = gx_color_value_from_byte((gx_color_value)(c >> 16));
+    }
+    break;
+  case 32:
+#define  gx_maxcol gx_color_value_from_byte(gx_color_value_to_byte(gx_max_color_value))
+    { gx_color_value w = gx_maxcol - gx_color_value_from_byte(color >> 24);
+      cv[0] = w;
     }
     break;
   }

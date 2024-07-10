@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -39,19 +39,6 @@ struct gx_image_type_s {
      * type.
      */
     dev_proc_begin_typed_image((*begin_typed_image));
-
-    /*
-     * Compute the width and height of the source data.  For images with
-     * explicit data, this information is in the gs_data_image_t
-     * structure, but ImageType 2 images must compute it.
-     * NOTE: we no longer support ImageType 2, so maybe this could be
-     * simplified/refactored?
-     */
-#define image_proc_source_size(proc)\
-  int proc(const gs_gstate *pgs, const gs_image_common_t *pic,\
-    gs_int_point *psize)
-
-    image_proc_source_size((*source_size));
 
     /*
      * Put image parameters on a stream.  Currently this is used
@@ -90,11 +77,6 @@ struct gx_image_type_s {
     int index;		/* PostScript ImageType */
 };
 
-/*
- * Define the procedure for getting the source size of an image with
- * explicit data.
- */
-image_proc_source_size(gx_data_image_source_size);
 /*
  * Define dummy sput/sget/release procedures for image types that don't
  * implement these functions.
@@ -204,9 +186,12 @@ typedef struct gx_image_enum_procs_s {
         const gx_image_enum_procs_t *procs;\
         gx_device *dev;\
         gs_memory_t *memory;	/* from begin_image */\
+        const gs_gstate *pgs; \
+        int pgs_level;         /* Used for sanity checking */\
         gs_id id;\
         bool skipping; /* don't render, just consume image streams. */\
         int num_planes;\
+        int64_t OC;     /* Only used currently for pdfwrite with image type 3x images because we need to know and set this for the type 3 image, but not the mask */\
         int plane_depths[GS_IMAGE_MAX_COMPONENTS]; /* [num_planes] */\
         int plane_widths[GS_IMAGE_MAX_COMPONENTS]  /* [num_planes] */
 struct gx_image_enum_common_s {

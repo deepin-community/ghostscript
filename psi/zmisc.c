@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -19,6 +19,7 @@
 #include "errno_.h"
 #include "memory_.h"
 #include "string_.h"
+#include "ctype_.h"
 #include "ghost.h"
 #include "gp.h"
 #include "oper.h"
@@ -50,6 +51,7 @@ zbind(i_ctx_t *i_ctx_p)
     ref defn;
     register os_ptr bsp;
 
+    check_op(1);
     switch (r_type(op)) {
         case t_array:
             if (!r_has_attr(op, a_write)) {
@@ -223,6 +225,7 @@ zgetenv(i_ctx_t *i_ctx_p)
     byte *value;
     int len = 0;
 
+    check_op(1);
     check_read_type(*op, t_string);
     str = ref_to_string(op, imemory, "getenv key");
     if (str == 0)
@@ -255,7 +258,7 @@ zdefaultpapersize(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
     byte *value;
-    int len = 0;
+    int len = 0, i;
 
     if (gp_defaultpapersize((char *)0, &len) > 0) {
         /* no default paper size */
@@ -269,6 +272,10 @@ zdefaultpapersize(i_ctx_t *i_ctx_p)
         return_error(gs_error_VMerror);
     }
     DISCARD(gp_defaultpapersize((char *)value, &len));	/* can't fail */
+    /* Note 'len' includes the NULL terminator, which we can ignore */
+    for (i = 0;i < (len - 1); i++)
+        value[i] = tolower(value[i]);
+
     /* Delete the stupid C string terminator. */
     value = iresize_string(value, len, len - 1,
                            "defaultpapersize value");	/* can't fail */
@@ -287,6 +294,7 @@ zmakeoperator(i_ctx_t *i_ctx_p)
     uint count;
     ref *tab;
 
+    check_op(2);
     check_type(op[-1], t_name);
     check_proc(*op);
     switch (r_space(op)) {
@@ -338,6 +346,7 @@ zsetoserrno(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     check_type(*op, t_integer);
     errno = op->value.intval;
     pop(1);
@@ -355,6 +364,7 @@ zoserrorstring(i_ctx_t *i_ctx_p)
     uint len;
     byte ch;
 
+    check_op(1);
     check_type(*op, t_integer);
     str = gp_strerror((int)op->value.intval);
     if (str == 0 || (len = strlen(str)) == 0) {
@@ -380,6 +390,7 @@ static int
 zsetdebug(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
+    check_op(2);
     check_read_type(op[-1], t_string);
     check_type(*op, t_boolean);
     {
@@ -411,6 +422,7 @@ static int
 zsetCPSImode(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
+    check_op(1);
     check_type(*op, t_boolean);
     gs_setcpsimode(imemory, op->value.boolval);
     if (op->value.boolval) {
@@ -441,6 +453,7 @@ zsetscanconverter(i_ctx_t *i_ctx_p)
     int val;
 
     os_ptr op = osp;
+    check_op(1);
     if (r_has_type(op, t_boolean))
         val = (int)op->value.boolval;
     else if (r_has_type(op, t_integer))

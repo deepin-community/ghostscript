@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -49,6 +49,7 @@ fillstroke_cont(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     int restart, code;
 
+    check_op(1);
     check_type(*op, t_integer);
     restart = (int)op->value.intval;
     code = gs_fillstroke(igs, &restart);
@@ -65,6 +66,7 @@ zfillstroke(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
     push(1);
+    check_estack(1);
     make_int(op, 0);		/* 0 implies we are at fill color, need to swap first */
     push_op_estack(fillstroke_cont);
     return o_push_estack;
@@ -76,6 +78,7 @@ eofillstroke_cont(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     int restart, code;
 
+    check_op(1);
     check_type(*op, t_integer);
     restart = (int)op->value.intval;
     code = gs_eofillstroke(igs, &restart);
@@ -113,6 +116,7 @@ zimagepath(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     int code;
 
+    check_op(3);
     check_type(op[-2], t_integer);
     check_type(op[-1], t_integer);
     check_read_type(*op, t_string);

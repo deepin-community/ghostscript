@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -584,7 +584,7 @@ dsc_fixup(CDSC *dsc)
     /* make sure all pages have a label */
     for (i=0; i<dsc->page_count; i++) {
         if (strlen(dsc->page[i].label) == 0) {
-            gs_sprintf(buf, "%d", i+1);
+            gs_snprintf(buf, sizeof(buf), "%d", i+1);
             if ((dsc->page[i].label = dsc_alloc_string(dsc, buf, (int)strlen(buf)))
                 == (char *)NULL)
                 return CDSC_ERROR;	/* no memory */
@@ -1178,7 +1178,7 @@ dsc_unknown(CDSC *dsc)
     if (dsc->debug_print_fn) {
         char line[DSC_LINE_LENGTH];
         unsigned int length = min(DSC_LINE_LENGTH-1, dsc->line_length);
-        gs_sprintf(line, "Unknown in %s section at line %d:\n  ",
+        gs_snprintf(line, DSC_LINE_LENGTH, "Unknown in %s section at line %d:\n  ",
             dsc_scan_section_name[dsc->scan_section], dsc->line_count);
         dsc_debug_print(dsc, line);
         strncpy(line, dsc->line, length);
@@ -2674,7 +2674,7 @@ dsc_check_match_prompt(CDSC *dsc, const char *str, int count)
         if (dsc->line_length < (unsigned int)(sizeof(buf)/2-1))
             strncpy(buf, dsc->line, dsc->line_length);
 
-        gs_sprintf(buf+strlen(buf), "\n%%%%Begin%.40s: / %%%%End%.40s\n", str, str);
+        gs_snprintf(buf+strlen(buf), MAXSTR + MAXSTR - strlen(buf), "\n%%%%Begin%.40s: / %%%%End%.40s\n", str, str);
         return dsc_error(dsc, CDSC_MESSAGE_BEGIN_END, buf, (int)strlen(buf));
     }
     return CDSC_RESPONSE_CANCEL;
@@ -3994,22 +3994,36 @@ dsc_parse_platefile(CDSC *dsc)
             /* single file DCS 2.0 */
             single = TRUE;
             n++;
-            if (i)
+            if ( n + 4 > dsc->line_length) {
+                i = 0;
+            }
+            if (i) {
                 dcs2.begin= dsc_get_int(dsc->line+n, dsc->line_length-n, &i);
-            n+=i;
-            if (i)
-                dcs2.end= dcs2.begin +
-                    dsc_get_int(dsc->line+n, dsc->line_length-n, &i);
+                n+=i;
+                if ( n + 4 > dsc->line_length) {
+                    i = 0;
+                }
+                if (i)
+                    dcs2.end= dcs2.begin +
+                        dsc_get_int(dsc->line+n, dsc->line_length-n, &i);
+            }
         }
         else {
             /* multiple file DCS 2.0 */
-            if (i)
+            if ( n + sizeof(location) > dsc->line_length) {
+                i = 0;
+            }
+            if (i) {
                 dsc_copy_string(location, sizeof(location),
                     dsc->line+n, dsc->line_length-n, &i);
-            n+=i;
-            if (i) {
-                filename = dsc->line+n;
-                filename_length = dsc->line_length-n;
+                n+=i;
+                if ( n > dsc->line_length) {
+                    i = 0;
+                }
+                if (i) {
+                    filename = dsc->line+n;
+                    filename_length = dsc->line_length-n;
+                }
             }
         }
         if (i==0)

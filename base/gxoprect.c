@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -308,8 +308,7 @@ gx_overprint_generic_fill_rectangle(
         gb_rect.q.y = y;
         code = dev_proc(tdev, get_bits_rectangle)( tdev,
                                                    &gb_rect,
-                                                   &gb_params,
-                                                   0 );
+                                                   &gb_params );
         if (code < 0)
             break;
         unpack_proc(pcolor_buff, gb_buff, 0, w, depth);
@@ -496,8 +495,7 @@ gx_overprint_sep_fill_rectangle_1(
         gb_rect.q.y = y;
         code = dev_proc(tdev, get_bits_rectangle)( tdev,
                                                    &gb_rect,
-                                                   &gb_params,
-                                                   0 );
+                                                   &gb_params );
         if (code < 0)
             break;
         bits_fill_rectangle_masked( gb_buff,
@@ -586,8 +584,7 @@ gx_overprint_sep_fill_rectangle_2(
         gb_rect.q.y = y;
         code = dev_proc(tdev, get_bits_rectangle)( tdev,
                                                    &gb_rect,
-                                                   &gb_params,
-                                                   0 );
+                                                   &gb_params );
         if (code < 0)
             break;
         for (i = 0, j = 0; i < byte_w; i++, cp++) {

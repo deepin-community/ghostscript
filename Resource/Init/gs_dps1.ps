@@ -1,4 +1,4 @@
-% Copyright (C) 2001-2021 Artifex Software, Inc.
+% Copyright (C) 2001-2023 Artifex Software, Inc.
 % All Rights Reserved.
 %
 % This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 % of the license contained in the file LICENSE in this distribution.
 %
 % Refer to licensing information at http://www.artifex.com or contact
-% Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-% CA 94945, U.S.A., +1(415)492-9861, for further information.
+% Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+% CA 94129, USA, for further information.
 %
 
 % Initialization file for most of the Display PostScript functions
@@ -21,7 +21,7 @@ level2dict begin
 % ------ Virtual memory ------ %
 
 /currentshared /.currentglobal load def
-/scheck {.gcheck} bind odef
+/scheck {.gcheck} .internalbind odef
 %****** FOLLOWING IS WRONG ******
 /shareddict currentdict /globaldict .knownget not { 20 dict } if def
 
@@ -58,7 +58,7 @@ level2dict begin
     { //SharedFontDirectory }
     { /LocalFontDirectory .systemvar }	% can't embed ref to local VM
    ifelse .forceput pop	% LocalFontDirectory is local, systemdict is global
- } .bind executeonly odef
+ } .forcebind odef
 % Don't just copy (load) the definition of .setglobal:
 % it gets redefined for LL3.
 /setshared { /.setglobal .systemvar exec } odef
@@ -95,7 +95,7 @@ level2dict begin
       if
     }
    ifelse pop
- } odef
+ } .forcebind odef
 
 % If we load a font into global VM within an inner save, the restore
 % will delete it from FontDirectory but not from SharedFontDirectory.
@@ -136,6 +136,6 @@ level2dict begin
    //SharedFontDirectory exch .forcecopynew pop
    .currentglobal .setglobal	% Rebind FontDirectory according to current VM.
    pop
- } .bind odef
+ } .forcebind odef
 
 end				% level2dict

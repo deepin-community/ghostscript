@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -37,7 +37,7 @@
 #include "gxdevsop.h"
 
 /* Statistics */
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef COLLECT_STATS_CLIST
 ulong stats_cmd_diffs[5];
 #endif
 
@@ -175,15 +175,17 @@ cmd_put_drawing_color(gx_device_clist_writer * cldev, gx_clist_state * pcls,
     left = dc_size;
 
     CMD_CHECK_LAST_OP_BLOCK_DEFINED(cldev);
-    /* see if phase informaiton must be inserted in the command list */
-    if ( pdcolor->type->get_phase(pdcolor, &color_phase) &&
-         (color_phase.x != pcls->tile_phase.x ||
-          color_phase.y != pcls->tile_phase.y || all_bands)        &&
-         (code = cmd_set_tile_phase_generic( cldev,
-                                     pcls,
-                                     color_phase.x,
-                                     color_phase.y, all_bands)) < 0  )
-        return code;
+    /* see if phase information must be inserted in the command list */
+    if (pdcolor->type->get_phase(pdcolor, &color_phase) &&
+        (color_phase.x != pcls->screen_phase[gs_color_select_texture].x ||
+         color_phase.y != pcls->screen_phase[gs_color_select_texture].y || all_bands)) {
+        /* Devc phase is the reverse of screen phase! */
+        code = cmd_set_screen_phase_generic(cldev, pcls,
+                                            -color_phase.x, -color_phase.y,
+                                            gs_color_select_texture, all_bands);
+        if (code < 0)
+            return code;
+    }
 
     CMD_CHECK_LAST_OP_BLOCK_DEFINED(cldev);
     if (is_pattern) {
@@ -200,6 +202,7 @@ cmd_put_drawing_color(gx_device_clist_writer * cldev, gx_clist_state * pcls,
     }
 
     do {
+        int extop;
         prefix_size = 2 + 1 + (offset > 0 ? enc_u_sizew(offset) : 0);
         req_size = left + prefix_size + enc_u_sizew(left);
         CMD_CHECK_LAST_OP_BLOCK_DEFINED(cldev);
@@ -212,29 +215,29 @@ cmd_put_drawing_color(gx_device_clist_writer * cldev, gx_clist_state * pcls,
         if (req_size_final > buffer_space)
             return_error(gs_error_unregistered); /* Must not happen. */
         CMD_CHECK_LAST_OP_BLOCK_DEFINED(cldev);
+        switch (devn_type) {
+            case devn_not_tile_fill:
+                extop = cmd_opv_ext_put_fill_dcolor;
+                break;
+            case devn_not_tile_stroke:
+                extop = cmd_opv_ext_put_stroke_dcolor;
+                break;
+            case devn_tile0:
+                extop = cmd_opv_ext_put_tile_devn_color0;
+                break;
+            case devn_tile1:
+                extop = cmd_opv_ext_put_tile_devn_color1;
+                break;
+            default:
+                extop = cmd_opv_ext_put_fill_dcolor;
+        }
         if (all_bands)
-            code = set_cmd_put_all_op(&dp, cldev, cmd_opv_extend, req_size_final);
+            code = set_cmd_put_all_extended_op(&dp, cldev, extop, req_size_final);
         else
-            code = set_cmd_put_op(&dp, cldev, pcls, cmd_opv_extend, req_size_final);
+            code = set_cmd_put_extended_op(&dp, cldev, pcls, extop, req_size_final);
         if (code < 0)
             return code;
         dp0 = dp;
-        switch (devn_type) {
-            case devn_not_tile_fill:
-                dp[1] = cmd_opv_ext_put_fill_dcolor;
-                break;
-            case devn_not_tile_stroke:
-                dp[1] = cmd_opv_ext_put_stroke_dcolor;
-                break;
-            case devn_tile0:
-                dp[1] = cmd_opv_ext_put_tile_devn_color0;
-                break;
-            case devn_tile1:
-                dp[1] = cmd_opv_ext_put_tile_devn_color1;
-                break;
-            default:
-                dp[1] = cmd_opv_ext_put_fill_dcolor;
-        }
         dp += 2;
         *dp++ = di | (offset > 0 ? 0x80 : 0);
         if (offset > 0)
@@ -593,60 +596,103 @@ cmd_write_unknown(gx_device_clist_writer * cldev, gx_clist_state * pcls,
          * or as a real (filled) path.
          */
         const gx_clip_path *pcpath = cldev->clip_path;
-        int band_height = cldev->page_band_height;
+        int band_height = cldev->page_info.band_params.BandHeight;
         int ymin = (pcls - cldev->states) * band_height;
         int ymax = min(ymin + band_height, cldev->height);
         gs_fixed_rect box;
-        bool punt_to_outer_box = false;
         int code;
+        int fill_adjust_size;
+        enum {
+            write_path_as_rect = 0,
+            write_path_as_rects = 1,
+            write_path_as_outer_box = 2,
+            write_path_as_path = 3
+        } method;
 
-        code = set_cmd_put_op(&dp, cldev, pcls, cmd_opv_begin_clip, 1);
-        if (code < 0)
-            return code;
+        /* We are going to begin_clip followed by the fill_adjust to use.
+         * In order to know what fill_adjust to use, we need to know whether
+         * we are going to send the clip through based upon its actual
+         * 'path' entry, or whether we are going to send it based upon its
+         * rectangle list representation. Accordingly, we have to do the
+         * logic to figure out how we are going to send it now. */
         if (pcpath->path_valid) {
             if (gx_path_is_rectangle(&pcpath->path, &box) &&
-                fixed_is_int(box.p.x | box.p.y | box.q.x | box.q.y)
-                ) {
-                /* Write the path as a rectangle. */
-                code = cmd_write_rect_cmd(cldev, pcls, cmd_op_fill_rect,
-                                          fixed2int_var(box.p.x),
-                                          fixed2int_var(box.p.y),
-                                          fixed2int(box.q.x - box.p.x),
-                                          fixed2int(box.q.y - box.p.y));
-            } else if ( !(cldev->disable_mask & clist_disable_complex_clip) ) {
-                /* Write the path. */
-                code = cmd_put_path(cldev, pcls, &pcpath->path,
-                                    int2fixed(ymin - 1),
-                                    int2fixed(ymax + 1),
-                                    (byte)(pcpath->rule == gx_rule_even_odd ?
-                                     cmd_opv_eofill : cmd_opv_fill),
-                                    true, sn_not_first);
-            } else {
-                  /* Complex paths disabled: write outer box as clip */
-                  punt_to_outer_box = true;
-            }
-        } else {		/* Write out the rectangles. */
+                fixed_is_int(box.p.x | box.p.y | box.q.x | box.q.y))
+                method = write_path_as_rect;
+            else if ( !(cldev->disable_mask & clist_disable_complex_clip) )
+                method = write_path_as_path;
+            else
+                method = write_path_as_outer_box;
+        } else {
+            const gx_clip_list *list = gx_cpath_list(pcpath);
+            const gx_clip_rect *prect = list->head;
+
+            if (prect != NULL &&
+                cldev->disable_mask & clist_disable_complex_clip)
+                method = write_path_as_outer_box;
+            else
+                method = write_path_as_rects;
+        }
+
+        /* And thus how large the fill_adjust values will be. */
+        if (method == write_path_as_path)
+            fill_adjust_size = cmd_size2w(pcpath->path_fill_adjust.x,
+                                          pcpath->path_fill_adjust.y);
+        else
+            fill_adjust_size = cmd_size2w(0, 0);
+
+        /* Send the 'begin_clip' with the fill_adjust values. */
+        code = set_cmd_put_op(&dp, cldev, pcls, cmd_opv_begin_clip, 1+fill_adjust_size);
+        if (code < 0)
+            return code;
+        dp++;
+        if (method == write_path_as_path)
+            cmd_put2w(pcpath->path_fill_adjust.x,
+                      pcpath->path_fill_adjust.y, &dp);
+        else
+            cmd_put2w(0, 0, &dp);
+
+        /* Then send the actual clip path representation. */
+        switch (method)
+        {
+        case write_path_as_rect:
+            /* Write the path as a rectangle. */
+            code = cmd_write_rect_cmd(cldev, pcls, cmd_op_fill_rect,
+                                      fixed2int_var(box.p.x),
+                                      fixed2int_var(box.p.y),
+                                      fixed2int(box.q.x - box.p.x),
+                                      fixed2int(box.q.y - box.p.y));
+            break;
+        case write_path_as_path:
+            /* Write the path. */
+            code = cmd_put_path(cldev, pcls, &pcpath->path,
+                                int2fixed(ymin - 1),
+                                int2fixed(ymax + 1),
+                                (byte)(pcpath->rule == gx_rule_even_odd ?
+                                 cmd_opv_eofill : cmd_opv_fill),
+                                true, sn_not_first);
+            break;
+        case write_path_as_rects:
+        {
+            /* Write out the rectangles. */
             const gx_clip_list *list = gx_cpath_list(pcpath);
             const gx_clip_rect *prect = list->head;
 
             if (prect == 0)
                 prect = &list->single;
-            else if (cldev->disable_mask & clist_disable_complex_clip)
-                punt_to_outer_box = true;
-            if (!punt_to_outer_box) {
-                for (; prect != 0 && code >= 0; prect = prect->next)
-                    if (prect->xmax > prect->xmin &&
-                        prect->ymin < ymax && prect->ymax > ymin
-                        ) {
-                        code =
-                            cmd_write_rect_cmd(cldev, pcls, cmd_op_fill_rect,
-                                               prect->xmin, prect->ymin,
-                                               prect->xmax - prect->xmin,
-                                       prect->ymax - prect->ymin);
-                    }
+            for (; prect != 0 && code >= 0; prect = prect->next) {
+                if (prect->xmax > prect->xmin &&
+                    prect->ymin < ymax && prect->ymax > ymin) {
+                    code = cmd_write_rect_cmd(cldev, pcls, cmd_op_fill_rect,
+                                              prect->xmin, prect->ymin,
+                                              prect->xmax - prect->xmin,
+                                              prect->ymax - prect->ymin);
+                }
             }
+            break;
         }
-        if (punt_to_outer_box) {
+        default:
+        {
             /* Clip is complex, but disabled. Write out the outer box */
             gs_fixed_rect box;
 
@@ -659,6 +705,9 @@ cmd_write_unknown(gx_device_clist_writer * cldev, gx_clist_state * pcls,
                                       fixed2int_ceiling(box.q.x - box.p.x),
                                       fixed2int_ceiling(box.q.y - box.p.y));
         }
+        }
+
+        /* And now we can send 'end_clip' so the reader can finalise everything. */
         {
             int end_code =
                 set_cmd_put_op(&dp, cldev, pcls, cmd_opv_end_clip, 1);
@@ -715,10 +764,10 @@ cmd_write_unknown(gx_device_clist_writer * cldev, gx_clist_state * pcls,
         } else {
             code = set_cmd_put_op(&dp, cldev, pcls, cmd_opv_set_color_space,
                 2 + sizeof(clist_icc_color_t));
-            memcpy(dp + 2, &(cldev->color_space.icc_info),
-                   sizeof(clist_icc_color_t));
             if (code < 0)
                 return code;
+            memcpy(dp + 2, &(cldev->color_space.icc_info),
+                   sizeof(clist_icc_color_t));
         }
         dp[1] = cldev->color_space.byte1;
         pcls->known |= color_space_known;
@@ -875,6 +924,28 @@ clist_fill_path(gx_device * dev, const gs_gstate * pgs, gx_path * ppath,
             re.y += re.height;
         } while (re.y < re.yend);
     }
+    return 0;
+}
+
+int clist_lock_pattern(gx_device * pdev, gs_gstate * pgs, gs_id pattern, int lock)
+{
+    gx_device_clist_writer * const cdev =
+        &((gx_device_clist *)pdev)->writer;
+    byte *dp;
+    int code;
+
+    /* We need to both lock now, and ensure that we lock on reading this back. */
+    code = gx_pattern_cache_entry_set_lock(pgs, pattern, lock);
+    if (code < 0)
+        return code;
+
+    code = set_cmd_put_all_op(&dp, cdev, cmd_opv_lock_pattern,
+                              1 + 1 + sizeof(pattern));
+
+    if (code < 0)
+        return code;
+    dp[1] = lock;
+    memcpy(dp+2, &pattern, sizeof(pattern));
     return 0;
 }
 
@@ -1204,8 +1275,17 @@ clist_stroke_path(gx_device * dev, const gs_gstate * pgs, gx_path * ppath,
                 return code;
         if (code < 0) {
             /* Something went wrong, use the default implementation. */
-            return gx_default_stroke_path(dev, pgs, ppath, params, pdcolor,
+            cdev->cropping_saved = false;
+            code = gx_default_stroke_path(dev, pgs, ppath, params, pdcolor,
                                           pcpath);
+            if (cdev->cropping_saved) {
+                cdev->cropping_min = cdev->save_cropping_min;
+                cdev->cropping_max = cdev->save_cropping_max;
+                if_debug2m('v', cdev->memory,
+                           "[v] clist_stroke_path: restore cropping_min=%d croping_max=%d\n",
+                           cdev->save_cropping_min, cdev->save_cropping_max);
+            }
+            return code;
         }
         re.pcls->color_usage.slow_rop |= slow_rop;
         CMD_CHECK_LAST_OP_BLOCK_DEFINED(cdev);
@@ -1505,6 +1585,47 @@ cmd_put_segment(cmd_segment_writer * psw, byte op,
 #define cmd_put_rlineto(psw, operands, notes)\
   cmd_put_segment(psw, cmd_opv_rlineto, operands, notes)
 
+
+/* Bug 693235 shows a problem with a 'large' stroke, that
+ * extends from almost the minimum extent permissible
+ * to almost the positive extent permissible. When we band
+ * that, and play it back, we subtract the y offset of the band
+ * from it, and that causes a very negative number to tip over
+ * to being a very positive number.
+ *
+ * To avoid this, we spot 'far out' entries in the path, and
+ * reduce them to being 'less far out'.
+ *
+ * We pick 'far out' as being outside the central 1/4 of our
+ * 2d plane. This is far larger than is ever going to be used
+ * by a real device (famous last words!).
+ *
+ * We reduce the lines by moving to 1/4 of the way along them.
+ *
+ * If we only ever actually want to render the central 1/16 of
+ * the plane (which is still far more generous than we'd expect),
+ * the reduced lines should be suitably small not to overflow,
+ * and yet not be reduced so much that the reduction is ever visible.
+ *
+ * In practice this gives us a 4 million x 4 million maximum
+ * resolution.
+ */
+
+static int
+far_out(gs_fixed_point out)
+{
+    return (out.y >= max_fixed/2 || out.y <= -(max_fixed/2) || out.x >= max_fixed/2 || out.x <= -(max_fixed/2));
+}
+
+static void
+reduce_line(fixed *m0, fixed *m1, fixed x0, fixed y0, fixed x1, fixed y1)
+{
+    /* We want to find m0, m1, 1/4 of the way from x0, y0 to x1, y1. */
+    /* Sacrifice 2 bits of accuracy to avoid overflow. */
+    *m0 = (x0/4) + 3*(x1/4);
+    *m1 = (y0/4) + 3*(y1/4);
+}
+
 /*
  * Write a path.  We go to a lot of trouble to omit segments that are
  * entirely outside the band.
@@ -1658,6 +1779,20 @@ cmd_put_path(gx_device_clist_writer * cldev, gx_clist_state * pcls,
                     }
                     /* If we skipped any segments, put out a moveto/lineto. */
                     if (side && ((open < 0) || (px != out.x || py != out.y || first_point()))) {
+                        if (far_out(out)) {
+                            /* out is far enough out that we have to worry about wrapping on playback. Reduce the extent. */
+                            if (open >= 0) {
+                                fixed mid[2];
+                                fixed m0, m1;
+                                reduce_line(&m0, &m1, out.x, out.y, px, py);
+                                mid[0] = m0 - px, mid[1] = m1 - py;
+                                code = cmd_put_rlineto(&writer, mid, out_notes);
+                                if (code < 0)
+                                    return code;
+                                px = m0, py = m1;
+                            }
+                            reduce_line(&out.x, &out.y, out.x, out.y, A, B);
+                        }
                         C = out.x - px, D = out.y - py;
                         if (open < 0) {
                             first = out;
@@ -1700,6 +1835,20 @@ cmd_put_path(gx_device_clist_writer * cldev, gx_clist_state * pcls,
                     }
                     /* If we skipped any segments, put out a moveto/lineto. */
                     if (side && ((open < 0) || (px != out.x || py != out.y || first_point()))) {
+                        if (far_out(out)) {
+                            /* out is far enough out that we have to worry about wrapping on playback. Reduce the extent. */
+                            if (open >= 0) {
+                                fixed mid[2];
+                                fixed m0, m1;
+                                reduce_line(&m0, &m1, out.x, out.y, px, py);
+                                mid[0] = m0 - px, mid[1] = m1 - py;
+                                code = cmd_put_rlineto(&writer, mid, out_notes);
+                                if (code < 0)
+                                    return code;
+                                px = m0, py = m1;
+                            }
+                            reduce_line(&out.x, &out.y, out.x, out.y, A, B);
+                        }
                         C = out.x - px, D = out.y - py;
                         if (open < 0) {
                             first = out;
@@ -1747,6 +1896,20 @@ cmd_put_path(gx_device_clist_writer * cldev, gx_clist_state * pcls,
                 /* we skipped any segments at the beginning of the path. */
               close:if (side != start_side) {	/* If we skipped any segments, put out a moveto/lineto. */
                     if (side && (px != out.x || py != out.y || first_point())) {
+                        if (far_out(out)) {
+                            /* out is far enough out that we have to worry about wrapping on playback. Reduce the extent. */
+                            if (open >= 0) {
+                                fixed mid[2];
+                                fixed m0, m1;
+                                reduce_line(&m0, &m1, out.x, out.y, px, py);
+                                mid[0] = m0 - px, mid[1] = m1 - py;
+                                code = cmd_put_rlineto(&writer, mid, out_notes);
+                                if (code < 0)
+                                    return code;
+                                px = m0, py = m1;
+                            }
+                            reduce_line(&out.x, &out.y, out.x, out.y, A, B);
+                        }
                         C = out.x - px, D = out.y - py;
                         code = cmd_put_rlineto(&writer, &C, out_notes);
                         if (code < 0)

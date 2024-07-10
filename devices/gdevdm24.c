@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* High-res 24Dot-matrix printer driver */
@@ -25,7 +25,8 @@
 /* Driver for NEC P6 */
 static dev_proc_print_page (necp6_print_page);
 const gx_device_printer far_data gs_necp6_device =
-  prn_device (prn_bg_procs, "necp6",	/* The print_page proc is compatible with allowing bg printing */
+  /* The print_page proc is compatible with allowing bg printing */
+  prn_device (gdev_prn_initialize_device_procs_mono_bg, "necp6",
               DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
               360, 360,
               0, 0, 0.5, 0,	/* margins */
@@ -35,7 +36,8 @@ const gx_device_printer far_data gs_necp6_device =
 /* I've tested this driver on a BJ300 with LQ850 emulation and there it produce correct 360x360dpi output. */
 static dev_proc_print_page (lq850_print_page);
 const gx_device_printer gs_lq850_device =
-  prn_device (prn_bg_procs, "lq850",	/* The print_page proc is compatible with allowing bg printing */
+  /* The print_page proc is compatible with allowing bg printing */
+  prn_device (gdev_prn_initialize_device_procs_mono_bg, "lq850",
               DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
               360, 360,
               0, 0, 0.5, 0,	/* margins */

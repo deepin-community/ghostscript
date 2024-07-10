@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -78,7 +78,7 @@ acquire_code_ranges(gs_cmap_adobe1_t *cmap, const ref *pref, gs_memory_t *mem)
         if (code < 0)
             return code;
         elem_sz = r_size(&elem);
-        if (elem_sz & 1)
+        if (elem_sz & 1 || elem_sz > max_uint - num_ranges)
             return_error(gs_error_rangecheck);
         num_ranges += elem_sz;
     }
@@ -136,8 +136,8 @@ acquire_code_map(gx_code_map_t *pcmap, const ref *pref, gs_cmap_adobe1_t *root,
         if (code < 0)
             return code;
         elem_sz = r_size(&elem);
-        if (elem_sz % 5 != 0)
-        return_error(gs_error_rangecheck);
+        if (elem_sz % 5 != 0 || elem_sz > max_uint - num_lookup)
+            return_error(gs_error_rangecheck);
         num_lookup += elem_sz;
     }
     num_lookup /= 5;
@@ -402,6 +402,7 @@ zbuildcmap(i_ctx_t *i_ctx_p)
     ref rcmap;
     uint i;
 
+    check_op(1);
     check_type(*op, t_dictionary);
     check_dict_write(*op);
     if ((code = dict_find_string(op, "CMapName", &pcmapname)) <= 0) {

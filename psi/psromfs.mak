@@ -1,14 +1,16 @@
-#  Copyright (C) 2001-2021 Artifex Software, Inc.
+#  Copyright (C) 2001-2023 Artifex Software, Inc.
 #  All Rights Reserved.
 #
 #  This software is provided AS-IS with no warranty, either express or
 #  implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  1305 Grant Avenue - Suite 200,
-#  Novato, CA 94945, U.S.A., +1(415)492-9861, for further information.
+#  This software is distributed under license and may not be copied,
+#  modified or distributed except as expressly authorized under the terms
+#  of the license contained in the file LICENSE in this distribution.
+#
+#  Refer to licensing information at http://www.artifex.com or contact
+#  Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+#  CA 94129, USA, for further information.
 #
 # mkromfs macros for PostScript %rom% when COMPILE_INITS=1
 
@@ -408,13 +410,7 @@ PS_INIT_DEPS=\
 	$(PSRESDIR)$(D)Init$(D)gs_typ42.ps \
 	$(PSRESDIR)$(D)Init$(D)gs_type1.ps \
 	$(PSRESDIR)$(D)Init$(D)gs_wan_e.ps \
-	$(PSRESDIR)$(D)Init$(D)pdf_base.ps \
-	$(PSRESDIR)$(D)Init$(D)pdf_draw.ps \
-	$(PSRESDIR)$(D)Init$(D)pdf_font.ps \
 	$(PSRESDIR)$(D)Init$(D)pdf_main.ps \
-	$(PSRESDIR)$(D)Init$(D)pdf_ops.ps \
-	$(PSRESDIR)$(D)Init$(D)pdf_rbld.ps \
-	$(PSRESDIR)$(D)Init$(D)pdf_sec.ps \
 	$(PSRESDIR)$(D)Init$(D)xlatmap
 
 PS_SUBSTCID_DEPS=\

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -88,7 +88,7 @@ gdev_x_open(gx_device_X * xdev)
     XSizeHints sizehints;
     char *window_id;
     XEvent event;
-    XVisualInfo xvinfo;
+    XVisualInfo xvinfo = { 0 };
     int nitems;
     XtAppContext app_con;
     Widget toplevel;
@@ -385,7 +385,7 @@ gdev_x_open(gx_device_X * xdev)
             char gstr[40];
             int bitmask;
 
-            gs_sprintf(gstr, "%dx%d+%d+%d", sizehints.width,
+            gs_snprintf(gstr, sizeof(gstr), "%dx%d+%d+%d", sizehints.width,
                     sizehints.height, sizehints.x, sizehints.y);
             bitmask = XWMGeometry(xdev->dpy, DefaultScreen(xdev->dpy),
                                   xdev->geometry, gstr, xdev->borderWidth,
@@ -567,7 +567,11 @@ x_set_buffer(gx_device_X * xdev)
      */
     gs_memory_t *mem = gs_memory_stable(xdev->memory);
     bool buffered = xdev->space_params.MaxBitmap > 0;
-    const gx_device_procs *procs;
+    union {
+      gx_device dev;
+      gx_device_bbox bbox;
+      gx_device_X x11;
+    } tempdev;
 
  setup:
     if (buffered) {
@@ -617,7 +621,7 @@ x_set_buffer(gx_device_X * xdev)
         }
         if (mdev->width != xdev->width || mdev->height != xdev->height) {
             byte *buffer;
-            ulong space;
+            size_t space;
 
             if (gdev_mem_data_size(mdev, xdev->width, xdev->height, &space) < 0 ||
                 space > xdev->space_params.MaxBitmap) {
@@ -645,7 +649,7 @@ x_set_buffer(gx_device_X * xdev)
         }
         xdev->white = gx_device_white((gx_device *)xdev);
         xdev->black = gx_device_black((gx_device *)xdev);
-        procs = &gs_bbox_device.procs;
+        tempdev.bbox = gs_bbox_device;
     } else {
         /* Not buffering.  Release the buffer and memory device. */
         gs_free_object(mem, xdev->buffer, "buffer");
@@ -656,10 +660,12 @@ x_set_buffer(gx_device_X * xdev)
         gx_device_set_target((gx_device_forward *)xdev->target, NULL);
         gx_device_set_target((gx_device_forward *)xdev, NULL);
         xdev->is_buffered = false;
-        procs = &gs_x11_device.procs;
+        tempdev.x11 = gs_x11_device;
     }
-    if (dev_proc(xdev, fill_rectangle) != procs->fill_rectangle) {
-#define COPY_PROC(p) set_dev_proc(xdev, p, procs->p)
+    tempdev.dev.initialize_device_procs(&tempdev.dev);
+    if (dev_proc(xdev, fill_rectangle) != tempdev.dev.procs.fill_rectangle) {
+#define COPY_PROC(p) set_dev_proc(xdev, p, tempdev.dev.procs.p)
+        COPY_PROC(initialize_device);
         COPY_PROC(fill_rectangle);
         COPY_PROC(copy_mono);
         COPY_PROC(copy_color);
@@ -672,7 +678,6 @@ x_set_buffer(gx_device_X * xdev)
         COPY_PROC(fill_triangle);
         COPY_PROC(draw_thin_line);
         COPY_PROC(strip_tile_rectangle);
-        COPY_PROC(strip_copy_rop);
         COPY_PROC(begin_typed_image);
         COPY_PROC(text_begin);
 #undef COPY_PROC
@@ -753,12 +758,14 @@ gdev_x_clear_window(gx_device_X * xdev)
     xdev->colors_or = xdev->colors_and = xdev->background;
 }
 
-
-/* Clean up the instance after making a copy. */
-int
-gdev_x_finish_copydevice(gx_device *dev, const gx_device *from_dev)
+static int
+x_initialize_device(gx_device *dev)
 {
     gx_device_X *xdev = (gx_device_X *) dev;
+    int code = gx_init_non_threadsafe_device(dev);
+
+    if (code < 0)
+        return code;
 
     /* Mark the new instance as closed. */
     xdev->is_open = false;
@@ -779,11 +786,32 @@ gdev_x_finish_copydevice(gx_device *dev, const gx_device *from_dev)
 
     /* Reset pointer-related parameters. */
     xdev->is_buffered = false;
-    /* See x_set_buffer for why we do this: */
-    set_dev_proc(xdev, fill_rectangle,
-                 dev_proc(&gs_x11_device, fill_rectangle));
 
     return 0;
+}
+
+
+/* (External procedures are declared in gdevx.h.) */
+void
+gdev_x_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, initialize_device, x_initialize_device);
+    set_dev_proc(dev, open_device, x_open);
+    set_dev_proc(dev, get_initial_matrix, x_get_initial_matrix);
+    set_dev_proc(dev, sync_output, x_sync);
+    set_dev_proc(dev, output_page, x_output_page);
+    set_dev_proc(dev, close_device, x_close);
+    set_dev_proc(dev, map_rgb_color, gdev_x_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gdev_x_map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, x_fill_rectangle);
+    set_dev_proc(dev, copy_mono, x_copy_mono);
+    set_dev_proc(dev, copy_color, x_copy_color);
+    set_dev_proc(dev, get_params, gdev_x_get_params);
+    set_dev_proc(dev, put_params, gdev_x_put_params);
+    set_dev_proc(dev, get_page_device, x_get_page_device);
+    set_dev_proc(dev, strip_tile_rectangle, x_strip_tile_rectangle);
+    set_dev_proc(dev, get_bits_rectangle, x_get_bits_rectangle);
+    set_dev_proc(dev, fillpage, x_fillpage);
 }
 
 /* ---------------- Get/put parameters ---------------- */
@@ -878,16 +906,22 @@ gdev_x_put_params(gx_device * dev, gs_param_list * plist)
         /* Get work area */
         x_get_work_area(xdev, &area_width, &area_height);
 
-        /* Preserve screen resolution */
-        dev->x_pixels_per_inch = values.x_pixels_per_inch;
-        dev->y_pixels_per_inch = values.y_pixels_per_inch;
-        dev->HWResolution[0] = values.HWResolution[0];
-        dev->HWResolution[1] = values.HWResolution[1];
-
-        /* Recompute window size using screen resolution and available work area size*/
-        /* pixels */
-        dev->width = min(dev->width, area_width);
-        dev->height = min(dev->height, area_height);
+        /* Prioritize HWResolution over page size. If we can't fit the
+           page size at the requested resolution in the available screen
+           area, keep the resolution, clamp the page size.
+           This replaces the previous solution which refused requests to
+           change resolution at all.
+         */
+        if (dev->width > area_width) {
+            outprintf(dev->memory, "\nWARNING: page width %f at %f dpi exceeds available area, clamping width to %f\n",
+                                  ((dev->width / 72.0) * dev->HWResolution[0]), dev->HWResolution[0], ((area_width / 72) * dev->HWResolution[0]));
+            dev->width = area_width;
+        }
+        if (dev->height > area_height) {
+            outprintf(dev->memory, "\nWARNING: page height %f at %f dpi exceeds available area, clamping height to %f\n",
+                                  ((dev->height / 72.0) * dev->HWResolution[1]), dev->HWResolution[1], ((area_height / 72) * dev->HWResolution[1]));
+            dev->height = area_height;
+        }
 
         if (dev->width <= 0 || dev->height <= 0) {
             emprintf3(dev->memory, "Requested pagesize %d x %d not supported by %s device\n",
@@ -896,8 +930,8 @@ gdev_x_put_params(gx_device * dev, gs_param_list * plist)
         }
 
         /* points */
-        dev->MediaSize[0] = (float)dev->width / xdev->x_pixels_per_inch * 72;
-        dev->MediaSize[1] = (float)dev->height / xdev->y_pixels_per_inch * 72;
+        dev->MediaSize[0] = (float)dev->width / dev->HWResolution[0] * 72;
+        dev->MediaSize[1] = (float)dev->height / dev->HWResolution[1] * 72;
 
         dw = dev->width - values.width;
         dh = dev->height - values.height;
@@ -960,7 +994,8 @@ gdev_x_close(gx_device_X *xdev)
         xdev->gc = NULL;
     }
     if (xdev->dpy && xdev->bpixmap != (Pixmap)0) {
-        XFreePixmap(xdev->dpy, xdev->bpixmap);
+        /* Only free the pixmap if we created it */
+        if (xdev->ghostview == 0) XFreePixmap(xdev->dpy, xdev->bpixmap);
         xdev->bpixmap = (Pixmap)0;
         xdev->dest = (Pixmap)0;
     }

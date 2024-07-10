@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -64,11 +64,11 @@ int seticc(i_ctx_t * i_ctx_p, int ncomps, ref *ICCdict, float *range_buff)
         dict_find_string(ICCdict, ".hash", &phashval) == 1 &&
         r_has_type(phashval, t_integer)) {
         pcs = gsicc_find_cs(phashval->value.intval, igs);
-        if (pcs != NULL) {
+        if (pcs != NULL && gs_color_space_num_components(pcs) == ncomps) {
             /* Set the color space.  We are done. */
             code = gs_setcolorspace(igs, pcs);
             /* Remove the ICC dict from the stack */
-            pop(1);
+            ref_stack_pop(&o_stack, 1);
             return code;
         }
     }
@@ -235,7 +235,7 @@ int seticc(i_ctx_t * i_ctx_p, int ncomps, ref *ICCdict, float *range_buff)
         }
     }
     /* Remove the ICC dict from the stack */
-    pop(1);
+    ref_stack_pop(&o_stack, 1);
     return code;
 }
 
@@ -262,6 +262,7 @@ zset_outputintent(i_ctx_t * i_ctx_p)
     gsicc_manager_t         *icc_manager = igs->icc_manager;
     cmm_profile_t           *source_profile = NULL;
 
+    check_op(1);
     check_type(*op, t_dictionary);
     check_dict_read(*op);
     if_debug0m(gs_debug_flag_icc, imemory, "[icc] Using OutputIntent\n");
@@ -468,6 +469,10 @@ seticc_cal(i_ctx_t * i_ctx_p, float *white, float *black, float *gamma,
 
     /* See if the color space is in the profile cache */
     pcs = gsicc_find_cs(dictkey, igs);
+    if (pcs != NULL && gs_color_space_num_components(pcs) != num_colorants) {
+        pcs = NULL;
+        dictkey = 0;
+    }
     if (pcs == NULL ) {
         /* build the color space object.  Since this is cached
            in the profile cache which is a member variable
@@ -513,6 +518,7 @@ znumicc_components(i_ctx_t * i_ctx_p)
     cmm_profile_t           *picc_profile;
     os_ptr                  op = osp;
 
+    check_op(1);
     check_type(*op, t_dictionary);
     check_dict_read(*op);
 

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -585,9 +585,11 @@ gxht_thresh_image_init(gx_image_enum *penum)
     gx_dda_fixed dda_ht;
 
     if (gx_device_must_halftone(penum->dev)) {
-        if (penum->pgs != NULL && penum->pgs->dev_ht != NULL) {
-            for (k = 0; k < penum->pgs->dev_ht->num_comp; k++) {
-                d_order = &(penum->pgs->dev_ht->components[k].corder);
+        if (penum->pgs != NULL && penum->pgs->dev_ht[HT_OBJTYPE_DEFAULT] != NULL) {
+            gx_device_halftone *pdht = gx_select_dev_ht(penum->pgs);
+
+            for (k = 0; k < pdht->num_comp; k++) {
+                d_order = &(pdht->components[k].corder);
                 code = gx_ht_construct_threshold(d_order, penum->dev,
                                                  penum->pgs, k);
                 if (code < 0 ) {
@@ -761,15 +763,31 @@ gxht_thresh_image_init(gx_image_enum *penum)
 }
 
 static void
-fill_threshold_buffer(byte *dest_strip, byte *src_strip, int src_width,
+fill_threshold_buffer(byte *dest_strip, byte *src, byte *src_strip, int src_width,
                        int left_offset, int left_width, int num_tiles,
                        int right_width)
 {
     byte *ptr_out_temp = dest_strip;
     int ii;
 
+    /* Make sure we don't try and read before the start of the threshold array. This can happen
+     * if we drop to the beginning of the array, AND we have a negative left_offset. If we do
+     * have a negative left_offset this represents an area we won't actually be using, but we need
+     * to move along the threshold array until we get to the point where we copy data we will use.
+     * So lets simply avoid reading before the start of the data. We can leave the destination
+     * buffer uninitialised because we won't be reading from that area. Bug #706795 but the ASAN
+     * error occurs on a number of input files in the test suite.
+     */
+    if (src_strip + left_offset < src) {
+        int under = src - (src_strip + left_offset);
+        left_offset += under;
+        ptr_out_temp += under;
+        left_width -= under;
+        if (left_width < 0)
+            left_width = 0;
+    }
     /* Left part */
-    memcpy(dest_strip, src_strip + left_offset, left_width);
+    memcpy(ptr_out_temp, src_strip + left_offset, left_width);
     ptr_out_temp += left_width;
     /* Now the full parts */
     for (ii = 0; ii < num_tiles; ii++){
@@ -866,11 +884,12 @@ gxht_thresh_planes(gx_image_enum *penum, fixed xrun,
     int offset_bits = penum->ht_offset_bits;
     byte *halftone;
     int dithered_stride = penum->ht_stride;
-    bool is_planar_dev = dev->is_planar;
+    bool is_planar_dev = dev->num_planar_planes;
     gx_color_index dev_white = gx_device_white(dev);
     gx_color_index dev_black = gx_device_black(dev);
     int spp_out = dev->color_info.num_components;
     byte *contone_align = NULL; /* Init to silence compiler warnings */
+    gx_device_halftone *pdht = gx_select_dev_ht(penum->pgs);
 
     /* Go ahead and fill the threshold line buffer with tiled threshold values.
        First just grab the row or column that we are going to tile with and
@@ -883,10 +902,10 @@ gxht_thresh_planes(gx_image_enum *penum, fixed xrun,
             /*  Iterate over the vdi and fill up our threshold buffer.  We
                  also need to loop across the planes of data */
             for (j = 0; j < spp_out; j++) {
-                bool threshold_inverted = penum->pgs->dev_ht->components[j].corder.threshold_inverted;
+                bool threshold_inverted = pdht->components[j].corder.threshold_inverted;
 
-                thresh_width = penum->pgs->dev_ht->components[j].corder.width;
-                thresh_height = penum->pgs->dev_ht->components[j].corder.full_height;
+                thresh_width = pdht->components[j].corder.width;
+                thresh_height = pdht->components[j].corder.full_height;
                 halftone = penum->ht_buffer + j * vdi * dithered_stride;
                 /* Compute the tiling positions with dest_width */
                 dx = (fixed2int_var_rounded(xrun) + penum->pgs->screen_phase[0].x) % thresh_width;
@@ -901,7 +920,9 @@ gxht_thresh_planes(gx_image_enum *penum, fixed xrun,
                 right_tile_width = dest_width -  num_full_tiles * thresh_width -
                                    left_width;
                 /* Get the proper threshold for the colorant count */
-                threshold = penum->pgs->dev_ht->components[j].corder.threshold;
+                threshold = pdht->components[j].corder.threshold;
+                if (threshold == NULL)
+                    return_error(gs_error_unregistered);
                 /* Point to the proper contone data */
                 contone_align = penum->line + contone_stride * j +
                                 offset_contone[j];
@@ -916,7 +937,7 @@ gxht_thresh_planes(gx_image_enum *penum, fixed xrun,
                        to update with stride */
                     position = contone_stride * k;
                     /* Tile into the 128 bit aligned threshold strip */
-                    fill_threshold_buffer(&(thresh_align[position]),
+                    fill_threshold_buffer(&(thresh_align[position]), threshold,
                                            thresh_tile, thresh_width, dx, left_width,
                                            num_full_tiles, right_tile_width);
                 }
@@ -995,11 +1016,13 @@ gxht_thresh_planes(gx_image_enum *penum, fixed xrun,
                 for (j = 0; j < spp_out; j++) {
                     halftone = penum->ht_buffer +
                                    j * penum->ht_plane_height * (LAND_BITS>>3);
-                    thresh_width = penum->pgs->dev_ht->components[j].corder.width;
+                    thresh_width = pdht->components[j].corder.width;
                     thresh_height =
-                          penum->pgs->dev_ht->components[j].corder.full_height;
+                          pdht->components[j].corder.full_height;
                     /* Get the proper threshold for the colorant count */
-                    threshold = penum->pgs->dev_ht->components[j].corder.threshold;
+                    threshold = pdht->components[j].corder.threshold;
+                    if (threshold == NULL)
+                        return_error(gs_error_unregistered);
                     /* Point to the proper contone data */
                     contone_align = penum->line + offset_contone[j] +
                                       LAND_BITS * j * contone_stride;
@@ -1014,6 +1037,8 @@ gxht_thresh_planes(gx_image_enum *penum, fixed xrun,
                         dx = penum->ht_landscape.xstart;
                     }
                     dx = (dx + penum->pgs->screen_phase[0].x) % thresh_width;
+                    if (dx < 0)
+                        dx += thresh_width;
                     dy = (penum->ht_landscape.y_pos -
                               penum->pgs->screen_phase[0].y) % thresh_height;
                     if (dy < 0)

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -120,21 +120,21 @@ static const gs_text_enum_procs_t default_text_procs = {
 int
 gx_default_text_begin(gx_device * dev, gs_gstate * pgs1,
                       const gs_text_params_t * text, gs_font * font,
-                      gx_path * path, const gx_device_color * pdcolor,
                       const gx_clip_path * pcpath,
-                      gs_memory_t * mem, gs_text_enum_t ** ppte)
+                      gs_text_enum_t ** ppte)
 {
     uint operation = text->operation;
     bool propagate_charpath = (operation & TEXT_DO_DRAW) != 0;
     int code;
     gs_gstate *pgs = (gs_gstate *)pgs1;
     gs_show_enum *penum;
+    gs_memory_t * mem = pgs->memory;
 
     penum = gs_show_enum_alloc(mem, pgs, "gx_default_text_begin");
     if (!penum)
         return_error(gs_error_VMerror);
     code = gs_text_enum_init((gs_text_enum_t *)penum, &default_text_procs,
-                             dev, pgs, text, font, path, pdcolor, pcpath, mem);
+                             dev, pgs, text, font, pcpath, mem);
     if (code < 0) {
         gs_free_object(mem, penum, "gx_default_text_begin");
         return code;
@@ -153,8 +153,11 @@ gx_default_text_begin(gx_device * dev, gs_gstate * pgs1,
         penum->can_cache = 1; break;
     }
     code = show_state_setup(penum);
-    if (code < 0)
+    if (code < 0) {
+        gs_text_release(pgs, (gs_text_enum_t *)penum, "gx_default_text_begin");
+        penum = NULL;
         return code;
+    }
     penum->show_gstate =
         (propagate_charpath && (pgs->in_charpath != 0) ?
          pgs->show_gstate : pgs);
@@ -164,14 +167,26 @@ gx_default_text_begin(gx_device * dev, gs_gstate * pgs1,
             gs_alloc_struct(mem, gx_device_null, &st_device_null,
                             "stringwidth(dev_null)");
 
-        if (dev_null == 0)
+        if (dev_null == 0) {
+            gs_text_release(pgs, (gs_text_enum_t *)penum, "gx_default_text_begin");
+            penum = NULL;
             return_error(gs_error_VMerror);
-        /* Do an extra gsave and suppress output */
-        if ((code = gs_gsave(pgs)) < 0)
-            return code;
-        penum->level = pgs->level;      /* for level check in show_update */
+        }
+
         /* Set up a null device that forwards xfont requests properly. */
+        /* We have to set the device up here, so the contents are
+           initialised, and safe to free in the event of an error.
+         */
         gs_make_null_device(dev_null, gs_currentdevice_inline(pgs), mem);
+
+        /* Do an extra gsave and suppress output */
+        if ((code = gs_gsave(pgs)) < 0) {
+            gs_text_release(pgs, (gs_text_enum_t *)penum, "gx_default_text_begin");
+            penum = NULL;
+            gs_free_object(mem, dev_null, "gx_default_text_begin");
+            return code;
+        }
+        penum->level = pgs->level;      /* for level check in show_update */
         pgs->ctm_default_set = false;
         penum->dev_null = dev_null;
         /* Retain this device, since it is referenced from the enumerator. */
@@ -182,6 +197,8 @@ gx_default_text_begin(gx_device * dev, gs_gstate * pgs1,
         gx_translate_to_fixed(pgs, fixed_0, fixed_0);
         code = gx_path_add_point(pgs->path, fixed_0, fixed_0);
         if (code < 0) {
+            gs_text_release(pgs, (gs_text_enum_t *)penum, "gx_default_text_begin");
+            penum = NULL;
             gs_grestore(pgs);
             return code;
         }
@@ -210,7 +227,7 @@ gs_text_count_chars(gs_gstate * pgs, gs_text_params_t *text, gs_memory_t * mem)
 
         code = gs_text_enum_init(&tenum, &default_text_procs,
                              NULL, NULL, text, pgs->root_font,
-                             NULL, NULL, NULL, mem);
+                             NULL, mem);
         if (code < 0)
             return code;
         while ((code = (*next_proc)(&tenum, &tchr, &tglyph)) != 2) {
@@ -576,18 +593,8 @@ set_cache_device(gs_show_enum * penum, gs_gstate * pgs, double llx, double lly,
             if (code < 0)
                 return code;
         }
-        /*
-         * If we're oversampling (i.e., the temporary bitmap is
-         * larger than the final monobit or alpha array) and the
-         * temporary bitmap is large, use incremental conversion
-         * from oversampled bitmap strips to alpha values instead of
-         * full oversampling with compression at the end.
-         */
         code = gx_alloc_char_bits(dir, penum->dev_cache,
-                                (iwidth > MAX_CCACHE_TEMP_BITMAP_BITS / iheight &&
-                                 log2_scale.x + log2_scale.y > alpha_bits ?
-                                 penum->dev_cache2 : NULL),
-                                iwidth, iheight, &log2_scale, depth, &cc);
+                                  iwidth, iheight, &log2_scale, depth, &cc);
         if (code < 0)
             return code;
 
@@ -838,6 +845,9 @@ show_update(gs_show_enum * penum)
             ;
     }
     if (penum->charpath_flag != cpm_show) {
+        if (pgs->level <= penum->level) {
+            return_error(gs_error_invalidfont);
+        }
         /* Move back to the character origin, so that */
         /* show_move will get us to the right place. */
         code = gx_path_add_point(pgs->show_gstate->path,
@@ -1541,10 +1551,10 @@ show_cache_setup(gs_show_enum * penum)
     gs_gstate *pgs = penum->pgs;
     gs_memory_t *mem = penum->memory;
     gx_device_memory *dev =
-        gs_alloc_struct(mem, gx_device_memory, &st_device_memory,
+        gs_alloc_struct_immovable(mem, gx_device_memory, &st_device_memory,
                         "show_cache_setup(dev_cache)");
     gx_device_memory *dev2 =
-        gs_alloc_struct(mem, gx_device_memory, &st_device_memory,
+        gs_alloc_struct_immovable(mem, gx_device_memory, &st_device_memory,
                         "show_cache_setup(dev_cache2)");
 
     if (dev == 0 || dev2 == 0) {
@@ -1552,8 +1562,8 @@ show_cache_setup(gs_show_enum * penum)
          * The structure is full of garbage so must not call the
          * finalize method but still need to free the structure
          */
-        gs_set_object_type(mem, dev2, NULL);
-        gs_set_object_type(mem, dev, NULL);
+        gs_set_object_type(mem, dev2, &st_bytes);
+        gs_set_object_type(mem, dev, &st_bytes);
         gs_free_object(mem, dev2, "show_cache_setup(dev_cache2)");
         gs_free_object(mem, dev, "show_cache_setup(dev_cache)");
         return_error(gs_error_VMerror);

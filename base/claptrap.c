@@ -1,4 +1,4 @@
-/* Copyright (C) 2015-2021 Artifex Software, Inc.
+/* Copyright (C) 2015-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 #include <stdlib.h>
@@ -88,10 +88,9 @@ inline static void process_at_pixel(ClapTrap      * gs_restrict ct,
         int min_v, max_v;
 
         lo = sy % lines_in_buf;
-        if (!first_comp)
-            max_v = v;
-        if (!last_comp)
-            min_v = v;
+        /* min_v only used if (!last_comp), max_v only used if (!first_comp),
+         * but setting them unconditionally avoids warnings. */
+        min_v = max_v = v;
         pc = &linebuf[lo * span + sx * num_comps + comp];
         ex -= sx;
         for (sy = ey-sy; sy >= 0; sy--)

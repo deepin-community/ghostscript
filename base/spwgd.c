@@ -1,4 +1,4 @@
-/* Copyright (C) 2017-2021 Artifex Software, Inc.
+/* Copyright (C) 2017-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -62,6 +62,9 @@ s_PWGD_process(stream_state * st, stream_cursor_read * pr,
     int wb = ss->width * bpp;
     int line_pos = ss->line_pos;
 
+    if (ss->width > max_int / bpp)
+        return ERRC;
+
     if (ss->line_buffer == NULL) {
         ss->line_buffer =
                     gs_alloc_bytes_immovable(gs_memory_stable(ss->memory),
@@ -96,24 +99,29 @@ s_PWGD_process(stream_state * st, stream_cursor_read * pr,
             ss->state = 1; /* Wait for pixel repeat */
         }
         if (ss->state == 1) {
-            int rep;
+	  int rep, next_state;
             /* Awaiting pixel repeat value */
             if (p == rlimit)
                 goto need_data;
             rep = *++p;
             if (rep < 0x80) {
                 /* Repeat the next pixel multiple times */
-                ss->state = (rep+1) * bpp + 1;
-                if (line_pos + ss->state - 1 > wb)
+                next_state = (rep+1) * bpp + 1;
+                if (line_pos + next_state - 1 > wb) {
                     /* Too many repeats for this line! */
+                    p--;
                     goto error;
+                }
             } else {
                 /* Copy colors */
-                ss->state = -(257 - rep) * bpp;
-                if (line_pos + -ss->state > wb)
+                next_state = -(257 - rep) * bpp;
+                if (line_pos + -next_state > wb) {
                     /* Too many pixels for this line! */
+                    p--;
                     goto error;
+                }
             }
+            ss->state = next_state;
         }
         if (ss->state > 1) {
             /* Repeating a single pixel */

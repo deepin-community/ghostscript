@@ -9,7 +9,8 @@ Description: Allow the build timestamp to be externally set
 Author: Eduard Sanou <dhole@openmailbox.org>
 Author: Peter De Wachter <pdewacht@gmail.com>
 Bug-Debian: https://bugs.debian.org/794004
-Last-Update: 2015-07-30
+Forwarded: not-needed
+Last-Update: 2023-09-13
 ---
 This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
 --- a/base/gp_unix.c
@@ -22,7 +23,7 @@ This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
  #include "pipe_.h"
  #include "string_.h"
  #include "time_.h"
-@@ -148,6 +149,7 @@
+@@ -149,6 +150,7 @@
  gp_get_realtime(long *pdt)
  {
      struct timeval tp;
@@ -30,7 +31,7 @@ This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
  
  #if gettimeofday_no_timezone    /* older versions of SVR4 */
      {
-@@ -167,6 +169,26 @@
+@@ -168,6 +170,26 @@
      }
  #endif
  
@@ -59,15 +60,15 @@ This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
  
 --- a/devices/vector/gdevpdf.c
 +++ b/devices/vector/gdevpdf.c
-@@ -393,6 +393,7 @@
-      */
+@@ -437,6 +437,7 @@
+     if (!pdev->OmitInfoDate)
      {
          struct tm tms;
 +        long secs_ns[2];
          time_t t;
          char buf[1+2+4+2+2+2+2+2+1+2+1+2+1+1+1]; /* (D:yyyymmddhhmmssZhh'mm')\0 */
          int timeoffset;
-@@ -404,7 +405,8 @@
+@@ -448,7 +449,8 @@
          timesign = 'Z';
          timeoffset = 0;
  #else
@@ -79,7 +80,7 @@ This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
          timeoffset = (int)difftime(t, mktime(&tms)); /* tz+dst in seconds */
 --- a/devices/vector/gdevpdfe.c
 +++ b/devices/vector/gdevpdfe.c
-@@ -199,6 +199,7 @@
+@@ -216,6 +216,7 @@
  {
      /* We don't write a day time because we don't have a time zone. */
      struct tm tms;
@@ -87,7 +88,7 @@ This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
      time_t t;
      char buf1[4+1+2+1+2+1]; /* yyyy-mm-dd\0 */
  
-@@ -206,7 +207,8 @@
+@@ -223,7 +224,8 @@
      memset(&t, 0, sizeof(t));
      memset(&tms, 0, sizeof(tms));
  #else
@@ -96,18 +97,18 @@ This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
 +    t = secs_ns[0];
      tms = *localtime(&t);
  #endif
-     gs_sprintf(buf1,
+     gs_snprintf(buf1, sizeof(buf1),
 --- a/devices/vector/gdevpsu.c
 +++ b/devices/vector/gdevpsu.c
-@@ -183,6 +183,7 @@
-     fprintf(f, "%%%%Creator: %s %ld (%s)\n", gs_product, (long)gs_revision,
+@@ -187,6 +187,7 @@
              dev->dname);
+ #endif
      {
 +        long secs_ns[2];
          time_t t;
          struct tm tms;
  
-@@ -190,7 +191,8 @@
+@@ -194,7 +195,8 @@
          memset(&t, 0, sizeof(t));
          memset(&tms, 0, sizeof(tms));
  #else

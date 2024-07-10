@@ -1,5 +1,7 @@
 package com.artifex.gsjava.util;
 
+import java.io.File;
+
 /**
  * <p>The NativePointer class allows for direct non-managed memory
  * allocations. The purpose of this class is to provide direct access
@@ -31,7 +33,27 @@ public class NativePointer {
 	 * Registers the needed native libraries.
 	 */
 	private static void registerLibraries() {
-		System.loadLibrary("gs_jni");
+		try {
+			// Try loading normally
+			System.loadLibrary("gs_jni");
+		} catch (UnsatisfiedLinkError e) {
+			// Load using absolute paths
+			if (System.getProperty("os.name").equalsIgnoreCase("Linux")) {
+				// Load on Linux
+				File libgpdl = new File("libgpdl.so");
+				System.load(libgpdl.getAbsolutePath());
+				File gsjni = new File("gs_jni.so");
+				System.load(gsjni.getAbsolutePath());
+			} else if (System.getProperty("os.name").equalsIgnoreCase("Mac OS X")) {
+				// Load on Mac
+				File libgpdl = new File("libgpdl.dylib");
+				System.load(libgpdl.getAbsolutePath());
+				File gsjni = new File("gs_jni.dylib");
+				System.load(gsjni.getAbsolutePath());
+			} else {
+				throw e;
+			}
+		}
 	}
 
 	public static final long	NULL = 0x0L;

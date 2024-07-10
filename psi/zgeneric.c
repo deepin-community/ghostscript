@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -48,8 +48,9 @@ int
 zcopy(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
-    int type = r_type(op);
-
+    int type;
+    check_op(1);
+    type = r_type(op);
     if (type == t_integer)
         return zcopy_integer(i_ctx_p);
     check_op(2);
@@ -92,9 +93,14 @@ zcopy_integer(i_ctx_t *i_ctx_p)
     code = ref_stack_push(&o_stack, count - 1);
     if (code < 0)
         return code;
-    for (i = 0; i < count; i++)
-        *ref_stack_index(&o_stack, i) =
-            *ref_stack_index(&o_stack, i + count);
+    for (i = 0; i < count; i++) {
+        ref *o = ref_stack_index(&o_stack, i);
+        ref *o1 = ref_stack_index(&o_stack, i + count);
+
+        if (o == NULL || o1 == NULL)
+            return_error(gs_error_stackunderflow);
+        *o = *o1;
+    }
     return 0;
 }
 
@@ -120,6 +126,8 @@ static int
 zlength(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
+
+    check_op(1);
     switch (r_type(op)) {
         case t_array:
         case t_string:
@@ -159,6 +167,8 @@ zget(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     os_ptr op1 = op - 1;
     ref *pvalue;
+
+    check_op(2);
 
     switch (r_type(op1)) {
         case t_dictionary:
@@ -202,6 +212,7 @@ zput(i_ctx_t *i_ctx_p)
     byte *sdata;
     uint ssize;
 
+    check_op(3);
     switch (r_type(op2)) {
         case t_dictionary:
             check_dict_write(*op2);
@@ -264,6 +275,8 @@ zforceput(i_ctx_t *i_ctx_p)
     os_ptr op2 = op - 2;
     int code;
 
+    check_op(3);
+
     switch (r_type(op2)) {
     case t_array:
         check_int_ltu(*op1, r_size(op2));
@@ -307,6 +320,8 @@ zgetinterval(i_ctx_t *i_ctx_p)
     os_ptr op2 = op1 - 1;
     uint index;
     uint count;
+
+    check_op(3);
 
     switch (r_type(op2)) {
         default:
@@ -355,6 +370,8 @@ zputinterval(i_ctx_t *i_ctx_p)
     os_ptr opindex = op - 1;
     os_ptr opto = opindex - 1;
     int code;
+
+    check_op(3);
 
     switch (r_type(opto)) {
         default:
@@ -410,10 +427,15 @@ zforall(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
     os_ptr obj = op - 1;
-    es_ptr ep = esp;
-    es_ptr cproc = ep + 4;
+    es_ptr ep;
+    es_ptr cproc;
 
     check_estack(6);
+    /* check_estack() could cause the exec stack to be copied to a new block
+     * so don't caulculate ep and things based on ep until *after* the check
+     */
+    ep = esp;
+    cproc = ep + 4;
     check_proc(*op);
     switch (r_type(obj)) {
         default:
@@ -450,7 +472,7 @@ zforall(i_ctx_t *i_ctx_p)
     ep[2] = *obj;
     ep[3] = *op;
     esp = cproc - 1;
-    pop(2);
+    ref_stack_pop(&o_stack, 2);
     return (*real_opproc(cproc))(i_ctx_p);
 }
 /* Continuation operator for arrays */
@@ -480,6 +502,9 @@ dict_continue(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     es_ptr obj = esp - 2;
     int index = esp->value.intval;
+
+    if (r_type(obj) != t_dictionary)
+        return_error(gs_error_typecheck);
 
     push(2);			/* make room for key and value */
     if ((index = dict_next(obj, index, op - 1)) >= 0) {	/* continue */

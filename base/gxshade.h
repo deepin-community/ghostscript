@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -122,6 +122,7 @@ struct shade_coord_stream_s {
                        const float decode[2], float *pvalue);
     void (*align)(shade_coord_stream_t *cs, int radix);
     bool (*is_eod)(const shade_coord_stream_t *cs);
+    int first_patch;            /* True, if we have not read a patch yet */
 };
 
 /* Define one vertex of a mesh. */

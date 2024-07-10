@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -36,86 +36,69 @@ static dev_proc_copy_color(tile_clip_copy_color);
 static dev_proc_copy_planes(tile_clip_copy_planes);
 static dev_proc_copy_alpha(tile_clip_copy_alpha);
 static dev_proc_copy_alpha_hl_color(tile_clip_copy_alpha_hl_color);
-static dev_proc_strip_copy_rop(tile_clip_strip_copy_rop);
 static dev_proc_strip_copy_rop2(tile_clip_strip_copy_rop2);
 
 /* The device descriptor. */
+static void
+tile_clipper_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, get_initial_matrix, gx_forward_get_initial_matrix);
+    set_dev_proc(dev, map_rgb_color, gx_forward_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gx_forward_map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, tile_clip_fill_rectangle);
+    set_dev_proc(dev, copy_mono, tile_clip_copy_mono);
+    set_dev_proc(dev, copy_color, tile_clip_copy_color);
+    set_dev_proc(dev, get_params, gx_forward_get_params);
+    set_dev_proc(dev, put_params, gx_forward_put_params);
+    set_dev_proc(dev, map_cmyk_color, gx_forward_map_cmyk_color);
+    set_dev_proc(dev, get_page_device, gx_forward_get_page_device);
+    set_dev_proc(dev, get_alpha_bits, gx_forward_get_alpha_bits);
+    set_dev_proc(dev, copy_alpha, tile_clip_copy_alpha);
+    set_dev_proc(dev, get_clipping_box, gx_forward_get_clipping_box);
+    set_dev_proc(dev, get_bits_rectangle, gx_forward_get_bits_rectangle);
+    set_dev_proc(dev, composite, gx_no_composite);
+    set_dev_proc(dev, get_hardware_params, gx_forward_get_hardware_params);
+    set_dev_proc(dev, get_color_mapping_procs, gx_forward_get_color_mapping_procs);
+    set_dev_proc(dev, get_color_comp_index, gx_forward_get_color_comp_index);
+    set_dev_proc(dev, encode_color, gx_forward_encode_color);
+    set_dev_proc(dev, decode_color, gx_forward_decode_color);
+    set_dev_proc(dev, fill_rectangle_hl_color, tile_clip_fill_rectangle_hl_color);
+    set_dev_proc(dev, include_color_space, gx_forward_include_color_space);
+    set_dev_proc(dev, fill_linear_color_scanline, gx_forward_fill_linear_color_scanline);
+    set_dev_proc(dev, fill_linear_color_trapezoid, gx_forward_fill_linear_color_trapezoid);
+    set_dev_proc(dev, fill_linear_color_triangle, gx_forward_fill_linear_color_triangle);
+    set_dev_proc(dev, update_spot_equivalent_colors, gx_forward_update_spot_equivalent_colors);
+    set_dev_proc(dev, ret_devn_params, gx_forward_ret_devn_params);
+    set_dev_proc(dev, fillpage, gx_forward_fillpage);
+    set_dev_proc(dev, dev_spec_op, gx_forward_dev_spec_op);
+    set_dev_proc(dev, copy_planes, tile_clip_copy_planes);
+    set_dev_proc(dev, strip_copy_rop2, tile_clip_strip_copy_rop2);
+    set_dev_proc(dev, copy_alpha_hl_color, tile_clip_copy_alpha_hl_color);
+
+    /* Ideally the following defaults would be set up for us, but this
+     * does not currently work. */
+    set_dev_proc(dev, open_device, gx_default_open_device);
+    set_dev_proc(dev, sync_output, gx_default_sync_output);
+    set_dev_proc(dev, output_page, gx_default_output_page);
+    set_dev_proc(dev, close_device, gx_default_close_device);
+    set_dev_proc(dev, fill_path, gx_default_fill_path);
+    set_dev_proc(dev, stroke_path, gx_default_stroke_path);
+    set_dev_proc(dev, fill_mask, gx_default_fill_mask);
+    set_dev_proc(dev, fill_trapezoid, gx_default_fill_trapezoid);
+    set_dev_proc(dev, fill_parallelogram, gx_default_fill_parallelogram);
+    set_dev_proc(dev, fill_triangle, gx_default_fill_triangle);
+    set_dev_proc(dev, draw_thin_line, gx_default_draw_thin_line);
+    set_dev_proc(dev, strip_tile_rectangle, gx_default_strip_tile_rectangle);
+    set_dev_proc(dev, begin_typed_image, gx_default_begin_typed_image);
+    set_dev_proc(dev, text_begin, gx_default_text_begin);
+    set_dev_proc(dev, strip_tile_rect_devn, gx_default_strip_tile_rect_devn);
+}
+
 static const gx_device_tile_clip gs_tile_clip_device =
-{std_device_std_body_open(gx_device_tile_clip, 0, "tile clipper",
-                          0, 0, 1, 1),
- {gx_default_open_device,
-  gx_forward_get_initial_matrix,
-  gx_default_sync_output,
-  gx_default_output_page,
-  gx_default_close_device,
-  gx_forward_map_rgb_color,
-  gx_forward_map_color_rgb,
-  tile_clip_fill_rectangle,
-  gx_default_tile_rectangle,
-  tile_clip_copy_mono,
-  tile_clip_copy_color,
-  gx_default_draw_line,
-  gx_forward_get_bits,
-  gx_forward_get_params,
-  gx_forward_put_params,
-  gx_forward_map_cmyk_color,
-  gx_forward_get_xfont_procs,
-  gx_forward_get_xfont_device,
-  gx_forward_map_rgb_alpha_color,
-  gx_forward_get_page_device,
-  gx_forward_get_alpha_bits,
-  tile_clip_copy_alpha,
-  gx_forward_get_band,
-  gx_default_copy_rop,
-  gx_default_fill_path,
-  gx_default_stroke_path,
-  gx_default_fill_mask,
-  gx_default_fill_trapezoid,
-  gx_default_fill_parallelogram,
-  gx_default_fill_triangle,
-  gx_default_draw_thin_line,
-  gx_default_begin_image,
-  gx_default_image_data,
-  gx_default_end_image,
-  gx_default_strip_tile_rectangle,
-  tile_clip_strip_copy_rop,
-  gx_forward_get_clipping_box,
-  gx_default_begin_typed_image,
-  gx_forward_get_bits_rectangle,
-  gx_forward_map_color_rgb_alpha,
-  gx_no_create_compositor,
-  gx_forward_get_hardware_params,
-  gx_default_text_begin,
-  gx_default_finish_copydevice,
-  NULL,			/* begin_transparency_group */
-  NULL,			/* end_transparency_group */
-  NULL,			/* begin_transparency_mask */
-  NULL,			/* end_transparency_mask */
-  NULL,			/* discard_transparency_layer */
-  gx_forward_get_color_mapping_procs,
-  gx_forward_get_color_comp_index,
-  gx_forward_encode_color,
-  gx_forward_decode_color,
-  NULL,                 /* pattern_manage */
-  tile_clip_fill_rectangle_hl_color,
-  gx_forward_include_color_space,
-  gx_forward_fill_linear_color_scanline,
-  gx_forward_fill_linear_color_trapezoid,
-  gx_forward_fill_linear_color_triangle,
-  gx_forward_update_spot_equivalent_colors,
-  gx_forward_ret_devn_params,
-  gx_forward_fillpage,
-  NULL,                      /* push_transparency_state */
-  NULL,                      /* pop_transparency_state */
-  NULL,                      /* put_image */
-  gx_forward_dev_spec_op,
-  tile_clip_copy_planes,
-  NULL,                      /* get_profile */
-  NULL,                      /* set_graphics_type_tag */
-  tile_clip_strip_copy_rop2,
-  gx_default_strip_tile_rect_devn,
-  tile_clip_copy_alpha_hl_color
- }
+{std_device_std_body_open(gx_device_tile_clip,
+                          tile_clipper_initialize_device_procs,
+                          "tile clipper",
+                          0, 0, 1, 1)
 };
 
 /* Initialize a tile clipping device from a mask. */
@@ -217,8 +200,14 @@ tile_clip_copy_mono(gx_device * dev,
     setup_mask_copy_mono(cdev, color, mcolor0, mcolor1);
     for (ty = y; ty < y + h; ty += ny) {
         int tx, nx;
-        int cy = (ty + cdev->phase.y) % cdev->tiles.rep_height;
-        int xoff = x_offset(ty, cdev);
+        int cy;
+        int xoff;
+
+        if (cdev->tiles.rep_height == 0 || cdev->tiles.rep_width == 0)
+            return 0;
+
+        cy = (ty + cdev->phase.y) % cdev->tiles.rep_height;
+        xoff = x_offset(ty, cdev);
 
         ny = min(y + h - ty, cdev->tiles.size.y - cy);
         if (ny > cdev->mdev.height)
@@ -270,12 +259,17 @@ tile_clip_copy_mono(gx_device * dev,
   } END
 #define FOR_RUNS(data_row, tx1, tx, ty)\
         const byte *data_row = data;\
-        int cy = (y + cdev->phase.y) % cdev->tiles.rep_height;\
-        const byte *tile_row = cdev->tiles.data + cy * cdev->tiles.raster;\
-        int ty;\
+        int cy;\
+        byte *tile_row;\
+         int ty;\
+\
+        if (cdev->tiles.rep_height == 0 || cdev->tiles.rep_width == 0)\
+            return 0;\
+        cy = imod(y + cdev->phase.y, cdev->tiles.rep_height);\
+        tile_row = cdev->tiles.data + cy * cdev->tiles.raster;\
 \
         for ( ty = y; ty < y + h; ty++, data_row += raster ) {\
-          int cx = (x + x_offset(ty, cdev)) % cdev->tiles.rep_width;\
+          int cx = imod(x + x_offset(ty, cdev), cdev->tiles.rep_width);\
           const byte *tp = tile_row + (cx >> 3);\
           byte tbit = 0x80 >> (cx & 7);\
           int tx;\
@@ -391,34 +385,6 @@ tile_clip_copy_alpha_hl_color(gx_device * dev,
             int code = (*dev_proc(cdev->target, copy_alpha_hl_color))
             (cdev->target, data_row, sourcex + txrun - x, raster,
              gx_no_bitmap_id, txrun, ty, tx - txrun, 1, pdcolor, depth);
-
-            if (code < 0)
-                return code;
-        }
-        END_FOR_RUNS();
-    }
-    return 0;
-}
-
-/* Copy a RasterOp rectangle similarly. */
-static int
-tile_clip_strip_copy_rop(gx_device * dev,
-               const byte * data, int sourcex, uint raster, gx_bitmap_id id,
-                         const gx_color_index * scolors,
-           const gx_strip_bitmap * textures, const gx_color_index * tcolors,
-                         int x, int y, int w, int h,
-                       int phase_x, int phase_y, gs_logical_operation_t lop)
-{
-    gx_device_tile_clip *cdev = (gx_device_tile_clip *) dev;
-
-    fit_copy(dev, data, sourcex, raster, id, x, y, w, h);
-    {
-        FOR_RUNS(data_row, txrun, tx, ty) {
-            /* Copy the run. */
-            int code = (*dev_proc(cdev->target, strip_copy_rop))
-            (cdev->target, data_row, sourcex + txrun - x, raster,
-             gx_no_bitmap_id, scolors, textures, tcolors,
-             txrun, ty, tx - txrun, 1, phase_x, phase_y, lop);
 
             if (code < 0)
                 return code;

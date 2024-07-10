@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2023 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 # of the license contained in the file LICENSE in this distribution.
 #
 # Refer to licensing information at http://www.artifex.com or contact
-# Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-# CA 94945, U.S.A., +1(415)492-9861, for further information.
+# Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+# CA 94129, USA, for further information.
 #
 # makefile template for/from the autoconf build.
 # Makefile.  Generated from Makefile.in by configure.
@@ -52,6 +52,10 @@ PLOBJDIR=./$(BUILDDIRPREFIX)obj
 XPSSRCDIR=./xps
 XPSGENDIR=./$(BUILDDIRPREFIX)obj
 XPSOBJDIR=./$(BUILDDIRPREFIX)obj
+
+PDFSRCDIR=./pdf
+PDFGENDIR=./$(BUILDDIRPREFIX)obj
+PDFOBJDIR=./$(BUILDDIRPREFIX)obj
 
 GPDLSRCDIR=./gpdl
 GPDLGENDIR=./$(BUILDDIRPREFIX)obj
@@ -173,6 +177,7 @@ GS_SO_BASE=gs
 
 PCL=gpcl6
 XPS=gxps
+PDF=gpdf
 GPDL=gpdl
 
 XE=
@@ -196,7 +201,6 @@ SHARE_FT=0
 FTSRCDIR=./freetype
 FT_CFLAGS=-I./freetype/include
 FT_LIBS=
-FT_CONFIG_SYSTEM_ZLIB=
 
 # Define whether to compile in UFST.
 # FAPI/UFST depends on UFST_BRIDGE being undefined - hence the construct below.
@@ -323,6 +327,7 @@ CUPSPDFTORASTER=0
 SHARE_LCUPS=1
 LCUPS_NAME=cups
 LCUPSSRCDIR=./cups
+LIBCUPSSRCDIR=./cups
 LCUPSBUILDTYPE=
 CUPS_CC=$(CC)
 
@@ -406,10 +411,12 @@ LDFLAGS= $(AC_LDFLAGS) $(XLDFLAGS)
 GS_LDFLAGS=$(LDFLAGS)
 PCL_LDFLAGS=$(LDFLAGS)
 XPS_LDFLAGS=$(LDFLAGS)
+PDF_LDFLAGS=$(LDFLAGS)
 
 GS_LDFLAGS_SO=-shared -Wl,$(LD_SET_DT_SONAME)$(LDFLAGS_SO_PREFIX)$(GS_SONAME_MAJOR)
 PCL_LDFLAGS_SO=-shared -Wl,$(LD_SET_DT_SONAME)$(LDFLAGS_SO_PREFIX)$(PCL_SONAME_MAJOR)
 XPS_LDFLAGS_SO=-shared -Wl,$(LD_SET_DT_SONAME)$(LDFLAGS_SO_PREFIX)$(XPS_SONAME_MAJOR)
+PDF_LDFLAGS_SO=-shared -Wl,$(LD_SET_DT_SONAME)$(LDFLAGS_SO_PREFIX)$(PDF_SONAME_MAJOR)
 
 # Define any extra libraries to link into the executable.
 # ISC Unix 2.2 wants -linet.
@@ -498,6 +505,8 @@ PCL_FEATURE_DEVS=$(PLOBJDIR)/pl.dev $(PLOBJDIR)/pjl.dev $(PXLOBJDIR)/pxl.dev $(P
 
 XPS_FEATURE_DEVS=$(XPSOBJDIR)/pl.dev $(XPSOBJDIR)/xps.dev
 
+PDF_FEATURE_DEVS=$(PDFOBJDIR)/pl.dev $(PDFOBJDIR)/gpdf.dev
+
 FEATURE_DEVS=$(GLD)pipe.dev $(GLD)gsnogc.dev $(GLD)htxlib.dev $(GLD)psl3lib.dev $(GLD)psl2lib.dev \
              $(GLD)dps2lib.dev $(GLD)path1lib.dev $(GLD)patlib.dev $(GLD)psl2cs.dev $(GLD)rld.dev $(GLD)gxfapiu$(UFST_BRIDGE).dev\
              $(GLD)ttflib.dev  $(GLD)cielib.dev $(GLD)pipe.dev $(GLD)htxlib.dev $(GLD)sdct.dev $(GLD)libpng.dev\
@@ -546,12 +555,12 @@ DISPLAY_DEV=$(DD)bbox.dev
 # devs.mak and dcontrib.mak for the list of available devices.
 # DEVICE_DEVS=$(DISPLAY_DEV) $(DD)x11.dev $(DD)x11_.dev $(DD)x11alpha.dev $(DD)x11alt_.dev $(DD)x11cmyk.dev $(DD)x11cmyk2.dev $(DD)x11cmyk4.dev $(DD)x11cmyk8.dev $(DD)x11gray2.dev $(DD)x11gray4.dev $(DD)x11mono.dev $(DD)x11rg16x.dev $(DD)x11rg32x.dev
 DEVICE_DEVS=$(DISPLAY_DEV)
-DEVICE_DEVS1=$(DD)bit.dev $(DD)bitcmyk.dev $(DD)bitrgb.dev $(DD)bitrgbtags.dev $(DD)bmp16.dev $(DD)bmp16m.dev $(DD)bmp256.dev $(DD)bmp32b.dev $(DD)bmpgray.dev $(DD)bmpmono.dev $(DD)bmpsep1.dev $(DD)bmpsep8.dev $(DD)ccr.dev $(DD)cif.dev $(DD)devicen.dev $(DD)eps2write.dev $(DD)fpng.dev $(DD)inferno.dev $(DD)ink_cov.dev $(DD)inkcov.dev $(DD)jpeg.dev $(DD)jpegcmyk.dev $(DD)jpeggray.dev $(DD)mgr4.dev $(DD)mgr8.dev $(DD)mgrgray2.dev $(DD)mgrgray4.dev $(DD)mgrgray8.dev $(DD)mgrmono.dev $(DD)miff24.dev $(DD)pam.dev $(DD)pamcmyk32.dev $(DD)pamcmyk4.dev $(DD)pbm.dev $(DD)pbmraw.dev $(DD)pcx16.dev $(DD)pcx24b.dev $(DD)pcx256.dev $(DD)pcxcmyk.dev $(DD)pcxgray.dev $(DD)pcxmono.dev $(DD)pdfwrite.dev $(DD)pgm.dev $(DD)pgmraw.dev $(DD)pgnm.dev $(DD)pgnmraw.dev $(DD)pkm.dev $(DD)pkmraw.dev $(DD)pksm.dev $(DD)pksmraw.dev $(DD)plan.dev $(DD)plan9bm.dev $(DD)planc.dev $(DD)plang.dev $(DD)plank.dev $(DD)planm.dev $(DD)plank.dev $(DD)plib.dev $(DD)plibc.dev $(DD)plibg.dev $(DD)plibk.dev $(DD)plibm.dev $(DD)pnm.dev $(DD)pnmraw.dev $(DD)ppm.dev $(DD)ppmraw.dev $(DD)ps2write.dev $(DD)psdcmyk.dev $(DD)psdcmykog.dev $(DD)psdf.dev $(DD)psdrgb.dev $(DD)spotcmyk.dev $(DD)txtwrite.dev $(DD)xcf.dev $(DD)psdcmyk16.dev $(DD)psdrgb16.dev
+DEVICE_DEVS1=$(DD)bit.dev $(DD)bitcmyk.dev $(DD)bitrgb.dev $(DD)bitrgbtags.dev $(DD)bmp16.dev $(DD)bmp16m.dev $(DD)bmp256.dev $(DD)bmp32b.dev $(DD)bmpgray.dev $(DD)bmpmono.dev $(DD)bmpsep1.dev $(DD)bmpsep8.dev $(DD)ccr.dev $(DD)cif.dev $(DD)devicen.dev $(DD)eps2write.dev $(DD)fpng.dev $(DD)inferno.dev $(DD)ink_cov.dev $(DD)inkcov.dev $(DD)jpeg.dev $(DD)jpegcmyk.dev $(DD)jpeggray.dev $(DD)mgr4.dev $(DD)mgr8.dev $(DD)mgrgray2.dev $(DD)mgrgray4.dev $(DD)mgrgray8.dev $(DD)mgrmono.dev $(DD)miff24.dev $(DD)pam.dev $(DD)pamcmyk32.dev $(DD)pamcmyk4.dev $(DD)pbm.dev $(DD)pbmraw.dev $(DD)pcx16.dev $(DD)pcx24b.dev $(DD)pcx256.dev $(DD)pcxcmyk.dev $(DD)pcxgray.dev $(DD)pcxmono.dev $(DD)pdfwrite.dev $(DD)pgm.dev $(DD)pgmraw.dev $(DD)pgnm.dev $(DD)pgnmraw.dev $(DD)pkm.dev $(DD)pkmraw.dev $(DD)pksm.dev $(DD)pksmraw.dev $(DD)plan.dev $(DD)plan9bm.dev $(DD)planc.dev $(DD)plang.dev $(DD)plank.dev $(DD)planm.dev $(DD)plank.dev $(DD)plib.dev $(DD)plibc.dev $(DD)plibg.dev $(DD)plibk.dev $(DD)plibm.dev $(DD)pnm.dev $(DD)pnmraw.dev $(DD)ppm.dev $(DD)ppmraw.dev $(DD)ps2write.dev $(DD)psdcmyk.dev $(DD)psdcmykog.dev $(DD)psdf.dev $(DD)psdrgb.dev $(DD)spotcmyk.dev $(DD)txtwrite.dev $(DD)xcf.dev $(DD)psdcmyk16.dev $(DD)psdrgb16.dev $(DD)psdcmyktags.dev $(DD)psdcmyktags16.dev
 DEVICE_DEVS2=$(DD)ap3250.dev $(DD)atx23.dev $(DD)atx24.dev $(DD)atx38.dev $(DD)bj10e.dev $(DD)bj200.dev $(DD)bjc600.dev $(DD)bjc800.dev $(DD)cdeskjet.dev $(DD)cdj500.dev $(DD)cdj550.dev $(DD)cdjcolor.dev $(DD)cdjmono.dev $(DD)cljet5.dev $(DD)cljet5c.dev $(DD)cljet5pr.dev $(DD)coslw2p.dev $(DD)coslwxl.dev $(DD)declj250.dev $(DD)deskjet.dev $(DD)dj505j.dev $(DD)djet500.dev $(DD)djet500c.dev $(DD)dnj650c.dev $(DD)eps9high.dev $(DD)eps9mid.dev $(DD)epson.dev $(DD)epsonc.dev $(DD)escp.dev $(DD)fs600.dev $(DD)hl7x0.dev $(DD)ibmpro.dev $(DD)imagen.dev $(DD)itk24i.dev $(DD)itk38.dev $(DD)jetp3852.dev $(DD)laserjet.dev $(DD)lbp8.dev $(DD)lips3.dev $(DD)lj250.dev $(DD)lj3100sw.dev $(DD)lj4dith.dev $(DD)lj4dithp.dev $(DD)lj5gray.dev $(DD)lj5mono.dev $(DD)ljet2p.dev $(DD)ljet3.dev $(DD)ljet3d.dev $(DD)ljet4.dev $(DD)ljet4d.dev $(DD)ljet4pjl.dev $(DD)ljetplus.dev $(DD)lp2563.dev $(DD)lp8000.dev $(DD)lq850.dev $(DD)lxm5700m.dev $(DD)m8510.dev $(DD)necp6.dev $(DD)oce9050.dev $(DD)oki182.dev $(DD)okiibm.dev $(DD)paintjet.dev $(DD)photoex.dev $(DD)picty180.dev $(DD)pj.dev $(DD)pjetxl.dev $(DD)pjxl.dev $(DD)pjxl300.dev $(DD)pxlcolor.dev $(DD)pxlmono.dev $(DD)r4081.dev $(DD)rinkj.dev $(DD)sj48.dev $(DD)st800.dev $(DD)stcolor.dev $(DD)t4693d2.dev $(DD)t4693d4.dev $(DD)t4693d8.dev $(DD)tek4696.dev $(DD)uniprint.dev
 DEVICE_DEVS3=
 DEVICE_DEVS4=$(DD)ijs.dev
 DEVICE_DEVS5=
-DEVICE_DEVS6=$(DD)png16.dev $(DD)png16m.dev $(DD)png256.dev $(DD)png48.dev $(DD)pngalpha.dev $(DD)pnggray.dev $(DD)pngmono.dev
+DEVICE_DEVS6=$(DD)png16.dev $(DD)png16m.dev $(DD)png256.dev $(DD)png48.dev $(DD)pngalpha.dev $(DD)png16malpha.dev $(DD)pnggray.dev $(DD)pngmono.dev
 DEVICE_DEVS7=
 DEVICE_DEVS8=
 DEVICE_DEVS9=
@@ -622,6 +631,7 @@ include $(GLSRCDIR)/gs.mak
 # are available
 # include $(PLSRCDIR)$(D)plromfs.mak   # plromfs.mak
 # include $(XPSSRCDIR)$(D)xpsromfs.mak # xpsromfs.mak
+# include $(PDFSRCDIR)$(D)pdfromfs.mak # pdfromfs.mak
 
 include $(PSSRCDIR)/psromfs.mak
 include $(GLSRCDIR)/lib.mak
@@ -635,6 +645,8 @@ include $(PSSRCDIR)/int.mak
 # include $(PXLSRCDIR)$(D)pxl.mak # pxl.mak
 
 # include $(XPSSRCDIR)$(D)xps.mak # xps.mak
+
+# include $(PDFSRCDIR)$(D)pdf.mak # pdf.mak
 
 # include $(GPDLSRCDIR)$(D)gpdl.mak # gpdl.mak
 

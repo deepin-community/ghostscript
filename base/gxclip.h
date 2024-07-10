@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -78,8 +78,6 @@ int
                                    int xc, int yc, int xec, int yec),
     clip_call_strip_tile_rect_devn(clip_callback_data_t * pccd,
                                    int xc, int yc, int xec, int yec),
-    clip_call_strip_copy_rop(clip_callback_data_t * pccd,
-                             int xc, int yc, int xec, int yec),
     clip_call_strip_copy_rop2(clip_callback_data_t * pccd,
                               int xc, int yc, int xec, int yec),
     clip_call_fill_rectangle_hl_color(clip_callback_data_t * pccd,

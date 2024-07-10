@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -107,80 +107,18 @@ fpng_dev_spec_op(gx_device *pdev, int dev_spec_op, void *data, int size)
 /* 24-bit color. */
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs fpng_procs =
+static void
+fpng_initialize_device_procs(gx_device *dev)
 {
-        gdev_prn_open,
-        NULL,	/* get_initial_matrix */
-        NULL,	/* sync_output */
-        gdev_prn_bg_output_page,
-        gdev_prn_close,
-        gx_default_rgb_map_rgb_color,
-        gx_default_rgb_map_color_rgb,
-        NULL,	/* fill_rectangle */
-        NULL,	/* tile_rectangle */
-        NULL,	/* copy_mono */
-        NULL,	/* copy_color */
-        NULL,	/* draw_line */
-        NULL,	/* get_bits */
-        fpng_get_params,
-        fpng_put_params,
-        NULL,	/* map_cmyk_color */
-        NULL,	/* get_xfont_procs */
-        NULL,	/* get_xfont_device */
-        NULL,	/* map_rgb_alpha_color */
-        gx_page_device_get_page_device,
-        NULL,	/* get_alpha_bits */
-        NULL,	/* copy_alpha */
-        NULL,	/* get_band */
-        NULL,	/* copy_rop */
-        NULL,	/* fill_path */
-        NULL,	/* stroke_path */
-        NULL,	/* fill_mask */
-        NULL,	/* fill_trapezoid */
-        NULL,	/* fill_parallelogram */
-        NULL,	/* fill_triangle */
-        NULL,	/* draw_thin_line */
-        NULL,	/* begin_image */
-        NULL,	/* image_data */
-        NULL,	/* end_image */
-        NULL,	/* strip_tile_rectangle */
-        NULL,	/* strip_copy_rop, */
-        NULL,	/* get_clipping_box */
-        NULL,	/* begin_typed_image */
-        NULL,	/* get_bits_rectangle */
-        NULL,	/* map_color_rgb_alpha */
-        NULL,	/* create_compositor */
-        NULL,	/* get_hardware_params */
-        NULL,	/* text_begin */
-        NULL,	/* finish_copydevice */
-        NULL,	/* begin_transparency_group */
-        NULL,	/* end_transparency_group */
-        NULL,	/* begin_transparency_mask */
-        NULL,	/* end_transparency_mask */
-        NULL,  /* discard_transparency_layer */
-        NULL,  /* get_color_mapping_procs */
-        NULL,  /* get_color_comp_index */
-        NULL,  /* encode_color */
-        NULL,  /* decode_color */
-        NULL,  /* pattern_manage */
-        NULL,  /* fill_rectangle_hl_color */
-        NULL,  /* include_color_space */
-        NULL,  /* fill_linear_color_scanline */
-        NULL,  /* fill_linear_color_trapezoid */
-        NULL,  /* fill_linear_color_triangle */
-        NULL,  /* update_spot_equivalent_colors */
-        NULL,  /* ret_devn_params */
-        NULL,  /* fillpage */
-        NULL,  /* push_transparency_state */
-        NULL,  /* pop_transparency_state */
-        NULL,  /* put_image */
-        fpng_dev_spec_op,  /* dev_spec_op */
-        NULL,  /* copy plane */
-        gx_default_get_profile, /* get_profile */
-        gx_default_set_graphics_type_tag /* set_graphics_type_tag */
-};
+    gdev_prn_initialize_device_procs_rgb_bg(dev);
+
+    set_dev_proc(dev, get_params, fpng_get_params);
+    set_dev_proc(dev, put_params, fpng_put_params);
+    set_dev_proc(dev, dev_spec_op, fpng_dev_spec_op);
+}
+
 const gx_device_fpng gs_fpng_device =
-{prn_device_body(gx_device_fpng, fpng_procs, "fpng",
+{prn_device_body(gx_device_fpng, fpng_initialize_device_procs, "fpng",
                  DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                  X_DPI, Y_DPI,
                  0, 0, 0, 0,	/* margins */
@@ -318,7 +256,7 @@ static int fpng_process(void *arg, gx_device *dev, gx_device *bdev, const gs_int
     my_rect.p.y = 0;
     my_rect.q.x = w;
     my_rect.q.y = h;
-    code = dev_proc(bdev, get_bits_rectangle)(bdev, &my_rect, &params, NULL);
+    code = dev_proc(bdev, get_bits_rectangle)(bdev, &my_rect, &params);
     if (code < 0)
         return code;
 
@@ -363,6 +301,8 @@ static int fpng_process(void *arg, gx_device *dev, gx_device *bdev, const gs_int
     p = params.data[0];
     stream.next_out = &buffer->data[0];
     stream.avail_out = buffer->size;
+    stream.total_out = 0;
+    stream.total_in = 0;
 
     /* Nasty zlib hackery here. Zlib always outputs a 'start of stream'
      * marker at the beginning. We just want a block, so for all blocks
@@ -373,7 +313,9 @@ static int fpng_process(void *arg, gx_device *dev, gx_device *bdev, const gs_int
     {
         stream.next_in = &sub;
         stream.avail_in = 1;
-        deflate(&stream, Z_FULL_FLUSH);
+        err = deflate(&stream, Z_FULL_FLUSH);
+        if (err != Z_OK)
+            return_error(gs_error_VMerror);
         stream.next_out = &buffer->data[0];
         stream.avail_out = buffer->size;
         stream.total_out = 0;
@@ -383,15 +325,19 @@ static int fpng_process(void *arg, gx_device *dev, gx_device *bdev, const gs_int
     for (y = h-1; y >= 0; y--)
     {
         stream.avail_in = 1;
-        deflate(&stream, Z_NO_FLUSH);
+        err = deflate(&stream, Z_NO_FLUSH);
+        if (err != Z_OK)
+            return_error(gs_error_VMerror);
         stream.next_in = p;
         stream.avail_in = w*3;
-        deflate(&stream, (y == 0 ? (lastband ? Z_FINISH : Z_FULL_FLUSH) : Z_NO_FLUSH));
+        err = deflate(&stream, (y == 0 ? (lastband ? Z_FINISH : Z_FULL_FLUSH) : Z_NO_FLUSH));
+        if (err != Z_OK)
+            return_error(gs_error_VMerror);
         p += raster;
         stream.next_in = &paeth;
     }
     /* Ignore errors given here */
-    deflateEnd(&stream);
+    (void)deflateEnd(&stream);
 
     buffer->compressed = stream.total_out;
 

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -169,6 +169,8 @@ gs_sethalftone_prepare(gs_gstate * pgs, gs_halftone * pht,
     gx_ht_order_component *pocs = 0;
     int code = 0;
 
+    if (pht->objtype >= HT_OBJTYPE_COUNT)
+        return_error(gs_error_limitcheck);
     switch (pht->type) {
         case ht_type_colorscreen:
             {
@@ -349,6 +351,7 @@ process_transfer(gx_ht_order * porder, gs_gstate * pgs,
     pmap->proc = proc;		/* 0 => use closure */
     pmap->closure = *pmc;
     pmap->id = gs_next_ids(mem, 1);
+    memset(pmap->values, 0x00, 256 * sizeof(frac));
     porder->transfer = pmap;
     if (proc == gs_mapped_transfer)
         return 0; /* nothing to load, the source is uninitialzed */

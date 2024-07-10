@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -77,5 +77,15 @@ int gx_serialize_device_n_map(const gs_color_space * pcs, gs_device_n_map * m, s
  * in the next gstate down in the gstate list (pgs->saved).
  */
 int gs_attachcolorant(char *sep_name, gs_gstate * pgs);
+
+/*
+ * This is the same routine as above, but more general. Instead of assuming that
+ * the current coloru space is hte colorant space, and the saved graphics state
+ * contains the DeviceN space, we pass both those in, along with the memory
+ * allocater we want the routine to use.
+ * This is for the pdfi PDF interpreter (and potentially any other non-PostScript
+ * interpreter)
+ */
+int gs_attach_colorant_to_space(char *sep_name, gs_color_space *pcs, gs_color_space *colorant_space, gs_memory_t *mem);
 
 #endif /* gscdevn_INCLUDED */

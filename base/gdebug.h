@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Debugging machinery definitions */
@@ -94,7 +94,7 @@ bool gs_debug_c(int /*char */ );
 extern gp_file *gs_debug_out;
 
 /* Debugging printout macros. */
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#if defined(DEBUG)
 #  define if_debug0(c,s)\
     BEGIN if (gs_debug_c(c)) dlprintf(s); END
 #  define if_debug1(c,s,a1)\
@@ -272,9 +272,7 @@ void debug_dump_bytes(const gs_memory_t *mem,
 void debug_dump_bitmap(const gs_memory_t *mem,
                        const byte * from, uint raster, uint height,
                        const char *msg);
-#ifndef GS_THREADSAFE
 void debug_print_string_hex_nomem(const byte * str, uint len);
-#endif
 void debug_print_string_hex(const gs_memory_t *mem, const byte * str, uint len);
 
 #endif /* gdebug_INCLUDED */

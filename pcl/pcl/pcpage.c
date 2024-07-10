@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -336,35 +336,12 @@ reset_margins(pcl_state_t * pcs, bool for_passthrough)
     reset_vertical_margins(pcs, for_passthrough);
 }
 
-/*
- * Reset all parameters which must be reset whenever the page size changes.
- *
- * The third operand indicates if this routine is being called as part of
- * an initial reset. In that case, done't call HPGL's reset - the reset
- * will do that later.
- */
-static int
-new_page_size(pcl_state_t * pcs,
-              const pcl_paper_size_t * psize,
-              bool reset_initial, bool for_passthrough)
+static void
+reset_default_transformation(pcl_state_t *pcs)
 {
-    double width_pts = psize->width * 0.01;
-    double height_pts = psize->height * 0.01;
-    float page_size[2];
-    float old_page_size[2];
     gs_gstate *pgs = pcs->pgs;
     gs_matrix mat;
-    bool changed_page_size;
-    int code = 0;
-
-    page_size[0] = width_pts;
-    page_size[1] = height_pts;
-
-    old_page_size[0] = gs_currentdevice(pcs->pgs)->MediaSize[0];
-    old_page_size[1] = gs_currentdevice(pcs->pgs)->MediaSize[1];
-
-    code = put_param1_float_array(pcs, "PageSize", page_size);
-    if (code < 0) return code;
+    double height_pts = pcs->xfm_state.paper_size->height * 0.01;
 
     /*
      * Reset the default transformation.
@@ -387,7 +364,38 @@ new_page_size(pcl_state_t * pcs,
     }
 
     gs_setdefaultmatrix(pgs, &mat);
+}
+
+/*
+ * Reset all parameters which must be reset whenever the page size changes.
+ *
+ * The third operand indicates if this routine is being called as part of
+ * an initial reset. In that case, done't call HPGL's reset - the reset
+ * will do that later.
+ */
+static int
+new_page_size(pcl_state_t * pcs,
+              const pcl_paper_size_t * psize,
+              bool reset_initial, bool for_passthrough)
+{
+    double width_pts = psize->width * 0.01;
+    double height_pts = psize->height * 0.01;
+    float page_size[2];
+    float old_page_size[2];
+    bool changed_page_size;
+    int code = 0;
+
+    page_size[0] = width_pts;
+    page_size[1] = height_pts;
+
+    old_page_size[0] = gs_currentdevice(pcs->pgs)->MediaSize[0];
+    old_page_size[1] = gs_currentdevice(pcs->pgs)->MediaSize[1];
+
+    code = put_param1_float_array(pcs, "PageSize", page_size);
+    if (code < 0) return code;
+
     pcs->xfm_state.paper_size = psize;
+    reset_default_transformation(pcs);
     pcs->overlay_enabled = false;
     update_xfm_state(pcs, reset_initial);
     reset_margins(pcs, for_passthrough);
@@ -664,6 +672,7 @@ pcl_end_page(pcl_state_t * pcs, pcl_print_condition_t condition)
         pcs->back_side = false;
     }
     code = put_param1_bool(pcs,"FirstSide", !pcs->back_side);
+    reset_default_transformation(pcs);
     update_xfm_state(pcs, 0);
 
     pcl_continue_underline(pcs);
@@ -1144,20 +1153,17 @@ set_paper_length(pcl_args_t * pargs, pcl_state_t * pcs)
  * ESC * o <quality> Q
  *
  * Set print quality.
+ *
+ * We don't implement this command, it appears to only be supported on
+ * DeskJet 1200C, an obsolete inkjet, which is not a target of
+ * emulation.
  */
+
 static int
 pcl_print_quality(pcl_args_t * pargs, pcl_state_t * pcs)
 {
-    int quality = int_arg(pargs);
 
-    if ((quality >= -1) && (quality <= 1)) {
-        int code = pcl_end_page_if_marked(pcs);
-
-        if (code >= 0)
-            code = pcl_home_cursor(pcs);
-        return (code < 0 ? code : 0);
-    } else
-        return e_Range;
+    return_error(e_Unimplemented);
 }
 
 /*

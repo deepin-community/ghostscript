@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -81,12 +81,20 @@ pl_free_font(gs_memory_t * mem, void *plf, client_name_t cname)
     gs_free_object(mem, (void *)plfont->glyphs.table, cname);
     if (plfont->pfont) {        /* might be only partially constructed */
         gs_purge_font_from_char_caches_completely(plfont->pfont);
-        gs_purge_font(plfont->pfont);
+        (void)gs_purge_font(plfont->pfont);
         gs_free_object(mem, plfont->pfont, cname);
     }
     if (plfont->font_file) {
         gs_free_object(mem, plfont->font_file, cname);
         plfont->font_file = 0;
+    }
+    if (plfont->names != NULL) {
+        int i = 0;
+        for (i = 0;i < plfont->next_name_index; i++)
+            gs_free_object(mem, plfont->names[i], "freeing names table");
+        gs_free_object(mem, plfont->names, "free names table");
+        plfont->names = NULL;
+        plfont->max_name_index = plfont->next_name_index = 0;
     }
     gs_free_object(mem, plf, cname);
 }
@@ -359,6 +367,7 @@ pl_glyph_name(gs_font * pfont, gs_glyph glyph, gs_const_string * pstr)
 {
     uint table_length;
     ulong table_offset;
+    pl_font_t * plfont = (pl_font_t *)pfont->client_data;
 
     if (glyph >= GS_MIN_GLYPH_INDEX)
         glyph -= GS_MIN_GLYPH_INDEX;
@@ -388,7 +397,7 @@ pl_glyph_name(gs_font * pfont, gs_glyph glyph, gs_const_string * pstr)
 
     {
         ulong format;
-        uint numGlyphs;
+        int numGlyphs;
         uint glyph_name_index;
         const byte *postp;      /* post table pointer */
 
@@ -405,8 +414,8 @@ pl_glyph_name(gs_font * pfont, gs_glyph glyph, gs_const_string * pstr)
             return -1;
         }
         /* skip over the post header */
-        numGlyphs = u16(postp + 32);
-        if (glyph > numGlyphs - 1) {
+        numGlyphs = (int)u16(postp + 32);
+        if ((int)glyph > numGlyphs - 1) {
             if_debug1m('=', pfont->memory,
                        "[=]glyph index %lx out of range\n", glyph);
             return -1;
@@ -447,7 +456,9 @@ pl_glyph_name(gs_font * pfont, gs_glyph glyph, gs_const_string * pstr)
             }
             /* sigh - we have to allocate a copy of the data - by the
                time a high level device makes use of it the font data
-               may be freed.  This is a necessary leak. */
+               may be freed.  Track the allocated memory in our
+               font 'wrapper' so we can free it when we free tha font wrapper.
+             */
             mydata =
                 gs_alloc_bytes(pfont->memory, pstr->size + 1,
                                "glyph to name");
@@ -455,6 +466,34 @@ pl_glyph_name(gs_font * pfont, gs_glyph glyph, gs_const_string * pstr)
                 return -1;
             memcpy(mydata, pascal_stringp + 1, pstr->size);
             pstr->data = mydata;
+            if (plfont->names == NULL) {
+                plfont->names = (char **)gs_alloc_bytes(pfont->memory, 256 * sizeof (char *), "names storage");
+                if (plfont->names == NULL) {
+                    gs_free_object(pfont->memory, (byte *)pstr->data, "free string on error");
+                    pstr->data = NULL;
+                    pstr->size = 0;
+                    return -1;
+                }
+                plfont->max_name_index = 255;
+                plfont->next_name_index = 0;
+                memset(plfont->names, 0x00, 256 * sizeof (char *));
+            }
+            if (plfont->next_name_index > plfont->max_name_index) {
+                char **temp = NULL;
+                temp = (char **)gs_alloc_bytes(pfont->memory, (plfont->max_name_index + 256) * sizeof (char *), "names storage");
+                if (temp == NULL) {
+                    gs_free_object(pfont->memory, (byte *)pstr->data, "free string on error");
+                    pstr->data = NULL;
+                    pstr->size = 0;
+                    return -1;
+                }
+                memset(temp, 0x00, (plfont->max_name_index + 256) * sizeof (char *));
+                memcpy(temp, plfont->names, plfont->max_name_index * sizeof(char *));
+                gs_free_object(pfont->memory, (void *)plfont->names, "realloc names storage");
+                plfont->names = temp;
+                plfont->max_name_index += 256;
+            }
+            plfont->names[plfont->next_name_index++] = (char *)pstr->data;
             return 0;
         }
     }
@@ -465,15 +504,21 @@ pl_glyph_name(gs_font * pfont, gs_glyph glyph, gs_const_string * pstr)
 static int
 pl_decode_glyph(gs_font * font, gs_glyph glyph, int ch, ushort *unicode_return, unsigned int length)
 {
+    unsigned char *ucode = (unsigned char *)unicode_return;
 
     if (ch < 0 || ch > 255)
         return (int) GS_NO_CHAR;
 
     if (length == 0)
-        return 1;
+        return 2;
 
+#if ARCH_IS_BIG_ENDIAN
     *unicode_return = (ushort)ch;
-    return 1;
+#else
+    ucode[0] = 0x00;
+    ucode[1] = ch & 0xff;
+#endif
+    return 2;
 }
 
 /* ---------------- Width cache ---------------- */
@@ -604,6 +649,9 @@ pl_alloc_font(gs_memory_t * mem, client_name_t cname)
         plfont->pts_per_inch = 72.0;    /* normal value */
         plfont->widths_cache = NULL;
         plfont->widths_cache_nitems = 0;
+        plfont->names = NULL;
+        plfont->max_name_index = 0;
+        plfont->next_name_index = 0;
     }
     return plfont;
 }
@@ -652,6 +700,10 @@ pl_clone_font(const pl_font_t * src, gs_memory_t * mem, client_name_t cname)
     if (plfont->header == 0)
         return 0;
     memcpy(plfont->header, src->header, src->header_size);
+
+    plfont->names = NULL;
+    plfont->max_name_index = 0;
+    plfont->next_name_index = 0;
 
     if (src->font_file) {
         plfont->font_file =
@@ -1142,9 +1194,7 @@ pl_load_tt_font(stream * in, gs_font_dir * pdir, gs_memory_t * mem,
     if (code < 0)
         goto error;
 
-    code =
-        pl_fapi_passfont(plfont, 0, NULL, NULL, plfont->header + 6,
-                         plfont->header_size - 6);
+    code = pl_fapi_passfont(plfont, 0, NULL, (char *)file_name, NULL, 0);
     if (code < 0)
         goto error;
     if (file_name)

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -54,10 +54,11 @@ process_composite_text(gs_text_enum_t *pte, void *vbuf, uint bsize)
     gs_char chr, char_code = 0x0badf00d, space_char = GS_NO_CHAR;
     int buf_index = 0;
     bool return_width = (penum->text.operation & TEXT_RETURN_WIDTH);
+    gx_path *path = gs_text_enum_path(penum);
 
     str.data = buf;
     if (return_width) {
-        code = gx_path_current_point(penum->path, &penum->origin);
+        code = gx_path_current_point(path, &penum->origin);
         if (code < 0)
             return code;
     }
@@ -340,31 +341,52 @@ attach_cmap_resource(gx_device_pdf *pdev, pdf_font_resource_t *pdfont,
         }
     }
     if (pcmres || is_identity) {
-        uint size = pcmap->CMapName.size;
-        byte *chars = gs_alloc_string(pdev->pdf_memory, size,
-                                      "pdf_font_resource_t(CMapName)");
+        if (pdfont->u.type0.CMapName_data == NULL || pcmap->CMapName.size != pdfont->u.type0.CMapName_size ||
+            memcmp(pdfont->u.type0.CMapName_data, pcmap->CMapName.data, pcmap->CMapName.size))
+        {
+            byte *chars = gs_alloc_bytes(pdev->pdf_memory->non_gc_memory, pcmap->CMapName.size,
+                                          "pdf_font_resource_t(CMapName)");
 
-        if (chars == 0)
-            return_error(gs_error_VMerror);
-        memcpy(chars, pcmap->CMapName.data, size);
+            if (chars == 0)
+                return_error(gs_error_VMerror);
+            memcpy(chars, pcmap->CMapName.data, pcmap->CMapName.size);
+            if (pdfont->u.type0.CMapName_data != NULL)
+                gs_free_object(pdev->pdf_memory->non_gc_memory, pdfont->u.type0.CMapName_data, "rewriting CMapName");
+            pdfont->u.type0.CMapName_data = chars;
+            pdfont->u.type0.CMapName_size = pcmap->CMapName.size;
+        }
         if (is_identity)
             strcpy(pdfont->u.type0.Encoding_name,
                     (pcmap->WMode ? "/Identity-V" : "/Identity-H"));
         else
-            gs_sprintf(pdfont->u.type0.Encoding_name, "%ld 0 R",
-                    pdf_resource_id(pcmres));
-        pdfont->u.type0.CMapName.data = chars;
-        pdfont->u.type0.CMapName.size = size;
+            gs_snprintf(pdfont->u.type0.Encoding_name, sizeof(pdfont->u.type0.Encoding_name),
+                        "%ld 0 R", pdf_resource_id(pcmres));
     } else {
+        uint size = 0;
+
         if (!*pcmn)
             /* Should not be possible, if *pcmn is NULL then either
              * is_identity is true or we create pcmres.
              */
             return_error(gs_error_invalidfont);
 
-        gs_sprintf(pdfont->u.type0.Encoding_name, "/%s", *pcmn);
-        pdfont->u.type0.CMapName.data = (const byte *)*pcmn;
-        pdfont->u.type0.CMapName.size = strlen(*pcmn);
+        size = strlen(*pcmn);
+        if (pdfont->u.type0.CMapName_data == NULL || size != pdfont->u.type0.CMapName_size ||
+            memcmp(pdfont->u.type0.CMapName_data, *pcmn, size) != 0)
+        {
+            byte *chars = gs_alloc_bytes(pdev->pdf_memory->non_gc_memory, size, "pdf_font_resource_t(CMapName)");
+            if (chars == 0)
+                return_error(gs_error_VMerror);
+
+            memcpy(chars, *pcmn, size);
+
+            if (pdfont->u.type0.CMapName_data != NULL)
+                gs_free_object(pdev->pdf_memory->non_gc_memory, pdfont->u.type0.CMapName_data, "rewriting CMapName");
+            pdfont->u.type0.CMapName_data = chars;
+            pdfont->u.type0.CMapName_size = size;
+        }
+
+        gs_snprintf(pdfont->u.type0.Encoding_name, sizeof(pdfont->u.type0.Encoding_name), "/%s", *pcmn);
         pdfont->u.type0.cmap_is_standard = true;
     }
     pdfont->u.type0.WMode = pcmap->WMode;
@@ -409,7 +431,7 @@ scan_cmap_text(pdf_text_enum_t *pte, void *vbuf)
     gs_font_type0 *const font = (gs_font_type0 *)pte->orig_font; /* Type 0, fmap_CMap */
     /* Not sure. Changed for CDevProc callout. Was pte->current_font */
     gs_text_enum_t scan = *(gs_text_enum_t *)pte;
-    int wmode = font->WMode, code, rcode = 0;
+    int wmode = font->WMode == 0 ? 0 : 1, code, rcode = 0;
     pdf_font_resource_t *pdsubf0 = NULL;
     gs_font *subfont0 = NULL, *saved_subfont = NULL;
     uint index = scan.index, xy_index = scan.xy_index, start_index = index;
@@ -432,8 +454,9 @@ scan_cmap_text(pdf_text_enum_t *pte, void *vbuf)
         gs_font *subfont = NULL;
         gs_point wxy;
         bool font_change = 0;
+        gx_path *path = gs_text_enum_path(pte);
 
-        code = gx_path_current_point(pte->path, &pte->origin);
+        code = gx_path_current_point(path, &pte->origin);
         if (code < 0)
             return code;
         do {
@@ -449,6 +472,8 @@ scan_cmap_text(pdf_text_enum_t *pte, void *vbuf)
             break_xy_index = scan.xy_index;
             code = font->procs.next_char_glyph(&scan, &chr, &glyph);
             if (code == 2) {		/* end of string */
+                if (subfont == NULL)
+                    subfont = scan.fstack.items[scan.fstack.depth].font;
                 done = true;
                 break;
             }
@@ -770,12 +795,13 @@ scan_cmap_text(pdf_text_enum_t *pte, void *vbuf)
                 str.data = scan.text.data.bytes;
                 pdsubf = pdsubf0;
                 pte->text.operation = save_op;
+                pte->text.data.glyphs = save_data;
             }
-            pte->current_font = subfont0;
             if (!subfont0 || !pdsubf0)
                 /* This should be impossible */
                 return_error(gs_error_invalidfont);
 
+            pte->current_font = subfont0;
             code = gs_matrix_multiply(&subfont0->FontMatrix, &font->FontMatrix, &m3);
             /* We thought that it should be gs_matrix_multiply(&font->FontMatrix, &subfont0->FontMatrix, &m3); */
             if (code < 0)

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -42,7 +42,7 @@ private_st_gs_image3();
 
 /* Define the image type for ImageType 3 images. */
 const gx_image_type_t gs_image_type_3 = {
-    &st_gs_image3, gx_begin_image3, gx_data_image_source_size,
+    &st_gs_image3, gx_begin_image3,
     gx_image_no_sput, gx_image_no_sget, gx_image_default_release, 3
 };
 static const gx_image_enum_procs_t image3_enum_procs = {
@@ -100,7 +100,7 @@ make_mid_default(gx_device **pmidev, gx_device *dev, int width, int height,
                  gs_memory_t *mem)
 {
     gx_device_memory *midev =
-        gs_alloc_struct(mem, gx_device_memory, &st_device_memory,
+        gs_alloc_struct_immovable(mem, gx_device_memory, &st_device_memory,
                         "make_mid_default");
     int code;
 
@@ -146,10 +146,11 @@ make_mcde_default(gx_device *dev, const gs_gstate *pgs,
         return_error(gs_error_VMerror);
     bits.data = mdev->base;
     bits.raster = mdev->raster;
-    bits.size.x = mdev->width;
-    bits.size.y = mdev->height;
+    bits.size.x = bits.rep_width = mdev->width;
+    bits.size.y = bits.rep_height = mdev->height;
     bits.id = gx_no_bitmap_id;
     bits.num_planes = 1;
+    bits.rep_shift = bits.shift = 0;
     code = gx_mask_clip_initialize(mcdev, &gs_mask_clip_device,
                                    (const gx_bitmap *)&bits, dev,
                                    origin->x, origin->y, mem);
@@ -208,7 +209,8 @@ gx_begin_image3_generic(gx_device * dev,
     int code;
 
     /* Validate the parameters. */
-    if (pim->Height <= 0 || pim->MaskDict.Height <= 0)
+    if (pim->Width <= 0 || pim->MaskDict.Width <= 0 ||
+        pim->Height <= 0 || pim->MaskDict.Height <= 0)
         return_error(gs_error_rangecheck);
     switch (pim->InterleaveType) {
         default:

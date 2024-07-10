@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -248,7 +248,7 @@ px_define_font(px_font_t * pxfont, byte * header, ulong size, gs_id id,
 
     if (header[4] == plfst_TrueType) {
         pxfont->is_xl_format = true;
-        pl_prepend_xl_dummy_header(mem, &header);
+        pl_prepend_xl_dummy_header(mem, &header); /* lgtm [cpp/useless-expression] */
         pxfont->header = header;
         pxfont->header_size = gs_object_size(mem, header);
     } else {
@@ -512,7 +512,7 @@ pxSetFont(px_args_t * par, px_state_t * pxs)
                     {
                         char setstr[26];        /* 64-bit value plus message */
 
-                        gs_sprintf(setstr, " : %d", symbol_set);
+                        gs_snprintf(setstr, sizeof(setstr), " : %d", symbol_set);
                         strncat(pxs->error_line, setstr,
                                 px_max_error_line - strlen(pxs->error_line));
                         pxs->error_line[px_max_error_line] = 0;

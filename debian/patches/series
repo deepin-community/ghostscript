@@ -1,16 +1,5 @@
-020210320~3ab15c3.patch
-020210329~b923bba.patch
-020210401~d0440b3.patch
-020210412~d992855.patch
-020210416~d0661b8.patch
-020210517~15f9f3f.patch
-020210518~c9f55ec.patch
-020210529~9b9fd74.patch
-020210530~6804eba.patch
-020210713~e25dbf1.patch
-020210907~a9bd3de.patch
-1001_cross.patch
 1004_enable_spot_devices.patch
+1005_simplify_ps2ascii.patch
 2001_docdir_fix_for_debian.patch
 2002_gs_man_fix_debian.patch
 2003_support_multiarch.patch
@@ -19,6 +8,4 @@
 2006_suggest_install_ghostscript-doc_in_docs.patch
 2007_suggest_install_ghostscript-doc_in_code.patch
 2008_mention_ghostscript-x_in_docs.patch
-2009_use_system_javascript.patch
 2010_add_build_timestamp_setting.patch
-2011_avoid_remote_font.patch

@@ -1,4 +1,4 @@
-/* Copyright (C) 2019-2021 Artifex Software, Inc.
+/* Copyright (C) 2019-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* jp2ktop.c */
@@ -113,9 +113,6 @@ jp2k_detect_language(const char *s_, int len)
 static const pl_interp_characteristics_t jp2k_characteristics = {
     "JP2K",
     jp2k_detect_language,
-    "Artifex",
-    "0.01",
-    "22 Nov 2019"
 };
 
 /* Get implementation's characteristics */
@@ -353,7 +350,7 @@ bytes_until_uel(const stream_cursor_read *pr)
             p++;
         if (p == q)
             break;
-        avail = pr->limit - pr->ptr;
+        avail = q - p;
         if (memcmp(p, "\033%-12345X", min(avail, 9)) == 0) {
             /* At least a partial match to a UEL. Everything up to
              * the start of the match is up for grabs. */
@@ -570,6 +567,9 @@ do_process(jp2k_interp_instance_t *jp2k, stream_cursor_read * pr, bool eof)
                         goto early_flush;
                 }
 
+                if (jp2k->penum == NULL)
+                    goto flush;
+
                 code = gs_image_next(jp2k->penum, jp2k->stream_buffer, local_w.ptr + 1 - jp2k->stream_buffer, &used);
                 if (code < 0)
                     goto flush;
@@ -721,5 +721,6 @@ const pl_interp_implementation_t jp2k_implementation = {
   jp2k_impl_report_errors,
   jp2k_impl_dnit_job,
   jp2k_impl_deallocate_interp_instance,
-  NULL
+  NULL, /* jp2k_impl_reset */
+  NULL  /* interp_client_data */
 };

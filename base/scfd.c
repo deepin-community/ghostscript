@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -59,23 +59,30 @@ s_CFD_init(stream_state * st)
     if (raster < 0)
         return ERRC;
 
+    if (ss->Columns <= 0)
+        return ERRC;
+
     s_hcd_init_inline(ss);
     /* Because skip_white_pixels can look as many as 4 bytes ahead, */
     /* we need to allow 4 extra bytes at the end of the row buffers. */
-    ss->lbuf = gs_alloc_bytes(st->memory, raster + CFD_BUFFER_SLOP, "CFD lbuf");
+    ss->lbufstart = gs_alloc_bytes(st->memory, raster + CFD_BUFFER_SLOP * 2, "CFD lbuf");
     ss->lprev = 0;
-    if (ss->lbuf == 0)
+    if (ss->lbufstart == 0)
         return ERRC;		/****** WRONG ******/
+    ss->lbuf = ss->lbufstart + CFD_BUFFER_SLOP;
+    memset(ss->lbufstart, 0xaa, CFD_BUFFER_SLOP);
     memset(ss->lbuf, white, raster);
     memset(ss->lbuf + raster, 0xaa, CFD_BUFFER_SLOP);  /* for Valgrind */
     if (ss->K != 0) {
-        ss->lprev = gs_alloc_bytes(st->memory, raster + CFD_BUFFER_SLOP, "CFD lprev");
-        if (ss->lprev == 0)
+        ss->lprevstart = gs_alloc_bytes(st->memory, raster + CFD_BUFFER_SLOP * 2, "CFD lprev");
+        if (ss->lprevstart == 0)
             return ERRC;	/****** WRONG ******/
+        ss->lprev = ss->lprevstart + CFD_BUFFER_SLOP;
         /* Clear the initial reference line for 2-D encoding. */
         memset(ss->lprev, white, raster);
         /* Ensure that the scan of the reference line will stop. */
         memset(ss->lprev + raster, 0xaa, CFD_BUFFER_SLOP);
+        memset(ss->lprevstart, 0xaa, CFD_BUFFER_SLOP);
     }
     ss->k_left = min(ss->K, 0);
     ss->run_color = 0;
@@ -98,8 +105,8 @@ s_CFD_release(stream_state * st)
 {
     stream_CFD_state *const ss = (stream_CFD_state *) st;
 
-    gs_free_object(st->memory, ss->lprev, "CFD lprev(close)");
-    gs_free_object(st->memory, ss->lbuf, "CFD lbuf(close)");
+    gs_free_object(st->memory, ss->lprevstart, "CFD lprev(close)");
+    gs_free_object(st->memory, ss->lbufstart, "CFD lbuf(close)");
 }
 
 /* Declare the variables that hold the state. */
@@ -207,17 +214,18 @@ static inline int skip_data(stream_CFD_state *ss, stream_cursor_read *pr, int rl
 
 static inline int invert_data(stream_CFD_state *ss, stream_cursor_read *pr, int *rlen, byte black_byte)
 {
+    byte *qlim = ss->lbuf + ss->raster + CFD_BUFFER_SLOP;
     cfd_declare_state;
     cfd_load_state();
     (void)rlimit;
 
-    if (q >= ss->lbuf + ss->raster + CFD_BUFFER_SLOP) {
+    if (q >= qlim || q < ss->lbufstart) {
         return(-1);
     }
 
     if ( (*rlen) > qbit )
     {
-        if (q + ((*rlen - qbit) >> 3) > ss->lbuf + ss->raster + CFD_BUFFER_SLOP) {
+        if (q + ((*rlen - qbit) >> 3) > qlim) {
             return(-1);
         }
 
@@ -228,6 +236,10 @@ static inline int invert_data(stream_CFD_state *ss, stream_cursor_read *pr, int 
             q++;
         }
         (*rlen) -= qbit;
+
+        if (q + ((*rlen) >> 3) >= qlim) {
+            return(-1);
+        }
 
         switch ( (*rlen) >> 3 )
         {
@@ -300,7 +312,11 @@ s_CFD_process(stream_state * st, stream_cursor_read * pr,
 
 #endif
 
-  top:
+    /* Update the pointers we actually use, in case GC moved the buffer */
+    ss->lbuf = ss->lbufstart + CFD_BUFFER_SLOP;
+    ss->lprev = ss->lprevstart + CFD_BUFFER_SLOP;
+
+top:
 #ifdef DEBUG
     {
         hcd_declare_state;
@@ -370,9 +386,12 @@ s_CFD_process(stream_state * st, stream_cursor_read * pr,
             goto ck_eol;	/* handle EOD if it is present */
         if (ss->K != 0) {
             byte *prev_bits = ss->lprev;
+            byte *prev_start = ss->lprevstart;
 
             ss->lprev = ss->lbuf;
+            ss->lprevstart = ss->lbufstart;
             ss->lbuf = prev_bits;
+            ss->lbufstart = prev_start;
             if (ss->K > 0)
                 k_left = (k_left == 0 ? ss->K : k_left) - 1;
         }

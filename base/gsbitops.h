@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -257,7 +257,7 @@ static int inline sample_store_next8(uint value, byte **dptr, int *dbit, int dbp
             if ( *dbit ^= 4 )
                 *dbbyte = (byte)(value << 4);
             else
-                *(*dptr)++ = *dbbyte | ((byte)value);\
+                *(*dptr)++ = *dbbyte | ((byte)value);
             break;
         case 2:
             *(*dptr)++ = (byte)value;
@@ -500,6 +500,12 @@ int bytes_rectangle_is_const(const byte * src, uint src_raster, int width_bytes,
 /* Copy a rectangle of bytes, ensuring that any padding bits at the end
  * of each dest_raster line are zeroed. */
 void bytes_copy_rectangle_zero_padding(byte * dest, uint dest_raster,
+    const byte * src, uint src_raster, int width_bytes, int height);
+
+/* Copy a rectangle of bytes, ensuring that any padding bits at the end
+ * of each dest_raster line are zeroed. The last row is copied without
+ * any padding. */
+void bytes_copy_rectangle_zero_padding_last_short(byte * dest, uint dest_raster,
     const byte * src, uint src_raster, int width_bytes, int height);
 
 #endif /* gsbitops_INCLUDED */

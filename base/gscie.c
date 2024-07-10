@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -842,11 +842,25 @@ gs_cie_cache_init(cie_cache_params * pcache, gs_sample_loop_params_t * pslp,
         const double X = -N * A / R;	/* know X > 0 */
         /* Choose K to minimize range expansion. */
         const int K = (int)(A + B < 0 ? floor(X) : ceil(X)); /* know 0 < K < N */
-        const double Ca = -A / K, Cb = B / (N - K); /* know Ca, Cb > 0 */
-        double C = max(Ca, Cb);	/* know C > 0 */
         const int M = ARCH_FLOAT_MANTISSA_BITS - CEIL_LOG2_N;
         int cexp;
-        const double cfrac = frexp(C, &cexp);
+
+        double Ca, Cb;
+        double C;
+        double cfrac;
+
+        if (K != 0)
+            Ca = -A / K;
+        else
+            Ca = 0;
+
+        if (N != K)
+            Cb = B / (N - K); /* know Ca, Cb > 0 */
+        else
+            Cb = 0;
+
+        C = max(Ca, Cb);	/* know C > 0 */
+        cfrac = frexp(C, &cexp);
 
         if_debug4('c', "[c]adjusting cache_init(%8g, %8g), X = %8g, K = %d:\n",
                   A, B, X, K);

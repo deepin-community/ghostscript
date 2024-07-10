@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -93,6 +93,10 @@ xps_parse_color(xps_context_t *ctx, char *base_uri, char *string,
         }
         else
         {
+            if (strlen(string) < 7) {
+                gs_warn1("Colour specification '%s' is invalid (wrong length)", string);
+                return;
+            }
             samples[0] = 255.0;
             samples[1] = (float)(unhex(string[1]) * 16 + unhex(string[2]));
             samples[2] = (float)(unhex(string[3]) * 16 + unhex(string[4]));

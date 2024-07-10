@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -84,29 +84,6 @@ static const byte inverse_natural_order[DCTSIZE2] =
 #endif
 
 /* ================ Get parameters ================ */
-
-static int
-quant_param_string(gs_param_string * pstr, int count, const UINT16 * pvals,
-                   double QFactor, gs_memory_t * mem)
-{
-    byte *data;
-    int code = 0;
-    int i;
-
-    data = gs_alloc_string(mem, count, "quant_param_string");
-    if (data == 0)
-        return_error(gs_error_VMerror);
-    for (i = 0; i < count; ++i) {
-        double val = pvals[jpeg_inverse_order(i)] / QFactor;
-
-        data[i] =
-            (val < 1 ? (code = 1) : val > 255 ? (code = 255) : (byte) val);
-    }
-    pstr->data = data;
-    pstr->size = count;
-    pstr->persistent = true;
-    return code & 1;
-}
 
 static int
 quant_param_array(gs_param_float_array * pfa, int count, const UINT16 * pvals,
@@ -198,28 +175,9 @@ s_DCT_get_quantization_tables(gs_param_list * plist,
         return code;
     for (i = 0; i < num_in_tables; ++i) {
         char key[3];
-        gs_param_string str;
         gs_param_float_array fa;
 
-        gs_sprintf(key, "%d", i);
-        if (QFactor == 1.0) {
-            code = quant_param_string(&str, DCTSIZE2,
-                            table_ptrs[comp_info[i].quant_tbl_no]->quantval,
-                                      QFactor, mem);
-            switch (code) {
-                case 0:
-                    code = param_write_string(quant_tables.list, key, &str);
-                    if (code < 0)
-                        return code;	/* should dealloc */
-                    continue;
-                default:
-                    return code;	/* should dealloc */
-                case 1:
-                    break;
-            }
-            gs_free_const_string(mem, str.data, str.size,
-                                 "quant_param_string");
-        }
+        gs_snprintf(key, sizeof(key), "%d", i);
         code = quant_param_array(&fa, DCTSIZE2,
                             table_ptrs[comp_info[i].quant_tbl_no]->quantval,
                                  QFactor, mem);
@@ -434,11 +392,11 @@ int
 s_DCT_put_params(gs_param_list * plist, stream_DCT_state * pdct)
 {
     int code =
-    gs_param_read_items(plist, pdct, s_DCT_param_items);
+    gs_param_read_items(plist, pdct, s_DCT_param_items, NULL);
 
     if (code < 0)
         return code;
-    code = gs_param_read_items(plist, pdct->data.common, jsd_param_items);
+    code = gs_param_read_items(plist, pdct->data.common, jsd_param_items, NULL);
     if (code < 0)
         return code;
     if (pdct->data.common->Picky < 0 || pdct->data.common->Picky > 1 ||
@@ -490,7 +448,7 @@ s_DCT_put_quantization_tables(gs_param_list * plist, stream_DCT_state * pdct,
         char istr[5];		/* i converted to string key */
         UINT16 values[DCTSIZE2];
 
-        gs_sprintf(istr, "%d", i);
+        gs_snprintf(istr, sizeof(istr), "%d", i);
         code = quant_params(quant_tables.list, istr, DCTSIZE2, values,
                             pdct->QFactor);
         if (code < 0)
@@ -582,7 +540,7 @@ s_DCT_put_huffman_tables(gs_param_list * plist, stream_DCT_state * pdct,
         UINT8 counts[16], values[256];
 
         /* Collect the Huffman parameters. */
-        gs_sprintf(istr, "%d", i);
+        gs_snprintf(istr, sizeof(istr), "%d", i);
         code = s_DCT_byte_params(huff_tables.list, istr, 0, 16, counts);
         if (code < 0)
             return code;

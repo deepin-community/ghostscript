@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -40,6 +40,8 @@
 #include "gdevprn.h"
 #include "stream.h"
 #include "strimpl.h"
+
+/* #define EXTRA_OFFSET_MAP_DEBUGGING */
 
 /* forward decl */
 private_st_clist_icctable_entry();
@@ -72,8 +74,10 @@ typedef struct stream_band_read_state_s {
 #ifdef DEBUG
     bool skip_first;
     cbuf_offset_map_elem *offset_map;
+    int bytes_skipped;
     int offset_map_length;
     int offset_map_max_length;
+    int skip_next;
 #endif
 } stream_band_read_state;
 
@@ -87,7 +91,7 @@ s_band_read_init(stream_state * st)
     ss->b_this.band_min = 0;
     ss->b_this.band_max = 0;
     ss->b_this.pos = 0;
-    return io_procs->rewind(ss->page_bfile, false, ss->page_bfname);
+    return io_procs->rewind(ss->page_info.bfile, false, ss->page_info.bfname);
 }
 
 #ifdef DEBUG
@@ -104,15 +108,18 @@ s_band_read_init_offset_map(gx_device_clist_reader *crdev, stream_state * st)
         if (ss->offset_map == NULL)
             return_error(gs_error_VMerror);
         ss->offset_map[0].buffered = 0;
+        ss->bytes_skipped = 0;
         crdev->offset_map = ss->offset_map; /* Prevent collecting it as garbage.
                                             Debugged with ppmraw -r300 014-09.ps . */
     } else {
         ss->offset_map_length = 0;
         ss->offset_map_max_length = 0;
         ss->offset_map = NULL;
+        ss->bytes_skipped = 0;
         crdev->offset_map = NULL;
     }
     ss->skip_first = true;
+    ss->skip_next = 0;
     return 0;
 }
 
@@ -135,21 +142,46 @@ s_band_read_process(stream_state * st, stream_cursor_read * ignore_pr,
     stream_band_read_state *const ss = (stream_band_read_state *) st;
     register byte *q = pw->ptr;
     byte *wlimit = pw->limit;
-    clist_file_ptr cfile = ss->page_cfile;
-    clist_file_ptr bfile = ss->page_bfile;
+    clist_file_ptr cfile = ss->page_info.cfile;
+    clist_file_ptr bfile = ss->page_info.bfile;
     uint left = ss->left;
     int status = 1;
     uint count;
     const clist_io_procs_t *io_procs = ss->page_info.io_procs;
+    int64_t pos;
 
+    /* left = number of bytes unread in the current command. */
+    /* count = number of bytes we have room in our buffer for. */
     while ((count = wlimit - q) != 0) {
-        if (left) {		/* Read more data for the current run. */
+        int bmin, bmax;
+        /* If there is more data to be read in the current command, then pull that in. */
+        if (left) {
             if (count > left)
                 count = left;
-#	    ifdef DEBUG
-                if (gs_debug_c('L'))
+#ifdef DEBUG
+            if (gs_debug_c('L')) {
+                if (ss->skip_next) {
+                    /* This buffer fill is NOT going into the normal buffer. */
+                    ss->skip_next = 0;
+                    ss->bytes_skipped += count;
+#ifdef EXTRA_OFFSET_MAP_DEBUGGING
+                    if (ss->offset_map_length != 1) {
+                        dmlprintf(ss->local_memory, "offset_map: confused!\n");
+                        exit(1);
+                    }
+#endif
+                } else {
+#ifdef EXTRA_OFFSET_MAP_DEBUGGING
+                    if (ss->offset_map[ss->offset_map_length - 1].buffered + count > cbuf_size*2) {
+                        dmlprintf2(ss->local_memory, "Invalid update to buffered. %d %d\n",
+                                   ss->offset_map[ss->offset_map_length - 1].buffered, count);
+                        exit(1);
+                    }
+#endif
                     ss->offset_map[ss->offset_map_length - 1].buffered += count;
-#	    endif
+                }
+            }
+#endif
             io_procs->fread_chars(q + 1, count, cfile);
             if (io_procs->ferror_code(cfile) < 0) {
                 status = ERRC;
@@ -160,47 +192,51 @@ s_band_read_process(stream_state * st, stream_cursor_read * ignore_pr,
             process_interrupts(ss->local_memory);
             continue;
         }
-rb:
-        /*
-         * Scan for the next run for the current bands (or a band range
-         * that includes a current band).
-         */
-        if (ss->b_this.band_min == cmd_band_end &&
-            io_procs->ftell(bfile) == ss->page_bfile_end_pos
-            ) {
-            status = EOFC;
-            break;
-        } {
-            int bmin = ss->b_this.band_min;
-            int bmax = ss->b_this.band_max;
-            int64_t pos = ss->b_this.pos;
+        /* The current command is over. So find the next command in the bfile
+         * that applies to the current band(s) and read that in. */
+        do {
             int nread;
+            /* If we hit eof, end! */
+            /* Could this test be moved into the nread < sizeof() test below? */
+            if (ss->b_this.band_min == cmd_band_end &&
+                io_procs->ftell(bfile) == ss->page_info.bfile_end_pos) {
+                pw->ptr = q;
+                ss->left = left;
+                return EOFC;
+            }
 
+            /* Read the next cmd_block from the bfile. Each cmd_block contains
+             * the bands to use, and the file position of the END of the data.
+             * We therefore want to read the data from the file position given
+             * in the PREVIOUS record onwards, and compare to the band min/max
+             * given there too. */
+            bmin = ss->b_this.band_min;
+            bmax = ss->b_this.band_max;
+            pos = ss->b_this.pos; /* Record where our data starts! */
             nread = io_procs->fread_chars(&ss->b_this, sizeof(ss->b_this), bfile);
             if (nread < sizeof(ss->b_this)) {
                 DISCARD(gs_note_error(gs_error_unregistered)); /* Must not happen. */
                 return ERRC;
             }
-            if (!(ss->band_last >= bmin && ss->band_first <= bmax))
-                goto rb;
-            io_procs->fseek(cfile, pos, SEEK_SET, ss->page_cfname);
-            left = (uint) (ss->b_this.pos - pos);
-#	    ifdef DEBUG
-            if (left > 0  && gs_debug_c('L')) {
-                if (ss->offset_map_length >= ss->offset_map_max_length) {
-                    DISCARD(gs_note_error(gs_error_unregistered)); /* Must not happen. */
-                    return ERRC;
-                }
-                ss->offset_map[ss->offset_map_length].file_offset = pos;
-                ss->offset_map[ss->offset_map_length].buffered = 0;
-                ss->offset_map_length++;
+        } while (ss->band_last < bmin || ss->band_first > bmax);
+        /* So let's set up to read the actual command data from cfile. Seek... */
+        io_procs->fseek(cfile, pos, SEEK_SET, ss->page_info.cfname);
+        left = (uint) (ss->b_this.pos - pos);
+#ifdef DEBUG
+        if (left > 0  && gs_debug_c('L')) {
+            if (ss->offset_map_length >= ss->offset_map_max_length) {
+                DISCARD(gs_note_error(gs_error_unregistered)); /* Must not happen. */
+                return ERRC;
             }
-#	    endif
-            if_debug5m('l', ss->local_memory,
-                      "[l]reading for bands (%d,%d) at bfile %"PRId64", cfile %"PRId64", length %u\n",
-                      bmin, bmax,
-                      (io_procs->ftell(bfile) - sizeof(ss->b_this)), (int64_t)pos, left);
+            ss->offset_map[ss->offset_map_length].file_offset = pos;
+            ss->offset_map[ss->offset_map_length].buffered = 0;
+            ss->offset_map_length++;
         }
+#endif
+        if_debug5m('l', ss->local_memory,
+                   "[l]reading for bands (%d,%d) at bfile %"PRId64", cfile %"PRId64", length %u\n",
+                   bmin, bmax,
+                   (io_procs->ftell(bfile) - sizeof(ss->b_this)), (int64_t)pos, left);
     }
     pw->ptr = q;
     ss->left = left;
@@ -213,11 +249,43 @@ static const stream_template s_band_read_template = {
 };
 
 #ifdef DEBUG
+/* In DEBUG builds, we maintain an "offset_map" within stream_band_read_state,
+ * that allows us to relate offsets within the buffer, to offsets within the
+ * cfile.
+ *
+ * At any given point, for stream_band_read_state *ss:
+ *    There are n = ss->offset_map_length records in the table.
+ *    offset = 0;
+ *    for (i = 0; i < n; i++)
+ *       // Offset 'offset' in the buffer corresponds to ss->offset_map[i].file_offset in the file.
+ *       offset += ss->offset_map[i].buffered
+ *
+ * As we pull data from the stream, we keep file_offset and buffered up to date. Note that
+ * there are 2 cbuf_size sized buffers in play here. The cmd_buffer has one cbuf_size sized
+ * buffer in it. Data is pulled into that from the stream, which has another cbuf_sized
+ * buffer into it. Accordingly, 'buffered' should never be > 2*cbuf_size = 8192.
+ *
+ * Sometimes we will pull data out of the stream, bypassing the cmd_buffer's buffer. In this
+ * case, we 'skip' data, and record the number of bytes skipped in ss->bytes_skipped. This
+ * should only ever happen when we have already advanced as much as possible (i.e. when the
+ * current offset is in the first record).
+ */
+
+/* Given buffer_offset (an offset within the buffer), return the number of the offset_map
+ * record that contains it. Also fill poffset0 in with the offset of the start of that
+ * record within the buffer. (NOTE, depending on how much of the record has already been
+ * read, some bytes may already have been lost). */
 static int
 buffer_segment_index(const stream_band_read_state *ss, uint buffer_offset, uint *poffset0)
 {
     uint i, offset0, offset = 0;
 
+#ifdef EXTRA_OFFSET_MAP_DEBUGGING
+    dmlprintf1(ss->local_memory, "buffer_segment_index: buffer_offset=%d\n", buffer_offset);
+    for (i = 0; i < ss->offset_map_length; i++) {
+        dmlprintf3(ss->local_memory, " offset_map[%d].file_offset=%"PRId64" buffered=%d\n", i, ss->offset_map[i].file_offset, ss->offset_map[i].buffered);
+    }
+#endif
     for (i = 0; i < ss->offset_map_length; i++) {
         offset0 = offset;
         offset += ss->offset_map[i].buffered;
@@ -226,10 +294,23 @@ buffer_segment_index(const stream_band_read_state *ss, uint buffer_offset, uint 
             return i;
         }
     }
+    /* Now cope with the case where we've read exactly to the end of the buffer.
+    * There might be more data still to come. */
+    if (buffer_offset == offset) {
+      *poffset0 = offset0;
+      return i-1;
+    }
+#ifdef EXTRA_OFFSET_MAP_DEBUGGING
+    dmlprintf1(ss->local_memory, "buffer_segment_index fail: buffer_offset=%d not found\n", buffer_offset);
+    exit(1);
+#else
     (void)gs_note_error(gs_error_unregistered); /* Must not happen. */
+#endif
     return -1;
 }
 
+/* Map from a buffer offset, to the offset of the corresponding byte in the
+ * cfile. */
 int64_t
 clist_file_offset(const stream_state * st, uint buffer_offset)
 {
@@ -237,12 +318,10 @@ clist_file_offset(const stream_state * st, uint buffer_offset)
     uint offset0;
     int i = buffer_segment_index(ss, buffer_offset, &offset0);
 
-    if (i < 0)
-        return -1;
     return ss->offset_map[i].file_offset + (uint)(buffer_offset - offset0);
 }
 
-int
+void
 top_up_offset_map(stream_state * st, const byte *buf, const byte *ptr, const byte *end)
 {
     /* NOTE: The clist data are buffered in the clist reader buffer and in the
@@ -250,32 +329,75 @@ top_up_offset_map(stream_state * st, const byte *buf, const byte *ptr, const byt
        from s_band_read_process, offset_map corresponds the union of the 2 buffers.
      */
     stream_band_read_state *const ss = (stream_band_read_state *) st;
+    uint buffer_offset, offset0, consumed;
+    int i;
 
-    if (!gs_debug_c('L')) {
-        return 0;
-    } else if (ss->skip_first) {
+#ifdef EXTRA_OFFSET_MAP_DEBUGGING
+    if (ptr < buf || end < ptr || end < buf || end > buf + cbuf_size)
+    {
+        dmlprintf3(ss->local_memory, "Invalid pointers for top_up_offset_map: buf=%p ptr=%p end=%p\n", buf, ptr, end);
+    }
+#endif
+
+    if (!gs_debug_c('L'))
+        return;
+    if (ss->skip_first) {
         /* Work around the trick with initializing the buffer pointer with the buffer end. */
         ss->skip_first = false;
-        return 0;
-    } else if (ptr == buf)
-        return 0;
-    else {
-        uint buffer_offset = ptr - buf;
-        uint offset0, consumed;
-        int i = buffer_segment_index(ss, buffer_offset, &offset0);
-
-        if (i < 0)
-            return_error(gs_error_unregistered); /* Must not happen. */
-        consumed = buffer_offset - offset0;
-        ss->offset_map[i].buffered -= consumed;
-        ss->offset_map[i].file_offset += consumed;
-        if (i) {
-            memmove(ss->offset_map, ss->offset_map + i,
-                (ss->offset_map_length - i) * sizeof(*ss->offset_map));
-            ss->offset_map_length -= i;
-        }
+        return;
     }
-    return 0;
+    if (ptr == buf)
+        return;
+
+    /* We know that buf <= ptr <= end <= buf+4096, so uint is quite enough! */
+    buffer_offset = ptr - buf;
+    i = buffer_segment_index(ss, buffer_offset, &offset0);
+
+    consumed = buffer_offset - offset0;
+#ifdef EXTRA_OFFSET_MAP_DEBUGGING
+    dmlprintf3(ss->local_memory, "offset_map: dump %d entries + %d bytes + %d skipped bytes\n", i, consumed, ss->bytes_skipped);
+    if (ss->offset_map[i].buffered < consumed) {
+        dmlprintf2(ss->local_memory, "Invalid update to buffered. B %d %d\n", ss->offset_map[i].buffered, consumed);
+        exit(1);
+    }
+#endif
+    ss->offset_map[i].buffered -= consumed;
+    ss->offset_map[i].file_offset += consumed;
+    ss->bytes_skipped = 0;
+    if (i) {
+        memmove(ss->offset_map, ss->offset_map + i,
+                (ss->offset_map_length - i) * sizeof(*ss->offset_map));
+        ss->offset_map_length -= i;
+    }
+}
+
+/* This function is called when data is copied from the stream out into a separate
+ * buffer without going through the usual clist buffers. Essentially data for the
+ * id we are reading at buffer_offset within the buffer is skipped. */
+void adjust_offset_map_for_skipped_data(stream_state *st, uint buffer_offset, uint skipped)
+{
+    uint offset0;
+    stream_band_read_state *const ss = (stream_band_read_state *) st;
+    int i;
+
+    if (!gs_debug_c('L'))
+        return;
+
+    i = buffer_segment_index(ss, buffer_offset, &offset0);
+
+    ss->offset_map[i].buffered -= skipped;
+    ss->offset_map[i].file_offset += skipped;
+}
+
+void
+offset_map_next_data_out_of_band(stream_state *st)
+{
+    stream_band_read_state *const ss = (stream_band_read_state *) st;
+
+    if (!gs_debug_c('L'))
+        return;
+
+    ss->skip_next = 1;
 }
 #endif /* DEBUG */
 
@@ -590,7 +712,7 @@ clist_render_init(gx_device_clist *dev)
 /* Copy a rasterized rectangle to the client, rasterizing if needed. */
 int
 clist_get_bits_rectangle(gx_device *dev, const gs_int_rect * prect,
-                         gs_get_bits_params_t *params, gs_int_rect **unread)
+                         gs_get_bits_params_t *params)
 {
     gx_device_clist *cldev = (gx_device_clist *)dev;
     gx_device_clist_reader *crdev = &cldev->reader;
@@ -631,8 +753,7 @@ clist_get_bits_rectangle(gx_device *dev, const gs_int_rect * prect,
         for (i = 0; i < num_planes; ++i)
             if (params->data[i]) {
                 if (plane_index >= 0)  /* >1 plane requested */
-                    return gx_default_get_bits_rectangle(dev, prect, params,
-                                                         unread);
+                    return gx_default_get_bits_rectangle(dev, prect, params);
                 plane_index = i;
             }
     }
@@ -644,7 +765,7 @@ clist_get_bits_rectangle(gx_device *dev, const gs_int_rect * prect,
     code = gdev_create_buf_device(cdev->buf_procs.create_buf_device,
                                   &bdev, cdev->target, y, &render_plane,
                                   dev->memory,
-                                  &(crdev->color_usage_array[y/crdev->page_band_height]));
+                                  &(crdev->color_usage_array[y/crdev->page_info.band_params.BandHeight]));
     if (code < 0)
         return code;
     code = clist_rasterize_lines(dev, y, line_count, bdev, &render_plane, &my);
@@ -655,7 +776,7 @@ clist_get_bits_rectangle(gx_device *dev, const gs_int_rect * prect,
         band_rect.p.y = my;
         band_rect.q.y = my + lines_rasterized;
         code = dev_proc(bdev, get_bits_rectangle)
-            (bdev, &band_rect, params, unread);
+            (bdev, &band_rect, params);
     }
     cdev->buf_procs.destroy_buf_device(bdev);
     if (code < 0 || lines_rasterized == line_count)
@@ -668,7 +789,7 @@ clist_get_bits_rectangle(gx_device *dev, const gs_int_rect * prect,
      * rectangles, punt.
      */
     if (!(options & GB_RETURN_COPY) || code > 0)
-        return gx_default_get_bits_rectangle(dev, prect, params, unread);
+        return gx_default_get_bits_rectangle(dev, prect, params);
     options = params->options;
     if (!(options & GB_RETURN_COPY)) {
         /* Redo the first piece with copying. */
@@ -683,7 +804,7 @@ clist_get_bits_rectangle(gx_device *dev, const gs_int_rect * prect,
         code = gdev_create_buf_device(cdev->buf_procs.create_buf_device,
                                       &bdev, cdev->target, y, &render_plane,
                                       dev->memory,
-                                      &(crdev->color_usage_array[y/crdev->page_band_height]));
+                                      &(crdev->color_usage_array[y/crdev->page_info.band_params.BandHeight]));
         if (code < 0)
             return code;
         band_params = *params;
@@ -703,7 +824,7 @@ clist_get_bits_rectangle(gx_device *dev, const gs_int_rect * prect,
             band_rect.p.y = my;
             band_rect.q.y = my + lines_rasterized;
             code = dev_proc(bdev, get_bits_rectangle)
-                (bdev, &band_rect, &band_params, unread);
+                (bdev, &band_rect, &band_params);
             if (code < 0)
                 break;
             params->options = options = band_params.options;
@@ -726,8 +847,8 @@ clist_rasterize_lines(gx_device *dev, int y, int line_count,
     gx_device_clist_reader * const crdev = &cldev->reader;
     gx_device *target = crdev->target;
     uint raster = clist_plane_raster(target, render_plane);
-    byte *mdata = crdev->data + crdev->page_tile_cache_size;
-    byte *mlines = (crdev->page_line_ptrs_offset == 0 ? NULL : mdata + crdev->page_line_ptrs_offset);
+    byte *mdata = crdev->data + crdev->page_info.tile_cache_size;
+    byte *mlines = (crdev->page_info.line_ptrs_offset == 0 ? NULL : mdata + crdev->page_info.line_ptrs_offset);
     int plane_index = (render_plane ? render_plane->index : -1);
     int code;
 
@@ -735,7 +856,7 @@ clist_rasterize_lines(gx_device *dev, int y, int line_count,
     if (crdev->ymin < 0 || crdev->yplane.index != plane_index ||
         !(y >= crdev->ymin && y < crdev->ymax)
         ) {
-        int band_height = crdev->page_band_height;
+        int band_height = crdev->page_info.band_params.BandHeight;
         int band = y / band_height;
         int band_begin_line = band * band_height;
         int band_end_line = band_begin_line + band_height;
@@ -793,7 +914,7 @@ clist_render_rectangle(gx_device_clist *cldev, const gs_int_rect *prect,
     gx_device_clist_reader * const crdev = &cldev->reader;
     const gx_placed_page *ppages;
     int num_pages = crdev->num_pages;
-    int band_height = crdev->page_band_height;
+    int band_height = crdev->page_info.band_params.BandHeight;
     int band_first = prect->p.y / band_height;
     int band_last = (prect->q.y - 1) / band_height;
     gx_band_page_info_t *pinfo;
@@ -833,10 +954,11 @@ clist_render_rectangle(gx_device_clist *cldev, const gs_int_rect *prect,
 
             /* Store the page information. */
             page_info.cfile = page_info.bfile = NULL;
-            strncpy(page_info.cfname, ppage->page->cfname, sizeof(page_info.cfname)-1);
-            strncpy(page_info.bfname, ppage->page->bfname, sizeof(page_info.bfname)-1);
+            memcpy(page_info.cfname, ppage->page->cfname, sizeof(page_info.cfname));
+            memcpy(page_info.bfname, ppage->page->bfname, sizeof(page_info.bfname));
             page_info.io_procs = ppage->page->io_procs;
             page_info.tile_cache_size = ppage->page->tile_cache_size;
+            page_info.line_ptrs_offset = ppage->page->line_ptrs_offset;
             page_info.bfile_end_pos = ppage->page->bfile_end_pos;
             page_info.band_params = ppage->page->band_params;
             pinfo = &page_info;
@@ -905,19 +1027,19 @@ clist_playback_file_bands(clist_playback_action action,
     rs.local_memory = mem;
 
     /* If this is a saved page, open the files. */
-    if (rs.page_cfile == 0) {
-        code = crdev->page_info.io_procs->fopen(rs.page_cfname,
-                           gp_fmode_rb, &rs.page_cfile, crdev->bandlist_memory,
+    if (rs.page_info.cfile == 0) {
+        code = crdev->page_info.io_procs->fopen(rs.page_info.cfname,
+                           gp_fmode_rb, &rs.page_info.cfile, crdev->bandlist_memory,
                            crdev->bandlist_memory, true);
         opened_cfile = (code >= 0);
     }
-    if (rs.page_bfile == 0 && code >= 0) {
-        code = crdev->page_info.io_procs->fopen(rs.page_bfname,
-                           gp_fmode_rb, &rs.page_bfile, crdev->bandlist_memory,
+    if (rs.page_info.bfile == 0 && code >= 0) {
+        code = crdev->page_info.io_procs->fopen(rs.page_info.bfname,
+                           gp_fmode_rb, &rs.page_info.bfile, crdev->bandlist_memory,
                            crdev->bandlist_memory, false);
         opened_bfile = (code >= 0);
     }
-    if (rs.page_cfile != 0 && rs.page_bfile != 0) {
+    if (rs.page_info.cfile != 0 && rs.page_info.bfile != 0) {
         stream s;
         byte sbuf[cbuf_size];
         static const stream_procs no_procs = {
@@ -942,10 +1064,10 @@ clist_playback_file_bands(clist_playback_action action,
     }
 
     /* Close the files if we just opened them. */
-    if (opened_bfile && rs.page_bfile != 0)
-        crdev->page_info.io_procs->fclose(rs.page_bfile, rs.page_bfname, false);
-    if (opened_cfile && rs.page_cfile != 0)
-        crdev->page_info.io_procs->fclose(rs.page_cfile, rs.page_cfname, false);
+    if (opened_bfile && rs.page_info.bfile != 0)
+        crdev->page_info.io_procs->fclose(rs.page_info.bfile, rs.page_info.bfname, false);
+    if (opened_cfile && rs.page_info.cfile != 0)
+        crdev->page_info.io_procs->fclose(rs.page_info.cfile, rs.page_info.cfname, false);
 
     return code;
 }

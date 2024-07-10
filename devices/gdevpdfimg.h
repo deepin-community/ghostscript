@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 #ifndef gdevpdfimg_h_INCLUDED
@@ -25,6 +25,11 @@
  */
 #define PDFIMG_STATIC_OBJS 4
 #define OCR_MAX_FILE_OBJECTS 8
+/* This is the number of objects per page: 1: the image object,
+ * 2: the length object for the image object, 3: the page stream
+ * object. 4: the page dict object, 5: the length object for
+ * the page stream object. */
+#define PDFIMG_OBJS_PER_PAGE 5
 
 typedef struct pdfimage_page_s {
     int ImageObjectNumber;
@@ -35,6 +40,8 @@ typedef struct pdfimage_page_s {
     gs_offset_t PageStreamOffset;
     int PageDictObjectNumber;
     gs_offset_t PageDictOffset;
+    int PageLengthObjectNumber;
+    gs_offset_t PageLengthOffset;
     void *next;
 } pdfimage_page;
 
@@ -66,6 +73,9 @@ typedef struct gx_device_pdf_image_s {
     PCLm_temp_file_t xref_stream;
     PCLm_temp_file_t temp_stream;
     int NextObject;
+
+    int Tumble;
+    int Tumble2;
 
     /* OCR data */
     struct {

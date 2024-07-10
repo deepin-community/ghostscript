@@ -1,4 +1,4 @@
-% Copyright (C) 2001-2021 Artifex Software, Inc.
+% Copyright (C) 2001-2023 Artifex Software, Inc.
 % All Rights Reserved.
 %
 % This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 % of the license contained in the file LICENSE in this distribution.
 %
 % Refer to licensing information at http://www.artifex.com or contact
-% Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-% CA 94945, U.S.A., +1(415)492-9861, for further information.
+% Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+% CA 94129, USA, for further information.
 %
 
 % Redefine CIDFont category with an emulation with True Type fonts.
@@ -52,14 +52,14 @@ currentdict /super.complete_instance currentdict /complete_instance get put
     % Now fill it :
     Decoding TT_cmap SubstNWP GDBytes CIDMap .fillCIDMap
   currentdict end
-} bind def
+} .internalbind def
 
 /GenerateIdentityCIDMap   % <font> GenerateCIDMap <font>
 { begin
     /CIDMap [ 44000 string 44000 string 44000 string] def
     CIDMap .fillIdentityCIDMap
   currentdict end
-} bind def
+} .internalbind def
 
 /load_sfnts  % <FontDict> load_sfnts <FontDict>
 { % Read the True Type file from the path /Path, and buld /sfnts,
@@ -104,7 +104,7 @@ currentdict /super.complete_instance currentdict /complete_instance get put
     //ChooseDecoding exec                                  % <font>
     //GenerateCIDMap exec                                  % <font>
   } ifelse
-} bind def
+} .internalbind def
 
 %-----------TrueType-specific methods for category redefinition : -----------
 
@@ -129,14 +129,14 @@ currentdict /super.complete_instance currentdict /complete_instance get put
     } ifelse
   } ifelse
   end
-} bind def
+} .internalbind def
 
 /complete_instance  % <font_name> <FontDict> <Options> complete_FAPI_Font <font_name> <FontDict>
 { 1 index /CIDFontType 2 put % Other types are not emulated yet.
   //super.complete_instance exec
   //RefinePath exec
   //load_sfnts exec
-} bind def
+} .internalbind def
 
 /ValidFileTypes
 <<
@@ -147,13 +147,13 @@ currentdict /super.complete_instance currentdict /complete_instance get put
 /IsMyRecord      % <raw_record> -> <raw_record> bool
 {
   dup type /dicttype eq { dup /FileType .knownget { //ValidFileTypes exch known } { //false } ifelse } { //false } ifelse
-} bind def
+} .internalbind def
 
 currentdict /ValidFileTypes undef
 
 /IsActive       % <record> IsActive <bool>
 { pop //true
-} bind def
+} .internalbind def
 
 /CIDFontRecordVirtualMethods //RecordVirtualMethodsStub dup length 3 add dict copy begin
   /GetCSI //TranslateCSI def
@@ -163,20 +163,20 @@ currentdict /ValidFileTypes undef
     //CIDFontOptions //complete_instance exec
     2 copy //GetSize exec
     4 3 roll setglobal
-  } bind def
+  } .internalbind def
 currentdict end def
 
 % Redefine the /CIDFont category :
 4 dict begin
   /CategoryName /CIDFont def
   /IsMapFileOptional //true def
-  /VerifyMap  { pop } bind def
+  /VerifyMap  { pop } .internalbind def
   /PreprocessRecord  % <map> <Name> <raw_record> PreprocessRecord <map> <Name> <record> <bool>
   { //IsMyRecord exec dup {
       pop dup /RecordVirtualMethods //CIDFontRecordVirtualMethods put
       //true
     } if
-  } bind def
+  } .internalbind def
 currentdict end
 
 /MappedCategoryRedefiner /ProcSet findresource /Redefine get exec

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -158,9 +158,6 @@ pxl_impl_characteristics(const pl_interp_implementation_t * impl)        /* impl
     static pl_interp_characteristics_t pxl_characteristics = {
         "PCLXL",
         pxl_detect_language,
-        "Artifex",
-        PXLVERSION,
-        PXLBUILDDATE
     };
     return &pxl_characteristics;
 }
@@ -280,6 +277,14 @@ pxl_impl_init_job(pl_interp_implementation_t * impl,
     if ((code = gs_setdevice_no_erase(pxli->pgs, device)) < 0)  /* can't erase yet */
         goto pisdEnd;
 
+    /* Warn the device that PXL uses ROPs. */
+    if (code == 0) {
+        code = put_param_bool(pxli, "LanguageUsesROPs", true);
+
+        if (!device->is_open)
+            code = gs_opendevice(device);
+    }
+
     /* Init XL graphics */
     stage = Sinitg;
     if ((code = px_initgraphics(pxli->pxs)) < 0)
@@ -291,9 +296,6 @@ pxl_impl_init_job(pl_interp_implementation_t * impl,
 
     /* Do inits of gstate that may be reset by setdevice */
     gs_setaccuratecurves(pxli->pgs, true);      /* All H-P languages want accurate curves. */
-    /* disable hinting at high res */
-    if (gs_currentdevice(pxli->pgs)->HWResolution[0] >= 300)
-        gs_setgridfittt(pxs->font_dir, 0);
 
     /* gsave and grestore (among other places) assume that */
     /* there are at least 2 gstates on the graphics stack. */
@@ -326,14 +328,6 @@ pxl_impl_init_job(pl_interp_implementation_t * impl,
         case Ssetdevice:       /* gs_setdevice failed */
         case Sbegin:           /* nothing left to undo */
             break;
-    }
-
-    /* Warn the device that PXL uses ROPs. */
-    if (code == 0) {
-        code = put_param_bool(pxli, "LanguageUsesROPs", true);
-
-        if (!device->is_open)
-            code = gs_opendevice(device);
     }
 
     return code;
@@ -569,7 +563,8 @@ pl_interp_implementation_t pxl_implementation = {
     pxl_impl_report_errors,
     pxl_impl_dnit_job,
     pxl_impl_deallocate_interp_instance,
-    NULL
+    NULL,                       /* pxl_impl_reset */
+    NULL                        /* interp_client_data */
 };
 
 /* ---------- Utility Procs ----------- */

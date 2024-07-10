@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -143,24 +143,19 @@ pxPassthrough_init(px_state_t * pxs)
         stream_cursor_read r;
 
         ret =
-            gs_sprintf(buf,
+            gs_snprintf(buf, sizeof(buf),
                     "@PJL SET PAPERLENGTH = %d\n@PJL SET PAPERWIDTH = %d\n",
                     (int)(pxs->media_dims.y * 10 + .5),
                     (int)(pxs->media_dims.x * 10 + .5));
 
-        /* There is no reason gs_sprintf should fail, but to shut coverity up... */
+        /* There is no reason gs_snprintf should fail, but to shut coverity up... */
         if (ret > 0) {
             stream_cursor_read_init(&r, (const byte *)buf, ret);
             pjl_proc_process(pxs->pjls, &r);
         }
     }
 
-    /* do an initial reset to set up a permanent reset.  The
-       motivation here is to avoid tracking down a slew of memory
-       leaks */
     pxs->pcs->xfm_state.paper_size = pcl_get_default_paper(pxs->pcs);
-    pcl_do_resets(pxs->pcs, pcl_reset_initial);
-    pcl_do_resets(pxs->pcs, pcl_reset_permanent);
 
     /* initialize pcl and install xl's page device in pcl's state */
     pcl_init_state(pxs->pcs, pxs->memory);
@@ -170,7 +165,7 @@ pxPassthrough_init(px_state_t * pxs)
 
     /* yet another reset with the new page device */
     pxs->pcs->xfm_state.paper_size = pcl_get_default_paper(pxs->pcs);
-    pcl_do_resets(pxs->pcs, pcl_reset_initial);
+
     /* set the parser state and initialize the pcl parser */
     pxs->pcl_parser_state.definitions = pxs->pcs->pcl_commands;
     pxs->pcl_parser_state.hpgl_parser_state = &pxs->gl_parser_state;
@@ -323,7 +318,6 @@ pxpcl_release(px_state_t * pxs)
         pcl_grestore(pxs->pcs);
         gs_grestore_only(pxs->pcs->pgs);
         gs_nulldevice(pxs->pcs->pgs);
-        pcl_do_resets(pxs->pcs, pcl_reset_permanent);
         pxs->pcs->end_page = pcl_end_page_top;        /* pcl_end_page handling */
         pxpcl_pagestatereset(pxs);
         pxs->pcs = NULL;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -29,7 +29,9 @@ typedef struct gx_device_s gx_device_epo;
 
 typedef struct {
     subclass_common;
-    gx_color_index last_color; // Pure color only
+    gx_color_index last_color; /* Pure color only */
+    int queued;                /* We have a fillpage queued */
+    int disabled;              /* Set once we have done our job */
 } erasepage_subclass_data;
 
 /* Check if epo subclass device installed, and install it if not */

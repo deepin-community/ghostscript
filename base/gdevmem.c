@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Generic "memory" (stored bitmap) device */
@@ -34,11 +34,12 @@ public_st_device_memory();
 static
 ENUM_PTRS_WITH(device_memory_enum_ptrs, gx_device_memory *mptr)
 {
-    return ENUM_USING(st_device_forward, vptr, sizeof(gx_device_forward), index - 3);
+    return ENUM_USING(st_device_forward, vptr, sizeof(gx_device_forward), index - 4);
 }
 case 0: ENUM_RETURN((mptr->foreign_bits ? NULL : (void *)mptr->base));
 case 1: ENUM_RETURN((mptr->foreign_line_pointers ? NULL : (void *)mptr->line_ptrs));
 ENUM_STRING_PTR(2, gx_device_memory, palette);
+case 3: ENUM_RETURN(mptr->owner);
 ENUM_PTRS_END
 static
 RELOC_PTRS_WITH(device_memory_reloc_ptrs, gx_device_memory *mptr)
@@ -49,8 +50,8 @@ RELOC_PTRS_WITH(device_memory_reloc_ptrs, gx_device_memory *mptr)
         int y;
         int h = mptr->height;
 
-        if (mptr->is_planar)
-            h *= mptr->color_info.num_components;
+        if (mptr->num_planar_planes > 1)
+            h *= mptr->num_planar_planes;
 
         RELOC_PTR(gx_device_memory, base);
         reloc = base_old - mptr->base;
@@ -62,6 +63,7 @@ RELOC_PTRS_WITH(device_memory_reloc_ptrs, gx_device_memory *mptr)
         RELOC_PTR(gx_device_memory, line_ptrs);
     }
     RELOC_CONST_STRING_PTR(gx_device_memory, palette);
+    RELOC_PTR(gx_device_memory, owner);
     RELOC_USING(st_device_forward, vptr, sizeof(gx_device_forward));
 }
 RELOC_PTRS_END
@@ -122,6 +124,44 @@ gdev_mem_word_device_for_bits(int bits_per_pixel)
             mem_word_devices[bits_per_pixel]);
 }
 
+static const gdev_mem_functions *mem_fns[65] = {
+    NULL, &gdev_mem_fns_1, &gdev_mem_fns_2, NULL,
+                            &gdev_mem_fns_4, NULL, NULL, NULL,
+    &gdev_mem_fns_8, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_16, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_24, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_32, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_40, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_48, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_56, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_64
+};
+
+const gdev_mem_functions *
+gdev_mem_functions_for_bits(int bits_per_pixel)
+{
+    return ((uint)bits_per_pixel > 64 ? NULL : mem_fns[bits_per_pixel]);
+}
+
+static const gdev_mem_functions *mem_word_fns[65] = {
+    NULL, &gdev_mem_fns_1, &gdev_mem_fns_2w, NULL,
+                            &gdev_mem_fns_4w, NULL, NULL, NULL,
+    &gdev_mem_fns_8w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_24w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_32w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_40w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_48w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_56w, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &gdev_mem_fns_64w
+};
+
+const gdev_mem_functions *
+gdev_mem_word_functions_for_bits(int bits_per_pixel)
+{
+    return ((uint)bits_per_pixel > 64 ? NULL : mem_word_fns[bits_per_pixel]);
+}
+
 /* Test whether a device is a memory device */
 bool
 gs_device_is_memory(const gx_device * dev)
@@ -130,17 +170,7 @@ gs_device_is_memory(const gx_device * dev)
      * We use the draw_thin_line procedure to mark memory devices.
      * See gdevmem.h.
      */
-    int bits_per_pixel = dev->color_info.depth;
-    const gx_device_memory *mdproto;
-
-    if (dev->is_planar)
-        bits_per_pixel /= dev->color_info.num_components;
-
-    mdproto = gdev_mem_device_for_bits(bits_per_pixel);
-    if (mdproto != 0 && dev_proc(dev, draw_thin_line) == dev_proc(mdproto, draw_thin_line))
-        return true;
-    mdproto = gdev_mem_word_device_for_bits(bits_per_pixel);
-    return (mdproto != 0 && dev_proc(dev, draw_thin_line) == dev_proc(mdproto, draw_thin_line));
+    return (dev_proc(dev, draw_thin_line) == mem_draw_thin_line);
 }
 
 /* Make a memory device. */
@@ -149,8 +179,9 @@ void
 gs_make_mem_device(gx_device_memory * dev, const gx_device_memory * mdproto,
                    gs_memory_t * mem, int page_device, gx_device * target)
 {
-    gx_device_init((gx_device *) dev, (const gx_device *)mdproto,
-                   mem, true);
+    /* Can never fail */
+    (void)gx_device_init((gx_device *) dev, (const gx_device *)mdproto,
+                         mem, true);
     dev->stype = &st_device_memory;
     switch (page_device) {
         case -1:
@@ -181,7 +212,6 @@ gs_make_mem_device(gx_device_memory * dev, const gx_device_memory * mdproto,
         dev->graphics_type_tag = target->graphics_type_tag;	/* initialize to same as target */
 
         set_dev_proc(dev, put_image, gx_forward_put_image);
-        set_dev_proc(dev, dev_spec_op, gx_default_dev_spec_op);
     }
     if (dev->color_info.depth == 1) {
         gx_color_value cv[GX_DEVICE_COLOR_MAX_COMPONENTS];
@@ -195,9 +225,11 @@ gs_make_mem_device(gx_device_memory * dev, const gx_device_memory * mdproto,
        gdev_mem_mono_set_inverted(dev, (target == NULL ||
                                    (*dev_proc(dev, encode_color))((gx_device *)dev, cv) != 0));
     }
+    set_dev_proc(dev, dev_spec_op, mem_spec_op);
     check_device_separable((gx_device *)dev);
     gx_device_fill_in_procs((gx_device *)dev);
     dev->band_y = 0;
+    dev->owner = target;
 }
 
 /* Make a memory device using copydevice, this should replace gs_make_mem_device. */
@@ -297,8 +329,10 @@ void
 gs_make_mem_mono_device(gx_device_memory * dev, gs_memory_t * mem,
                         gx_device * target)
 {
-    gx_device_init((gx_device *)dev, (const gx_device *)&mem_mono_device,
-                   mem, true);
+    /* Can never fail */
+    (void)gx_device_init((gx_device *)dev,
+                         (const gx_device *)&mem_mono_device,
+                         mem, true);
     set_dev_proc(dev, get_page_device, gx_default_get_page_device);
     gx_device_set_target((gx_device_forward *)dev, target);
     dev->raster = gx_device_raster((gx_device *)dev, 1);
@@ -308,7 +342,8 @@ gs_make_mem_mono_device(gx_device_memory * dev, gs_memory_t * mem,
     /* Should this be forwarding, monochrome profile, or not set? MJV */
     set_dev_proc(dev, get_profile, gx_forward_get_profile);
     set_dev_proc(dev, set_graphics_type_tag, gx_forward_set_graphics_type_tag);
-    set_dev_proc(dev, dev_spec_op, gx_default_dev_spec_op);
+    set_dev_proc(dev, dev_spec_op, mem_spec_op);
+    dev->owner = target;
     /* initialize to same tag as target */
     dev->graphics_type_tag = target ? target->graphics_type_tag : GS_UNKNOWN_TAG;
 }
@@ -333,29 +368,30 @@ gdev_mem_mono_set_inverted(gx_device_memory * dev, bool black_is_1)
  * must pad its scan lines, and then we must pad again for the pointer
  * tables (one table per plane).
  *
- * Return VMerror if the size exceeds max ulong
+ * Return VMerror if the size exceeds max size_t
  */
 int
-gdev_mem_bits_size(const gx_device_memory * dev, int width, int height, ulong *psize)
+gdev_mem_bits_size(const gx_device_memory * dev, int width, int height, size_t *psize)
 {
     int num_planes;
     gx_render_plane_t plane1;
     const gx_render_plane_t *planes;
-    ulong size;
+    size_t size, alignment = bitmap_raster_pad_align(1, dev->pad, dev->log2_align_mod);
     int pi;
 
-    if (dev->is_planar)
-    {
-        int has_tags = device_encodes_tags((const gx_device *)dev);
-        num_planes = dev->color_info.num_components + has_tags;
+    if (dev->num_planar_planes > 1) {
+        num_planes = dev->num_planar_planes;
         planes = dev->planes;
-    }
-    else
+    } else
         planes = &plane1, plane1.depth = dev->color_info.depth, num_planes = 1;
-    for (size = 0, pi = 0; pi < num_planes; ++pi)
-        size += bitmap_raster_pad_align(width * planes[pi].depth, dev->pad, dev->log2_align_mod);
+    for (size = 0, pi = 0; pi < num_planes; ++pi) {
+        size_t raster = bitmap_raster_pad_align((size_t)width * planes[pi].depth, dev->pad, dev->log2_align_mod);
+        if (width > (SIZE_MAX - alignment) / planes[pi].depth || raster > SIZE_MAX - size)
+            return_error(gs_error_VMerror);
+        size += raster;
+    }
     if (height != 0)
-        if (size > (max_ulong - ARCH_ALIGN_PTR_MOD) / (ulong)height)
+        if (size > (SIZE_MAX - ARCH_ALIGN_PTR_MOD) / (ulong)height)
             return_error(gs_error_VMerror);
     size = ROUND_UP(size * height, ARCH_ALIGN_PTR_MOD);
     if (dev->log2_align_mod > log2_align_bitmap_mod)
@@ -363,23 +399,22 @@ gdev_mem_bits_size(const gx_device_memory * dev, int width, int height, ulong *p
     *psize = size;
     return 0;
 }
-ulong
+size_t
 gdev_mem_line_ptrs_size(const gx_device_memory * dev, int width, int height)
 {
-    int has_tags = device_encodes_tags((const gx_device *)dev);
     int num_planes = 1;
-    if (dev->is_planar)
-        num_planes = dev->color_info.num_components + has_tags;
-    return (ulong)height * sizeof(byte *) * num_planes;
+    if (dev->num_planar_planes > 1)
+        num_planes = dev->num_planar_planes;
+    return (size_t)height * sizeof(byte *) * num_planes;
 }
 int
-gdev_mem_data_size(const gx_device_memory * dev, int width, int height, ulong *psize)
+gdev_mem_data_size(const gx_device_memory * dev, int width, int height, size_t *psize)
 {
-    ulong bits_size;
-    ulong line_ptrs_size = gdev_mem_line_ptrs_size(dev, width, height);
+    size_t bits_size;
+    size_t line_ptrs_size = gdev_mem_line_ptrs_size(dev, width, height);
 
     if (gdev_mem_bits_size(dev, width, height, &bits_size) < 0 ||
-        bits_size > max_ulong - line_ptrs_size)
+        bits_size > SIZE_MAX - line_ptrs_size)
         return_error(gs_error_VMerror);
     *psize = bits_size + line_ptrs_size;
     return 0;
@@ -389,12 +424,12 @@ gdev_mem_data_size(const gx_device_memory * dev, int width, int height, ulong *p
  * compute the maximum height.
  */
 int
-gdev_mem_max_height(const gx_device_memory * dev, int width, ulong size,
+gdev_mem_max_height(const gx_device_memory * dev, int width, size_t size,
                     bool page_uses_transparency)
 {
     int height;
-    ulong max_height;
-    ulong data_size;
+    size_t max_height;
+    size_t data_size = 0;
     bool deep = device_is_deep((const gx_device *)dev);
 
     if (page_uses_transparency) {
@@ -405,15 +440,17 @@ gdev_mem_max_height(const gx_device_memory * dev, int width, ulong size,
          * is only an estimate, we may exceed our desired buffer space while
          * processing the file.
          */
+            /* FIXME: For a planar device, is dev->color_info.num_components 1 ? Otherwise, aren't we
+             * calculating this too large? */
         max_height = size / (bitmap_raster_pad_align(width
             * dev->color_info.depth + ESTIMATED_PDF14_ROW_SPACE(width, dev->color_info.num_components, deep ? 16 : 8),
-                dev->pad, dev->log2_align_mod) + sizeof(byte *) * (dev->is_planar ? dev->color_info.num_components : 1));
+                dev->pad, dev->log2_align_mod) + sizeof(byte *) * (dev->num_planar_planes ? dev->num_planar_planes : 1));
         height = (int)min(max_height, max_int);
     } else {
         /* For non PDF 1.4 transparency, we can do an exact calculation */
         max_height = size /
             (bitmap_raster_pad_align(width * dev->color_info.depth, dev->pad, dev->log2_align_mod) +
-             sizeof(byte *) * (dev->is_planar ? dev->color_info.num_components : 1));
+             sizeof(byte *) * (dev->num_planar_planes ? dev->num_planar_planes : 1));
         height = (int)min(max_height, max_int);
         /*
          * Because of alignment rounding, the just-computed height might
@@ -437,7 +474,7 @@ mem_open(gx_device * dev)
     gx_device_memory *const mdev = (gx_device_memory *)dev;
 
     /* Check that we aren't trying to open a planar device as chunky. */
-    if (mdev->is_planar)
+    if (mdev->num_planar_planes > 1)
         return_error(gs_error_rangecheck);
     return gdev_mem_open_scan_lines(mdev, dev->height);
 }
@@ -452,7 +489,7 @@ gdev_mem_open_scan_lines_interleaved(gx_device_memory *mdev,
                                      int interleaved)
 {
     bool line_pointers_adjacent = true;
-    ulong size;
+    size_t size;
 
     if (setup_height < 0 || setup_height > mdev->height)
         return_error(gs_error_rangecheck);
@@ -462,9 +499,7 @@ gdev_mem_open_scan_lines_interleaved(gx_device_memory *mdev,
         if (gdev_mem_bitmap_size(mdev, &size) < 0)
             return_error(gs_error_VMerror);
 
-        if ((uint) size != size)	/* ulong may be bigger than uint */
-            return_error(gs_error_limitcheck);
-        mdev->base = gs_alloc_bytes(mdev->bitmap_memory, (uint)size,
+        mdev->base = gs_alloc_bytes(mdev->bitmap_memory, size,
                                     "mem_open");
         if (mdev->base == NULL)
             return_error(gs_error_VMerror);
@@ -483,7 +518,7 @@ gdev_mem_open_scan_lines_interleaved(gx_device_memory *mdev,
 
         mdev->line_ptrs = (byte **)
             gs_alloc_byte_array(mdev->line_pointer_memory, mdev->height,
-                                sizeof(byte *) * (mdev->is_planar ? mdev->color_info.num_components : 1),
+                                sizeof(byte *) * (mdev->num_planar_planes ? mdev->num_planar_planes : 1),
                                 "gdev_mem_open_scan_lines");
         if (mdev->line_ptrs == NULL)
             return_error(gs_error_VMerror);
@@ -524,7 +559,7 @@ gdev_mem_set_line_ptrs_interleaved(gx_device_memory * mdev, byte * base,
                                    int raster, byte **line_ptrs,
                                    int setup_height, int interleaved)
 {
-    int num_planes = (mdev->is_planar ? mdev->color_info.num_components : 0);
+    int num_planes = (mdev->num_planar_planes ? mdev->num_planar_planes : 0);
     byte **pline;
     byte *data;
     int pi;
@@ -619,12 +654,33 @@ mem_close(gx_device * dev)
     return 0;
 }
 
+/* Memory devices shouldn't allow their dimensions to change */
+static int
+mem_put_params(gx_device * dev, gs_param_list * plist)
+{
+    int code;
+    int width = dev->width, height = dev->height;
+    float xres = dev->HWResolution[0], yres = dev->HWResolution[1];
+    float medw = dev->MediaSize[0], medh = dev->MediaSize[1];
+
+    code = gx_default_put_params(dev, plist);
+
+    dev->width = width;
+    dev->height = height;
+    dev->HWResolution[0] = xres;
+    dev->HWResolution[1] = yres;
+    dev->MediaSize[0] = medw;
+    dev->MediaSize[1] = medh;
+
+    return code;
+}
+
 /* Copy bits to a client. */
 #undef chunk
 #define chunk byte
 int
 mem_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
-                       gs_get_bits_params_t * params, gs_int_rect ** unread)
+                       gs_get_bits_params_t * params)
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     gs_get_bits_options_t options = params->options;
@@ -680,7 +736,7 @@ mem_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
  * actual device depth.
  */
 void
-mem_swap_byte_rect(byte * base, uint raster, int x, int w, int h, bool store)
+mem_swap_byte_rect(byte * base, size_t raster, int x, int w, int h, bool store)
 {
     int xbit = x & 31;
 
@@ -720,11 +776,11 @@ mem_swap_byte_rect(byte * base, uint raster, int x, int w, int h, bool store)
 /* Copy a word-oriented rectangle to the client, swapping bytes as needed. */
 int
 mem_word_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
-                       gs_get_bits_params_t * params, gs_int_rect ** unread)
+                       gs_get_bits_params_t * params)
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     byte *src;
-    uint dev_raster = gx_device_raster(dev, 1);
+    size_t dev_raster = gx_device_raster(dev, 1);
     int x = prect->p.x;
     int w = prect->q.x - x;
     int y = prect->p.y;
@@ -736,8 +792,7 @@ mem_word_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
     if (w <= 0 || h <= 0) {
         /*
          * It's easiest to just keep going with an empty rectangle.
-         * We pass the original rectangle to mem_get_bits_rectangle,
-         * so unread will be filled in correctly.
+         * We pass the original rectangle to mem_get_bits_rectangle.
          */
         x = y = w = h = 0;
     }
@@ -749,7 +804,7 @@ mem_word_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
 
     src = scan_line_base(mdev, y);
     mem_swap_byte_rect(src, dev_raster, bit_x, bit_w, h, false);
-    code = mem_get_bits_rectangle(dev, prect, params, unread);
+    code = mem_get_bits_rectangle(dev, prect, params);
     mem_swap_byte_rect(src, dev_raster, bit_x, bit_w, h, false);
     return code;
 }
@@ -827,11 +882,20 @@ mem_mapped_map_color_rgb(gx_device * dev, gx_color_index color,
                          gx_color_value prgb[3])
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
-    const byte *pptr = mdev->palette.data + (int)color * 3;
+    const byte *pptr = mdev->palette.data;
 
-    prgb[0] = gx_color_value_from_byte(pptr[0]);
-    prgb[1] = gx_color_value_from_byte(pptr[1]);
-    prgb[2] = gx_color_value_from_byte(pptr[2]);
+    if (pptr == NULL) {
+        color = color * gx_max_color_value / ((1<<mdev->color_info.depth)-1);
+        prgb[0] = color;
+        prgb[1] = color;
+        prgb[2] = color;
+    } else {
+        pptr += (int)color * 3;
+
+        prgb[0] = gx_color_value_from_byte(pptr[0]);
+        prgb[1] = gx_color_value_from_byte(pptr[1]);
+        prgb[2] = gx_color_value_from_byte(pptr[2]);
+    }
     return 0;
 }
 
@@ -847,4 +911,74 @@ mem_draw_thin_line(gx_device *dev, fixed fx0, fixed fy0, fixed fx1, fixed fy1,
 {
     return gx_default_draw_thin_line(dev, fx0, fy0, fx1, fy1, pdcolor, lop,
                                      adjustx, adjusty);
+}
+
+void mem_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, get_initial_matrix, mem_get_initial_matrix);
+    set_dev_proc(dev, sync_output, gx_default_sync_output);
+    set_dev_proc(dev, output_page, gx_default_output_page);
+    set_dev_proc(dev, close_device, mem_close);
+    set_dev_proc(dev, get_params, gx_default_get_params);
+    set_dev_proc(dev, put_params, mem_put_params);
+    set_dev_proc(dev, get_page_device, gx_forward_get_page_device);
+    set_dev_proc(dev, get_alpha_bits, gx_default_get_alpha_bits);
+    set_dev_proc(dev, fill_path, gx_default_fill_path);
+    set_dev_proc(dev, stroke_path, gx_default_stroke_path);
+    set_dev_proc(dev, fill_mask, gx_default_fill_mask);
+    set_dev_proc(dev, fill_trapezoid, gx_default_fill_trapezoid);
+    set_dev_proc(dev, fill_parallelogram, gx_default_fill_parallelogram);
+    set_dev_proc(dev, fill_triangle, gx_default_fill_triangle);
+    set_dev_proc(dev, draw_thin_line, mem_draw_thin_line);
+    set_dev_proc(dev, get_clipping_box, gx_default_get_clipping_box);
+    set_dev_proc(dev, begin_typed_image, gx_default_begin_typed_image);
+    set_dev_proc(dev, composite, gx_default_composite);
+    set_dev_proc(dev, get_hardware_params, gx_default_get_hardware_params);
+    set_dev_proc(dev, text_begin, gx_default_text_begin);
+    set_dev_proc(dev, transform_pixel_region, mem_transform_pixel_region);
+
+    /* Defaults that may well get overridden. */
+    set_dev_proc(dev, open_device, mem_open);
+    set_dev_proc(dev, copy_alpha, gx_default_copy_alpha);
+    set_dev_proc(dev, map_cmyk_color, gx_default_map_cmyk_color);
+    set_dev_proc(dev, strip_tile_rectangle, gx_default_strip_tile_rectangle);
+    set_dev_proc(dev, get_bits_rectangle, mem_get_bits_rectangle);
+}
+
+void mem_dev_initialize_device_procs(gx_device *dev)
+{
+    int depth = dev->color_info.depth;
+    const gdev_mem_functions *fns;
+
+    if (dev->num_planar_planes > 1)
+        depth /= dev->num_planar_planes;
+    fns = gdev_mem_functions_for_bits(depth);
+
+    mem_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, fns->map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, fns->map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, fns->fill_rectangle);
+    set_dev_proc(dev, copy_mono, fns->copy_mono);
+    set_dev_proc(dev, copy_color, fns->copy_color);
+    set_dev_proc(dev, copy_alpha, fns->copy_alpha);
+    set_dev_proc(dev, strip_copy_rop2, fns->strip_copy_rop2);
+    set_dev_proc(dev, strip_tile_rectangle, fns->strip_tile_rectangle);
+}
+
+void mem_word_dev_initialize_device_procs(gx_device *dev)
+{
+    const gdev_mem_functions *fns =
+                gdev_mem_word_functions_for_bits(dev->color_info.depth);
+
+    mem_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, fns->map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, fns->map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, fns->fill_rectangle);
+    set_dev_proc(dev, copy_mono, fns->copy_mono);
+    set_dev_proc(dev, copy_color, fns->copy_color);
+    set_dev_proc(dev, copy_alpha, fns->copy_alpha);
+    set_dev_proc(dev, strip_copy_rop2, fns->strip_copy_rop2);
+    set_dev_proc(dev, strip_tile_rectangle, fns->strip_tile_rectangle);
 }

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -299,7 +299,7 @@ ref_stack_store_check(const ref_stack_t *pstack, ref *parray, uint count,
 }
 
 int
-ref_stack_array_sanitize(i_ctx_t *i_ctx_p, ref *sarr, ref *darr)
+ref_stack_array_sanitize(i_ctx_t *i_ctx_p, ref *sarr, ref *darr, int depth)
 {
     int i, code;
     ref obj, arr2;
@@ -350,12 +350,17 @@ ref_stack_array_sanitize(i_ctx_t *i_ctx_p, ref *sarr, ref *darr)
             int attrs = r_type_attrs(&obj) & (a_write | a_read | a_execute | a_executable);
             /* We only want to copy executable arrays */
             if (attrs & (a_execute | a_executable)) {
-                code = ialloc_ref_array(&arr2, attrs, r_size(&obj), "ref_stack_array_sanitize");
+                if (++depth > 50) {
+                    code = gs_error_limitcheck;
+                }
+                else {
+                    code = ialloc_ref_array(&arr2, attrs, r_size(&obj), "ref_stack_array_sanitize");
+                }
                 if (code < 0) {
                     make_null(&arr2);
                 }
                 else {
-                    code = ref_stack_array_sanitize(i_ctx_p, &obj, &arr2);
+                    code = ref_stack_array_sanitize(i_ctx_p, &obj, &arr2, depth);
                     if (code < 0) {
                         ifree_ref_array(&arr2, "ref_stack_array_sanitize");
                         return code;
@@ -453,7 +458,8 @@ ref_stack_pop(ref_stack_t *pstack, uint count)
 {
     uint used;
 
-    while ((used = pstack->p + 1 - pstack->bot) < count) {
+    while ((used = pstack->p + 1 - pstack->bot) <= count &&
+            pstack->extension_used > 0) {
         count -= used;
         pstack->p = pstack->bot - 1;
         ref_stack_pop_block(pstack);

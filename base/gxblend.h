@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* PDF 1.4 blending functions */
@@ -24,11 +24,10 @@
 #include "gxdevcli.h"
 
 #define RAW_DUMP 0
-#define RAW_DUMP_AS_PAM 0
-/* Useful bash fragment to batch convert pams to pngs:
- * for f in *.pam; do g=${f%.*}; echo $g; convert $g.pam $g.png ; done
- * NB: "convert" is imagemagick convert, so may need to be installed.
- */
+/* We now dump as PAMs, not raws. This is because it's much easier
+ * (for me at least) to view them using:
+ *   http://ghostscript.com/~robin/pamview.html
+ * than anything else. */
 
 /* #define DUMP_TO_PNG */
 
@@ -367,20 +366,20 @@ gx_color_index pdf14_encode_color16_tag(gx_device *dev, const gx_color_value col
 
 int pdf14_decode_color(gx_device * dev, gx_color_index color, gx_color_value * out);
 int pdf14_decode_color16(gx_device * dev, gx_color_index color, gx_color_value * out);
-void pdf14_gray_cs_to_cmyk_cm(gx_device * dev, frac gray, frac out[]);
-void pdf14_rgb_cs_to_cmyk_cm(gx_device * dev, const gs_gstate *pgs,
+void pdf14_gray_cs_to_cmyk_cm(const gx_device * dev, frac gray, frac out[]);
+void pdf14_rgb_cs_to_cmyk_cm(const gx_device * dev, const gs_gstate *pgs,
                            frac r, frac g, frac b, frac out[]);
-void pdf14_cmyk_cs_to_cmyk_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[]);
+void pdf14_cmyk_cs_to_cmyk_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[]);
 
-void pdf14_gray_cs_to_rgbspot_cm(gx_device * dev, frac gray, frac out[]);
-void pdf14_rgb_cs_to_rgbspot_cm(gx_device * dev, const gs_gstate *pgs,
+void pdf14_gray_cs_to_rgbspot_cm(const gx_device * dev, frac gray, frac out[]);
+void pdf14_rgb_cs_to_rgbspot_cm(const gx_device * dev, const gs_gstate *pgs,
     frac r, frac g, frac b, frac out[]);
-void pdf14_cmyk_cs_to_rgbspot_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[]);
+void pdf14_cmyk_cs_to_rgbspot_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[]);
 
-void pdf14_gray_cs_to_grayspot_cm(gx_device * dev, frac gray, frac out[]);
-void pdf14_rgb_cs_to_grayspot_cm(gx_device * dev, const gs_gstate *pgs,
+void pdf14_gray_cs_to_grayspot_cm(const gx_device * dev, frac gray, frac out[]);
+void pdf14_rgb_cs_to_grayspot_cm(const gx_device * dev, const gs_gstate *pgs,
     frac r, frac g, frac b, frac out[]);
-void pdf14_cmyk_cs_to_grayspot_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[]);
+void pdf14_cmyk_cs_to_grayspot_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[]);
 
 void gx_build_blended_image_row(const byte *gs_restrict buf_ptr, int planestride,
                                 int width, int num_comp, uint16_t bg, byte *gs_restrict linebuf);

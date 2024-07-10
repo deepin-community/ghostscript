@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -180,8 +180,12 @@ psw_begin_file_header(gp_file *f, const gx_device *dev, const gs_rect *pbbox,
         fputs("%...............................................................\n", f);
         fputs("%...............................................................\n", f);
     }
+#ifdef CLUSTER
+    fprintf(f, "%%%%Creator: GPL Ghostscript (%s)\n", dev->dname);
+#else
     fprintf(f, "%%%%Creator: %s %ld (%s)\n", gs_product, (long)gs_revision,
             dev->dname);
+#endif
     {
         time_t t;
         struct tm tms;
@@ -204,7 +208,9 @@ psw_begin_file_header(gp_file *f, const gx_device *dev, const gs_rect *pbbox,
     else if (pdpc->LanguageLevel == 1.5)
         fputs("%%Extensions: CMYK\n", f);
     psw_print_lines(f, psw_begin_prolog);
+#ifndef CLUSTER
     fprintf(f, "%% %s\n", gs_copyright);
+#endif
     fputs("%%BeginResource: procset ", f);
     fflush(f);
     psw_print_procset_name(f, dev, pdpc);

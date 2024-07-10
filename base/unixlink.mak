@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2023 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 # of the license contained in the file LICENSE in this distribution.
 #
 # Refer to licensing information at http://www.artifex.com or contact
-# Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-# CA 94945, U.S.A., +1(415)492-9861, for further information.
+# Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+# CA 94129, USA, for further information.
 #
 # Partial makefile common to all Unix configurations.
 # This part of the makefile contains the linking steps.
@@ -122,7 +122,7 @@ $(GXPS_A_XE): $(GXPS_A) $(REALMAIN_OBJ)
 
 libgpdl_tr=$(GLOBJ)libgpdl.tr
 GPDL_A=$(BINDIR)$(D)$(GPDL).a
-$(GPDL_A): $(GPDL_PSI_TOP_OBJS) $(PCL_PXL_TOP_OBJS) $(PSI_TOP_OBJ) $(XPS_TOP_OBJ) $(MAIN_OBJ) \
+$(GPDL_A): $(GPDL_PSI_TOP_OBJS) $(PCL_PXL_TOP_OBJS) $(PSI_TOP_OBJ) $(XPS_TOP_OBJ) $(PDF_TOP_OBJ) $(SO_TOP_OBJ) $(MAIN_OBJ) \
          $(XOBJS) $(GLOBJDIR)/pdlromfs$(COMPILE_INITS).$(OBJ) \
          $(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c0.$(OBJ) \
          $(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c1.$(OBJ) \
@@ -133,7 +133,7 @@ $(GPDL_A): $(GPDL_PSI_TOP_OBJS) $(PCL_PXL_TOP_OBJS) $(PSI_TOP_OBJ) $(XPS_TOP_OBJ
          $(UNIXLINK_MAK)
 	rm -f $(GPDL_A)
 	$(ECHOGS_XE) -w $(libgpdl_tr) -n - $(AR) $(ARFLAGS) $(GPDL_A)
-	$(ECHOGS_XE) -a $(libgpdl_tr) -n -s $(GPDL_PSI_TOP_OBJS) $(PCL_PXL_TOP_OBJS) $(PSI_TOP_OBJ) $(XPS_TOP_OBJ) $(XOBJS) -s
+	$(ECHOGS_XE) -a $(libgpdl_tr) -n -s $(GPDL_PSI_TOP_OBJS) $(PCL_PXL_TOP_OBJS) $(PSI_TOP_OBJ) $(XPS_TOP_OBJ) $(PDF_TOP_OBJ) $(SO_TOP_OBJ) $(SO_PDFEXPORT_LIB) $(XOBJS) -s
 	$(ECHOGS_XE) -a $(libgpdl_tr) -n -s $(GLOBJDIR)/pdlromfs$(COMPILE_INITS).$(OBJ) -s
 	$(ECHOGS_XE) -a $(libgpdl_tr) -n -s $(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c0.$(OBJ) -s
 	$(ECHOGS_XE) -a $(libgpdl_tr) -n -s $(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c1.$(OBJ) -s
@@ -227,17 +227,38 @@ $(GXPS_XE): $(ld_tr) $(xps_tr) $(REALMAIN_OBJ) $(MAIN_OBJ) $(XPS_TOP_OBJS) \
 .xpssubtarget: $(GXPS_XE)
 	$(NO_OP)
 
+pdfldt_tr=$(PSOBJ)pdfldt.tr
+$(GPDF_XE): $(ld_tr) $(pdf_tr) $(REALMAIN_OBJ) $(MAIN_OBJ) $(PDF_TOP_OBJS) \
+             $(XOBJS) $(GLOBJDIR)/pdfromfs$(COMPILE_INITS).$(OBJ) \
+             $(INT_ARCHIVE_SOME) $(UNIXLINK_MAK)
+	$(ECHOGS_XE) -w $(pdfldt_tr) -n - $(CCLD) $(PDF_LDFLAGS) $(XLIBDIRS) -o $(GPDF_XE)
+	$(ECHOGS_XE) -a $(pdfldt_tr) -n -s $(PDF_TOP_OBJS) $(INT_ARCHIVE_SOME) $(XOBJS) -s
+	cat $(pdfld_tr) >> $(pdfldt_tr)
+	$(ECHOGS_XE) -a $(pdfldt_tr) -s - $(GLOBJDIR)/pdfromfs$(COMPILE_INITS).$(OBJ) $(REALMAIN_OBJ) $(MAIN_OBJ) $(EXTRALIBS) $(STDLIBS)
+	if [ x$(XLIBDIR) != x ]; then LD_RUN_PATH=$(XLIBDIR); export LD_RUN_PATH; fi; \
+	XCFLAGS= XINCLUDE= XLDFLAGS= XLIBDIRS= XLIBS= \
+	PCL_FEATURE_DEVS= DEVICE_DEVS= DEVICE_DEVS1= DEVICE_DEVS2= DEVICE_DEVS3= \
+	DEVICE_DEVS4= DEVICE_DEVS5= DEVICE_DEVS6= DEVICE_DEVS7= DEVICE_DEVS8= \
+	DEVICE_DEVS9= DEVICE_DEVS10= DEVICE_DEVS11= DEVICE_DEVS12= \
+	DEVICE_DEVS13= DEVICE_DEVS14= DEVICE_DEVS15= DEVICE_DEVS16= \
+	DEVICE_DEVS17= DEVICE_DEVS18= DEVICE_DEVS19= DEVICE_DEVS20= \
+	DEVICE_DEVS_EXTRA= \
+	sh <$(pdfldt_tr)
+
+.pdfsubtarget: $(GPDF_XE)
+	$(NO_OP)
+
 gpdlldt_tr=$(PSOBJ)gpdlldt.tr
 $(GPDL_XE): $(ld_tr) $(gpdl_tr) $(INT_ARCHIVE_ALL) $(REALMAIN_OBJ) $(MAIN_OBJ) \
-             $(GPDL_PSI_TOP_OBJS) $(PCL_PXL_TOP_OBJS) $(PSI_TOP_OBJ) $(XPS_TOP_OBJ) \
-             $(XOBJS) $(GLOBJDIR)/pdlromfs$(COMPILE_INITS).$(OBJ) \
-	     $(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c0.$(OBJ) \
-	     $(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c1.$(OBJ) \
-	     $(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c2.$(OBJ) \
-	     $(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c3.$(OBJ) \
-             $(PSINT_ARCHIVE_ALL) $(UNIXLINK_MAK)
+		$(GPDL_PSI_TOP_OBJS) $(PCL_PXL_TOP_OBJS) $(PSI_TOP_OBJ) $(XPS_TOP_OBJ) $(PDF_TOP_OBJ) \
+		$(XOBJS) $(GLOBJDIR)/pdlromfs$(COMPILE_INITS).$(OBJ) \
+		$(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c0.$(OBJ) \
+		$(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c1.$(OBJ) \
+		$(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c2.$(OBJ) \
+		$(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c3.$(OBJ) \
+		$(PSINT_ARCHIVE_ALL) $(UNIXLINK_MAK)
 	$(ECHOGS_XE) -w $(gpdlldt_tr) -n - $(CCLD) $(PDL_LDFLAGS) $(XLIBDIRS) -o $(GPDL_XE)
-	$(ECHOGS_XE) -a $(gpdlldt_tr) -n -s $(GPDL_PSI_TOP_OBJS) $(PCL_PXL_TOP_OBJS) $(PSI_TOP_OBJ) $(XPS_TOP_OBJ) $(XOBJS) -s
+	$(ECHOGS_XE) -a $(gpdlldt_tr) -n -s $(GPDL_PSI_TOP_OBJS) $(PCL_PXL_TOP_OBJS) $(PDF_TOP_OBJ) $(PSI_TOP_OBJ) $(XPS_TOP_OBJ) $(SO_TOP_OBJ) $(SO_PDFEXPORT_LIB) $(XOBJS) -s
 	cat $(gpdlld_tr) >> $(gpdlldt_tr)
 	$(ECHOGS_XE) -a $(gpdlldt_tr) -n -s - $(GLOBJDIR)/pdlromfs$(COMPILE_INITS).$(OBJ)
 	$(ECHOGS_XE) -a $(gpdlldt_tr) -n -s - $(GLOBJDIR)/pdlromfs$(COMPILE_INITS)c0.$(OBJ)

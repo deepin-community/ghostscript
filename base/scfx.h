@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -40,9 +40,11 @@
         int DecodedByteAlign;\
                 /* The init procedure sets the following. */\
         uint raster;\
+        byte *lbufstart; /* current line buffer, including pre-buffer slop to prevent underruns */\
         byte *lbuf;		/* current scan line buffer */\
                                 /* (only if decoding or 2-D encoding) */\
         byte *lprev;		/* previous scan line buffer (only if 2-D) */\
+        byte *lprevstart; /* current line buffer, including pre-buffer slop to prevent underruns */\
                 /* The following are updated dynamically. */\
         int k_left		/* number of next rows to encode in 2-D */\
                                 /* (only if K > 0) */
@@ -67,7 +69,7 @@ typedef struct stream_CF_state_s {
    (ss)->DecodedByteAlign = 1,\
    (ss)->ErrsAsEOD = false,\
         /* Clear pointers */\
-   (ss)->lbuf = 0, (ss)->lprev = 0,\
+   (ss)->lbuf = (ss)->lbufstart = 0, (ss)->lprev = (ss)->lprevstart = 0,\
         /* Clear errors */\
    (ss)->error_string[0] = 0)
 
@@ -85,7 +87,7 @@ typedef struct stream_CFE_state_s {
 
 #define private_st_CFE_state()	/* in scfe.c */\
   gs_private_st_ptrs3(st_CFE_state, stream_CFE_state, "CCITTFaxEncode state",\
-    cfe_enum_ptrs, cfe_reloc_ptrs, lbuf, lprev, lcode)
+    cfe_enum_ptrs, cfe_reloc_ptrs, lbufstart, lprevstart, lcode)
 #define s_CFE_set_defaults_inline(ss)\
   (s_CF_set_defaults_inline(ss), (ss)->lcode = 0)
 extern const stream_template s_CFE_template;
@@ -121,7 +123,7 @@ typedef struct stream_CFD_state_s {
 
 #define private_st_CFD_state()	/* in scfd.c */\
   gs_private_st_ptrs2(st_CFD_state, stream_CFD_state, "CCITTFaxDecode state",\
-    cfd_enum_ptrs, cfd_reloc_ptrs, lbuf, lprev)
+    cfd_enum_ptrs, cfd_reloc_ptrs, lbufstart, lprevstart)
 #define s_CFD_set_defaults_inline(ss)\
   s_CF_set_defaults_inline(ss)
 extern const stream_template s_CFD_template;

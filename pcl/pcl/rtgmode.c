@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -551,7 +551,7 @@ set_compression_method(pcl_args_t * pargs, pcl_state_t * pcs)
         pcs->raster_state.compression_mode = mode;
         /* CCITT compression modes are always monochrome - install the
            monochrome palette and restart raster. */
-        if (mode >= 6 && mode <= 9) {
+        if (mode >= 6 && mode <= 8) { /* lgtm [cpp/constant-comparison] */
             pcl_palette_CCITT_raster(pcs);
             if (pcs->raster_state.graphics_mode) {
                 coord x = pcs->cap.x;

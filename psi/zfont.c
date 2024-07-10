@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -31,6 +31,7 @@
 #include "store.h"
 #include "ivmspace.h"
 #include "gscencs.h"
+#include "ichar.h"
 
 /* Forward references */
 static int make_font(i_ctx_t *, const gs_matrix *);
@@ -83,6 +84,7 @@ zscalefont(i_ctx_t *i_ctx_p)
     double scale;
     gs_matrix mat;
 
+    check_op(2);
     if ((code = real_param(op, &scale)) < 0)
         return code;
     if ((code = gs_make_scaling(scale, scale, &mat)) < 0)
@@ -98,6 +100,7 @@ zmakefont(i_ctx_t *i_ctx_p)
     int code;
     gs_matrix mat;
 
+    check_op(2);
     if ((code = read_matrix(imemory, op, &mat)) < 0)
         return code;
     return make_font(i_ctx_p, &mat);
@@ -109,8 +112,10 @@ zsetfont(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
     gs_font *pfont;
-    int code = font_param(op, &pfont);
+    int code;
 
+    check_op(1);
+    code = font_param(op, &pfont);
     if (code < 0 || (code = gs_setfont(igs, pfont)) < 0)
         return code;
     pop(1);
@@ -147,6 +152,7 @@ zsetcachelimit(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     check_int_leu(*op, max_uint);
     gs_setcachelimit(ifont_dir, (uint) op->value.intval);
     pop(1);
@@ -162,7 +168,16 @@ zsetcacheparams(i_ctx_t *i_ctx_p)
     int i, code;
     os_ptr opp = op;
 
+    /* Changing the cache params clears the "pairs" cache, which
+       causes a crash if the in use font/matrix pair disappears
+       during a text operation. So don't allow that to happen.
+     */
+    if (op_show_find(i_ctx_p) != NULL)
+        return_error(gs_error_invalidaccess);
+
+    check_op(1);
     for (i = 0; i < 3 && !r_has_type(opp, t_mark); i++, opp--) {
+        check_op(i + 1);
         check_int_leu(*opp, max_uint);
         params[i] = opp->value.intval;
     }
@@ -203,7 +218,10 @@ zregisterfont(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
     gs_font *pfont;
-    int code = font_param(op, &pfont);
+    int code;
+
+    check_op(1);
+    code = font_param(op, &pfont);
 
     if (code < 0)
         return code;
@@ -219,6 +237,7 @@ zsetupUnicodeDecoder(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     int code;
 
+    check_op(1);
     check_type(*op, t_dictionary);
     code = setup_unicode_decoder(i_ctx_p, op);
     if (code < 0)

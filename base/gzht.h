@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -196,7 +196,14 @@ void gx_ht_order_release(gx_ht_order * porder, gs_memory_t * mem, bool free_cach
 int gx_gstate_dev_ht_install(gs_gstate * pgs,
                              gx_device_halftone * pdht,
                              gs_halftone_type type,
-                             const gx_device * dev);
+                             const gx_device * dev,
+                             gs_HT_objtype_t objtype);
+
+/*
+ * Copy the current dev_ht[HT_OBJTYPE_DEFAULT] to the dev_ht[] for the specified object type.
+ */
+int
+gx_gstate_dev_ht_copy_to_objtype(gs_gstate *pgs, gs_HT_objtype_t objtype);
 
 /*
  * Install a new halftone in the graphics state.  Note that we copy the top

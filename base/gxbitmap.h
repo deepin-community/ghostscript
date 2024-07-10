@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -62,11 +62,11 @@ typedef gs_bitmap_id gx_bitmap_id;
 #endif
 #define align_bitmap_mod (1 << log2_align_bitmap_mod)
 #define bitmap_raster(width_bits)\
-  ((uint)((((width_bits) + (align_bitmap_mod * 8 - 1))\
+  ((size_t)((((width_bits) + (align_bitmap_mod * 8 - 1))\
     >> (log2_align_bitmap_mod + 3)) << log2_align_bitmap_mod))
 
 #define bitmap_raster_pad_align_(width_bits, pad, log2_align)\
-  ((uint)((((width_bits) + (pad<<3) + ((8<<log2_align) - 1))\
+  ((size_t)((((width_bits) + (pad<<3) + ((8<<log2_align) - 1))\
     >> (log2_align + 3)) << log2_align))
 
 #define bitmap_raster_pad_align(width_bits, pad, log2_align)\

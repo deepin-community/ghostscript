@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -294,16 +294,18 @@ gx_set_overprint_Indexed(const gs_color_space * pcs, gs_gstate * pgs)
 /* Color space finalization ditto. */
 
 static void
-gx_final_Indexed(const gs_color_space * pcs)
+gx_final_Indexed(gs_color_space * pcs)
 {
     if (pcs->params.indexed.use_proc) {
         rc_adjust_const(pcs->params.indexed.lookup.map, -1,
                         "gx_adjust_Indexed");
+        pcs->params.indexed.lookup.map = NULL;
     } else {
         byte *data = (byte *)pcs->params.indexed.lookup.table.data; /* Break 'const'. */
 
         gs_free_string(pcs->rc.memory, data,
                 pcs->params.indexed.lookup.table.size, "gx_final_Indexed");
+        pcs->params.indexed.lookup.table.data = NULL;
     }
 }
 

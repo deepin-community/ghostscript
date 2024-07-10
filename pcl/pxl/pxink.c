@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -646,13 +646,6 @@ set_source(const px_args_t * par, px_state_t * pxs, px_paint_t * ppt)
             )
             return_error(errorRasterPatternUndefined);
         pattern = value;
-
-        /* the HP 4700 error page for the pattern and graphic's state
-           color space not matching is wrong, it reports "Error: 15", we
-           use "ColorSpaceMismatch" which we suspect was hp
-           intention */
-        if (pattern->params.color_space != pxgs->color_space)
-            return_error(errorColorSpaceMismatch);
 
         px_set_halftone(pxs);
         code = render_pattern(&ccolor, pattern, par->pv[aPatternOrigin],

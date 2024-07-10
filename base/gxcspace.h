@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -152,7 +152,7 @@ struct gs_color_space_type_s {
     /* Free contents of composite colorspace objects. */
 
 #define cs_proc_final(proc)\
-  void proc(const gs_color_space *)
+  void proc(gs_color_space *)
         cs_proc_final((*final));
 
     /* Adjust reference counts of indirect color components. */
@@ -166,28 +166,7 @@ struct gs_color_space_type_s {
 #define cs_proc_adjust_color_count(proc)\
   void proc(const gs_client_color *, const gs_color_space *, int)
 
-     /* Adjust the color reference counts for the current space. */
-#define cs_adjust_color_count(pgs, delta)\
-  (*gs_currentcolorspace_inline(pgs)->type->adjust_color_count)\
-    (gs_currentcolor_inline(pgs), gs_currentcolorspace_inline(pgs), delta)
-     /* Adjust the color reference counts for the swapped space (i.e.
-      * the one that is not current). */
-#define cs_adjust_swappedcolor_count(pgs, delta)\
-  (*gs_swappedcolorspace_inline(pgs)->type->adjust_color_count)\
-    (gs_swappedcolor_inline(pgs), gs_swappedcolorspace_inline(pgs), delta)
-
         cs_proc_adjust_color_count((*adjust_color_count));
-
-/* Adjust both reference counts for the current color/colorspace. */
-#define cs_adjust_counts(pgs, delta)\
-    cs_adjust_color_count(pgs, delta);					\
-        rc_adjust_const(gs_currentcolorspace_inline(pgs), delta, "cs_adjust_counts")
-
-/* Adjust both reference counts for the swapped (i.e. non-current)
- * color/colorspace. */
-#define cs_adjust_swappedcounts(pgs, delta)\
-    cs_adjust_swappedcolor_count(pgs, delta);					\
-        rc_adjust_const(gs_swappedcolorspace_inline(pgs), delta, "cs_adjust_swappedcounts")
 
     /* Serialization. */
     /*

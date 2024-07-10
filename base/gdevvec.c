@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -643,7 +643,7 @@ gdev_vector_dopath_init(gdev_vector_dopath_state_t *state,
  */
 int
 gdev_vector_dopath_segment(gdev_vector_dopath_state_t *state, int pe_op,
-                           gs_fixed_point vs[3])
+                           gs_fixed_point *vs)
 {
     gx_device_vector *vdev = state->vdev;
     const gs_matrix *const pmat = &state->scale_mat;
@@ -786,8 +786,11 @@ gdev_vector_write_clip_path(gx_device_vector * vdev,
         const gx_clip_list *list = gx_cpath_list(pcpath);
 
         prect = list->head;
-        if (prect == 0)
+        if (prect == 0) {
             prect = &list->single;
+            if (prect->xmax <= prect->xmin || prect->ymax <= prect->ymin)
+                return 0;
+        }
     }
     /* Write out the rectangles. */
     code = (*vdev_proc(vdev, beginpath)) (vdev, gx_path_type_clip);
@@ -901,9 +904,10 @@ gdev_vector_begin_image(gx_device_vector * vdev,
           (pim->CombineWithColor && rop3_uses_T(pgs->log_op))) &&
          (code = gdev_vector_update_fill_color(vdev, pgs, pdcolor)) < 0) ||
         (vdev->bbox_device &&
-         (code = (*dev_proc(vdev->bbox_device, begin_image))
-          ((gx_device *) vdev->bbox_device, pgs, pim, format, prect,
-           pdcolor, pcpath, mem, &pie->bbox_info)) < 0)
+         (code = (*dev_proc(vdev->bbox_device, begin_typed_image))
+                           ((gx_device *) vdev->bbox_device, pgs, NULL,
+                            (gs_image_common_t *)pim, prect,
+                            pdcolor, pcpath, mem, &pie->bbox_info)) < 0)
         )
         return code;
     pie->memory = mem;
@@ -926,8 +930,7 @@ gdev_vector_end_image(gx_device_vector * vdev,
     int code;
 
     if (pie->default_info) {
-        code = gx_default_end_image((gx_device *) vdev, pie->default_info,
-                                    draw_last);
+        code = gx_image_end(pie->default_info, draw_last);
         if (code >= 0)
             code = 0;
     } else {			/* Fill out to the full image height. */

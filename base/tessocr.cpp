@@ -1,4 +1,58 @@
+/* Copyright (C) 2020-2023 Artifex Software, Inc.
+   All Rights Reserved.
+
+   This software is provided AS-IS with no warranty, either express or
+   implied.
+
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
+*/
+
+/* This file is the veneer between GS and Leptonica/Tesseract.
+ *
+ * Leptonica's memory handling is intercepted via
+ * leptonica_{malloc,free,calloc,realloc} (though the last of these
+ * is not used) and forwarded to the GS memory handlers. Leptonica
+ * only makes calls when we're calling it, hence we use a leptonica_mem
+ * global to store the current memory pointer in. This will clearly not
+ * play nicely with multi-threaded use of Ghostscript, but that seems
+ * unlikely with OCR.
+ *
+ * Tesseract is trickier. For a start it uses new/delete/new[]/delete[]
+ * rather than malloc free. That's OK, cos we can intercept this - see
+ * the #ifdef TESSERACT_CUSTOM_ALLOCATOR section at the end of this file
+ * for how.
+ *
+ * The larger problem is that on startup, there is lots of 'static init'
+ * done in tesseract, which involves the system calling new. That happens
+ * before we have even entered main, so it's impossible to use any other
+ * allocator other than malloc.
+ *
+ * For now, we'll live with this; I believe that most of the 'bulk'
+ * allocations (pixmaps etc) are done via Leptonica. If we have an integrator
+ * that really needs to avoid malloc/free, then the section of code enclosed
+ * in #ifdef TESSERACT_CUSTOM_ALLOCATOR at the end of this file can be used,
+ * and tesseract_malloc/tesseract_free can be changed as required.
+ */
+
+
 #include "tesseract/baseapi.h"
+
+#if defined(OCR_SHARED) && OCR_SHARED == 1
+#if defined(TESSERACT_MAJOR_VERSION) && TESSERACT_MAJOR_VERSION <= 4
+#define USE_TESS_5_API 0
+#include "tesseract/genericvector.h"
+#else
+#define USE_TESS_5_API 1
+#endif
+#else
+#define USE_TESS_5_API 1
+#endif
 
 extern "C"
 {
@@ -23,6 +77,10 @@ extern "C"
 static int event = 0;
 #endif
 
+#ifndef FUTURE_DEVELOPMENT
+#define FUTURE_DEVELOPMENT 0
+#endif
+
 /* Hackily define prototypes for alloc routines for leptonica. */
 extern "C" void *leptonica_malloc(size_t blocksize);
 extern "C" void *leptonica_calloc(size_t numelm, size_t elemsize);
@@ -36,19 +94,33 @@ typedef struct
 } wrapped_api;
 
 
-void *leptonica_malloc(size_t blocksize)
+static gs_memory_t *leptonica_mem;
+
+void *leptonica_malloc(size_t size)
 {
-    void *ret = malloc(blocksize);
+    void *ret = gs_alloc_bytes(leptonica_mem, size, "leptonica_malloc");
 #ifdef DEBUG_ALLOCS
-    printf("%d LEPTONICA_MALLOC %d -> %p\n", event++, (int)blocksize, ret);
+    printf("%d LEPTONICA_MALLOC(%p) %d -> %p\n", event++, leptonica_mem, (int)size, ret);
     fflush(stdout);
 #endif
     return ret;
 }
 
+void leptonica_free(void *ptr)
+{
+#ifdef DEBUG_ALLOCS
+    printf("%d LEPTONICA_FREE(%p) %p\n", event++, leptonica_mem, ptr);
+    fflush(stdout);
+#endif
+    gs_free_object(leptonica_mem, ptr, "leptonica_free");
+}
+
 void *leptonica_calloc(size_t numelm, size_t elemsize)
 {
-    void *ret = calloc(numelm, elemsize);
+    void *ret = leptonica_malloc(numelm * elemsize);
+
+    if (ret)
+        memset(ret, 0, numelm * elemsize);
 #ifdef DEBUG_ALLOCS
     printf("%d LEPTONICA_CALLOC %d,%d -> %p\n", event++, (int)numelm, (int)elemsize, ret);
     fflush(stdout);
@@ -58,21 +130,8 @@ void *leptonica_calloc(size_t numelm, size_t elemsize)
 
 void *leptonica_realloc(void *ptr, size_t blocksize)
 {
-    void *ret = realloc(ptr, blocksize);
-#ifdef DEBUG_ALLOCS
-    printf("%d LEPTONICA_REALLOC %p,%d -> %p\n", event++, ptr, (int)blocksize, ret);
-    fflush(stdout);
-#endif
-    return ret;
-}
-
-void leptonica_free(void *ptr)
-{
-#ifdef DEBUG_ALLOCS
-    printf("%d LEPTONICA_FREE %p\n", event++, ptr);
-    fflush(stdout);
-#endif
-    free(ptr);
+    /* Never called in our usage. */
+    return NULL;
 }
 
 /* Convert from gs format bitmaps to leptonica format bitmaps. */
@@ -98,29 +157,16 @@ static int convert2pix(l_uint32 *data, int w, int h, int raster)
     return w + extra*4;
 }
 
-static gs_memory_t *leptonica_mem;
-
-static void *my_leptonica_malloc(size_t size)
-{
-    void *ret = gs_alloc_bytes(leptonica_mem, size, "leptonica_malloc");
-#ifdef DEBUG_ALLOCS
-    printf("%d MY_LEPTONICA_MALLOC(%p) %d -> %p\n", event++, leptonica_mem, (int)size, ret);
-    fflush(stdout);
-#endif
-    return ret;
-}
-
-static void my_leptonica_free(void *ptr)
-{
-#ifdef DEBUG_ALLOCS
-    printf("%d MY_LEPTONICA_FREE(%p) %p\n", event++, leptonica_mem, ptr);
-    fflush(stdout);
-#endif
-    gs_free_object(leptonica_mem, ptr, "leptonica_free");
-}
-
+#if USE_TESS_5_API
 static bool
-load_file(const char* filename, std::vector<char>* data) {
+load_file(const char* filename, std::vector<char> *data)
+{
+#else
+static bool
+load_file(const STRING& fname, GenericVector<char> *data)
+{
+  const char *filename = (const char *)fname.string();
+#endif
   bool result = false;
   gp_file *fp;
   int code;
@@ -141,7 +187,11 @@ load_file(const char* filename, std::vector<char>* data) {
   if (size > 0 && size < LONG_MAX) {
     // reserve an extra byte in case caller wants to append a '\0' character
     data->reserve(size + 1);
+#if USE_TESS_5_API
     data->resize(size);
+#else
+    data->resize_no_init(size);
+#endif
     result = static_cast<long>(gp_fread(&(*data)[0], 1, size, fp)) == size;
   }
   gp_fclose(fp);
@@ -152,8 +202,13 @@ fail:
   return result;
 }
 
+#if USE_TESS_5_API
 static bool
 load_file_from_path(const char *path, const char *file, std::vector<char> *out)
+#else
+static bool
+load_file_from_path(const char *path, const char *file, GenericVector<char>  *out)
+#endif
 {
     const char *sep = gp_file_name_directory_separator();
     size_t seplen = strlen(sep);
@@ -190,11 +245,18 @@ load_file_from_path(const char *path, const char *file, std::vector<char> *out)
 #endif
 #define STRINGIFY2(S) #S
 #define STRINGIFY(S) STRINGIFY2(S)
-static char *tessdata_prefix = STRINGIFY(TESSDATA);
+static char *tessdata_prefix = (char *)STRINGIFY(TESSDATA);
 
+#if USE_TESS_5_API
 static bool
 tess_file_reader(const char *fname, std::vector<char> *out)
 {
+#else
+static bool
+tess_file_reader(const STRING& fname_str, GenericVector<char>*out)
+{
+    const char *fname = fname_str.string();
+#endif
     const char *file = fname;
     const char *s;
     char text[PATH_MAX];
@@ -228,7 +290,11 @@ tess_file_reader(const char *fname, std::vector<char> *out)
         size = (long)romfs_file_len(leptonica_mem, text);
         if (size >= 0) {
             out->reserve(size + 1);
+#if USE_TESS_5_API
             out->resize(size);
+#else
+            out->resize_no_init(size);
+#endif
             code = iodev->procs.open_file(iodev, text, strlen(text), "rb", &ps, leptonica_mem);
             if (code < 0)
                 return code;
@@ -276,7 +342,7 @@ ocr_init_api(gs_memory_t *mem, const char *language, int engine, void **state)
         return gs_error_VMerror;
 
     leptonica_mem = mem;
-    setPixMemoryManager(my_leptonica_malloc, my_leptonica_free);
+    setPixMemoryManager(leptonica_malloc, leptonica_free);
 
     wrapped->mem = mem;
     wrapped->api = new tesseract::TessBaseAPI();
@@ -318,7 +384,7 @@ ocr_init_api(gs_memory_t *mem, const char *language, int engine, void **state)
                            NULL, 0, /* configs, configs_size */
                            NULL, NULL, /* vars_vec */
                            false, /* set_only_non_debug_params */
-                           &tess_file_reader)) {
+                           (tesseract::FileReader)&tess_file_reader)) {
         code = gs_error_unknownerror;
         goto fail;
     }
@@ -386,7 +452,6 @@ do_ocr_image(wrapped_api *wrapped,
              char **out)
 {
     char *outText;
-    int code;
     Pix *image;
 
     *out = NULL;
@@ -499,6 +564,7 @@ ocr_recognise(void *api_, int w, int h, void *data,
                                                    &smallcaps,
                                                    &pointsize,
                                                    &font_id);
+            (void)font_name;
             do {
                 const char *graph = res_it->GetUTF8Text(tesseract::RIL_SYMBOL);
                 if (graph && graph[0] != 0) {
@@ -669,25 +735,54 @@ int ocr_bitmap_to_unicodes(void *state,
 
 };
 
+/* The following code is disabled by default. If enabled, nothing
+ * should change, except integrators can tweak tesseract_malloc
+ * and tesseract_free as required to avoid calling the normal
+ * system malloc/free. */
+#ifdef TESSERACT_CUSTOM_ALLOCATOR
+
+static void *tesseract_malloc(size_t blocksize)
+{
+    void *ret;
+
+    ret = malloc(blocksize);
+#ifdef DEBUG_ALLOCS
+    printf("%d LEPTONICA_MALLOC %d -> %p\n", event++, (int)blocksize, ret);
+    fflush(stdout);
+#endif
+    return ret;
+}
+
+static void tesseract_free(void *ptr)
+{
+#ifdef DEBUG_ALLOCS
+    printf("%d LEPTONICA_FREE %p\n", event++, ptr);
+    fflush(stdout);
+#endif
+    free(ptr);
+}
+
 /* Currently tesseract is the only C++ lib we have.
  * We may need to revisit this if this changes.
  */
 void *operator new(size_t size)
 {
-    return leptonica_malloc(size);
+    return tesseract_malloc(size);
 }
 
 void operator_delete(void *ptr)
 {
-    leptonica_free(ptr);
+    tesseract_free(ptr);
 }
 
 void *operator new[](size_t size)
 {
-    return leptonica_malloc(size);
+    return tesseract_malloc(size);
 }
 
 void operator delete[](void *ptr)
 {
-    leptonica_free(ptr);
+    tesseract_free(ptr);
 }
+
+#endif

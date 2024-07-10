@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -678,7 +678,6 @@ pcl_unload_resident_fonts(pcl_state_t * pcs)
 static int
 pcfont_do_reset(pcl_state_t * pcs, pcl_reset_type_t type)
 {
-    int code;
 
     if ((type & pcl_reset_initial) != 0) {
         pcs->font_dir = gs_font_dir_alloc(pcs->memory);
@@ -686,12 +685,6 @@ pcfont_do_reset(pcl_state_t * pcs, pcl_reset_type_t type)
             return_error(gs_error_VMerror);
         if (pcs->nocache)
             gs_setcachelimit(pcs->font_dir, 0);
-        /* disable hinting at high res */
-        if (gs_currentdevice(pcs->pgs)->HWResolution[0] >= 300) {
-            code = gs_setgridfittt(pcs->font_dir, 0);
-            if (code < 0)
-                return code;
-        }
         pcs->font = 0;
         pcs->font_selection[0].font = pcs->font_selection[1].font = 0;
         pcs->font_selected = primary;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -215,7 +215,7 @@ struct gx_color_tile_s {
     byte is_dummy;		/* if true, the device manages the pattern,
                                    and the content of the tile is empty. */
     byte trans_group_popped;    /* Used to avoid multiple group pops in image mask fills */
-    byte is_planar;             /* Has to be stored here due to the device
+    byte num_planar_planes;     /* Has to be stored here due to the device
                                    change that can occur when the tile is
                                    created and when it is written in the clist
                                    when we are writing to a transparency
@@ -296,6 +296,9 @@ bool gx_device_is_pattern_accum(gx_device *dev);
 /* This will allow 1 oversized entry					    */
 void gx_pattern_cache_ensure_space(gs_gstate * pgs, size_t needed);
 
+gx_color_tile *
+gx_pattern_cache_find_tile_for_id(gx_pattern_cache *pcache, gs_id id);
+
 void gx_pattern_cache_update_used(gs_gstate *pgs, size_t used);
 
 /* Update cache tile space */
@@ -306,7 +309,7 @@ void gx_pattern_cache_update_space(gs_gstate * pgs, size_t used);
 /* device, but it may zero out the bitmap_memory pointers to prevent */
 /* the accumulated bitmaps from being freed when the device is closed. */
 int gx_pattern_cache_add_entry(gs_gstate *, gx_device_forward *,
-                               gx_color_tile **, gs_gstate*);
+                               gx_color_tile **);
 /* Add a dummy Pattern cache entry.  Stubs a pattern tile for interpreter when
    device handles high level patterns. */
 int gx_pattern_cache_add_dummy_entry(gs_gstate *pgs, gs_pattern1_instance_t *pinst,

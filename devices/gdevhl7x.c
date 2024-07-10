@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /*
@@ -248,12 +248,17 @@ static dev_proc_close_device(hl7x0_close);
 static dev_proc_print_page(hl720_print_page);
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs prn_hl_procs =
-  prn_params_procs(hl7x0_open, gdev_prn_bg_output_page, hl7x0_close,
-                   gdev_prn_get_params, gdev_prn_put_params);
+static void
+hl7x0_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono_bg(dev);
+
+    set_dev_proc(dev, open_device, hl7x0_open);
+    set_dev_proc(dev, close_device, hl7x0_close);
+}
 
 const gx_device_printer far_data gs_hl7x0_device =
-  prn_device(prn_hl_procs, "hl7x0",
+  prn_device(hl7x0_initialize_device_procs, "hl7x0",
         DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
         X_DPI, Y_DPI,
         0, 0, 0, 0,		/* margins filled in by hl7x0_open */

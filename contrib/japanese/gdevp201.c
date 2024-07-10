@@ -41,7 +41,7 @@ static dev_proc_print_page(pr201_print_page);
 
 /* The device descriptor */
 gx_device_printer gs_pr201_device =
-  prn_device(prn_std_procs, "pr201",
+  prn_device(gdev_prn_initialize_device_procs_mono, "pr201",
         WIDTH,
         HEIGHT,
         160,
@@ -50,7 +50,7 @@ gx_device_printer gs_pr201_device =
         1, pr201_print_page);
 
 gx_device_printer gs_pr1000_device =
-  prn_device(prn_std_procs, "pr1000",
+  prn_device(gdev_prn_initialize_device_procs_mono, "pr1000",
         WIDTH,
         HEIGHT,
         240,
@@ -59,7 +59,7 @@ gx_device_printer gs_pr1000_device =
         1, pr201_print_page);
 
 gx_device_printer gs_pr150_device =
-  prn_device(prn_std_procs, "pr150",
+  prn_device(gdev_prn_initialize_device_procs_mono, "pr150",
         WIDTH,
         HEIGHT,
         320,
@@ -68,7 +68,7 @@ gx_device_printer gs_pr150_device =
         1, pr201_print_page);
 
 gx_device_printer gs_pr1000_4_device =
-  prn_device(prn_std_procs, "pr1000_4",
+  prn_device(gdev_prn_initialize_device_procs, "pr1000_4",
         WIDTH,
         HEIGHT,
         400,
@@ -130,6 +130,7 @@ pr201_print_page(gx_device_printer *pdev, gp_file *prn_stream)
         int height;
         int bits_per_column;
         int bytes_per_column;
+        int bits_per_column_rounded_up;
         int chunk_size;
         byte *in, *out;
         int lnum, skip;
@@ -154,12 +155,17 @@ pr201_print_page(gx_device_printer *pdev, gp_file *prn_stream)
         height = pdev->height;
         bits_per_column	 = head_pins;
         bytes_per_column = bits_per_column / 8;
+        bits_per_column_rounded_up = (bits_per_column + 7 ) & ~7;
         chunk_size = bits_per_column * line_size;
 
         in = (byte *)
-                gs_malloc(pdev->memory->non_gc_memory, bits_per_column, line_size, "pr201_print_page(in)");
+                gs_malloc(pdev->memory->non_gc_memory,
+                          bits_per_column_rounded_up,
+                          line_size, "pr201_print_page(in)");
         out = (byte *)
-                gs_malloc(pdev->memory->non_gc_memory, bits_per_column, line_size, "pr201_print_page(out)");
+                gs_malloc(pdev->memory->non_gc_memory,
+                          bits_per_column_rounded_up,
+                          line_size, "pr201_print_page(out)");
         if(in == 0 || out == 0)
                 return -1;
 
@@ -176,6 +182,14 @@ pr201_print_page(gx_device_printer *pdev, gp_file *prn_stream)
         }
         gp_fprintf(pdev->file, "\033T%d" , lr_pitch);
                                 /* 18/120 inch per line */
+
+        if (bits_per_column_rounded_up != bits_per_column) {
+            memset(in + bits_per_column * line_size, 0,
+                   (bits_per_column_rounded_up - bits_per_column) *
+                                                           line_size);
+            memset(out, 0,
+                   bits_per_column_rounded_up * line_size);
+        }
 
         /* Send Data to printer */
         lnum = 0;

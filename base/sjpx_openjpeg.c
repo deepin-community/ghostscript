@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -236,7 +236,10 @@ static void sjpx_info_callback(const char *msg, void *ptr)
 
 static void sjpx_warning_callback(const char *msg, void *ptr)
 {
+#ifdef DEBUG
+	/* prevent too many messages during normal build */
 	dlprintf1("openjpeg warning: %s", msg);
+#endif
 }
 
 /* initialize the stream */
@@ -618,7 +621,10 @@ static int process_one_trunk(stream_jpxd_state * const state, stream_cursor_writ
                 {
                     for (i = 0; i < state->width; i++)
                     {
-                        int in_offset_scaled = (y_offset/state->image->comps[state->alpha_comp].dy*state->width + i)/state->image->comps[state->alpha_comp].dx;
+                        int dx = state->image->comps[state->alpha_comp].dx;
+                        int dy = state->image->comps[state->alpha_comp].dy;
+                        int w = state->image->comps[state->alpha_comp].w;
+                        int in_offset_scaled = (y_offset/dy * w) + i / dx;
                         for (b=0; b<bytepp1; b++)
                             *row++ = (((state->image->comps[state->alpha_comp].data[in_offset_scaled] << shift_bit) >> (8*(bytepp1-b-1))))
                                                                      + (b==0 ? state->sign_comps[state->alpha_comp] : 0);
@@ -630,7 +636,10 @@ static int process_one_trunk(stream_jpxd_state * const state, stream_cursor_writ
                     {
                         for (compno=0; compno<img_numcomps; compno++)
                         {
-                            int in_offset_scaled = (y_offset/state->image->comps[compno].dy*state->width + i)/state->image->comps[compno].dx;
+                            int dx = state->image->comps[compno].dx;
+                            int dy = state->image->comps[compno].dy;
+                            int w = state->image->comps[compno].w;
+                            int in_offset_scaled = (y_offset/dy * w) + i / dx;
                             for (b=0; b<bytepp1; b++)
                                 *row++ = (((state->image->comps[compno].data[in_offset_scaled] << shift_bit) >> (8*(bytepp1-b-1))))
                                                                                 + (b==0 ? state->sign_comps[compno] : 0);
@@ -649,7 +658,10 @@ static int process_one_trunk(stream_jpxd_state * const state, stream_cursor_writ
                 {
                     for (b=0; b<ppbyte1; b++)
                     {
-                        int in_offset_scaled = (y_offset/state->image->comps[compno].dy*state->width + i)/state->image->comps[compno].dx;
+                        int dx = state->image->comps[compno].dx;
+                        int dy = state->image->comps[compno].dy;
+                        int w = state->image->comps[compno].w;
+                        int in_offset_scaled = (y_offset/dy * w) + i / dx;
                         bt = bt<<state->bpp;
                         bt += state->image->comps[compno].data[in_offset_scaled] + state->sign_comps[compno];
                     }
@@ -698,13 +710,24 @@ s_opjd_process(stream_state * ss, stream_cursor_read * pr,
 
     if (in_size > 0)
     {
+        if (state->PassThrough && state->PassThroughfn) {
+            if (state->PassThrough && state->PassThroughfn && !state->StartedPassThrough) {
+                state->StartedPassThrough = 1;
+                (state->PassThroughfn)(state->device, NULL, 1);
+            }
+            (state->PassThroughfn)(state->device, (byte *)pr->ptr + 1, (byte *)pr->limit - (byte *)pr->ptr);
+        }
+
         /* buffer available data */
         code = opj_lock(ss->memory);
         if (code < 0) return code;
         locked = 1;
 
         code = s_opjd_accumulate_input(state, pr);
-        if (code < 0) return code;
+        if (code < 0) {
+            (void)opj_unlock(ss->memory);
+            return code;
+        }
 
         if (state->codec == NULL) {
             /* state->sb.size is non-zero after successful
@@ -773,6 +796,10 @@ s_opjd_set_defaults(stream_state * ss) {
 
     state->alpha = false;
     state->colorspace = gs_jpx_cs_rgb;
+    state->StartedPassThrough = 0;
+    state->PassThrough = 0;
+    state->PassThroughfn = NULL;
+    state->device = (void *)NULL;
 }
 
 /* stream release.
@@ -783,6 +810,10 @@ s_opjd_release(stream_state *ss)
 {
     stream_jpxd_state *const state = (stream_jpxd_state *) ss;
 
+    if (state->PassThrough && state->PassThroughfn && state->StartedPassThrough) {
+        state->StartedPassThrough = 0;
+        (state->PassThroughfn)(state->device, NULL, 0);
+    }
     /* empty stream or failed to accumulate */
     if (state->codec == NULL)
         return;

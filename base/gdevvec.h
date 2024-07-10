@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -306,7 +306,7 @@ void gdev_vector_dopath_init(gdev_vector_dopath_state_t *state,
 
 /* Write a segment of a path using the default implementation. */
 int gdev_vector_dopath_segment(gdev_vector_dopath_state_t *state, int pe_op,
-                               gs_fixed_point vs[3]);
+                               gs_fixed_point *vs);
 
 typedef struct gdev_vector_path_seg_record_s {
     int op;
@@ -373,6 +373,17 @@ int gdev_vector_begin_image(gx_device_vector * vdev,
               const gx_drawing_color * pdcolor, const gx_clip_path * pcpath,
                     gs_memory_t * mem, const gx_image_enum_procs_t * pprocs,
                             gdev_vector_image_enum_t * pie);
+
+int gdev_vector_begin_typed_image(gx_device_vector         *vdev,
+                            const gs_gstate                *pgs,
+                            const gs_matrix                *pmat,
+                            const gs_image_common_t        *pim,
+                            const gs_int_rect              *prect,
+                            const gx_drawing_color         *pdcolor,
+                            const gx_clip_path             *pcpath,
+                                  gs_memory_t              *mem,
+                            const gx_image_enum_procs_t    *pprocs,
+                                  gdev_vector_image_enum_t *pie);
 
 /* End an image, optionally supplying any necessary blank padding rows. */
 /* Return 0 if we used the default implementation, 1 if not. */

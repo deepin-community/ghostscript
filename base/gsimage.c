@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -57,6 +57,13 @@ typedef struct image_enum_plane_s {
   - A (retained) source string, which may be empty (size = 0).
 */
     gs_const_string source;
+    /* The gs_string 'orig' is only set if the 'txfer_control' flag was set when
+     * the 'source' string data was initally passed in. In this case we now control the lifetime
+     * of the string. So when we empty the source string, free it. We need to know the actual
+     * address of the string, and that gets modified in the peunum->planes->source and size
+     * members, so we use 'orig' as both a marker for the control and the original size and location.
+     */
+    gs_const_string orig;
 } image_enum_plane_t;
 /*
   The possible states for each plane do not depend on the state of any other
@@ -154,48 +161,40 @@ RELOC_PTRS_END
 static int
 is_image_visible(const gs_image_common_t * pic, gs_gstate * pgs, gx_clip_path *pcpath)
 {
-    /* HACK : We need the source image size here,
-       but gs_image_common_t doesn't pass it.
-       We would like to move Width, Height to gs_image_common,
-       but gs_image2_t appears to have those fields of double type.
-     */
-    if (pic->type->begin_typed_image == gx_begin_image1) {
-        gs_image1_t *pim = (gs_image1_t *) pic;
-        gs_rect image_rect = {{0, 0}, {0, 0}};
-        gs_rect device_rect;
-        gs_int_rect device_int_rect;
-        gs_matrix mat;
-        int code;
+    gs_rect image_rect = {{0, 0}, {0, 0}};
+    gs_rect device_rect;
+    gs_int_rect device_int_rect;
+    gs_matrix mat;
+    int code;
 
-        image_rect.q.x = pim->Width;
-        image_rect.q.y = pim->Height;
-        if (pic->ImageMatrix.xx == ctm_only(pgs).xx &&
-            pic->ImageMatrix.xy == ctm_only(pgs).xy &&
-            pic->ImageMatrix.yx == ctm_only(pgs).yx &&
-            pic->ImageMatrix.yy == ctm_only(pgs).yy) {
-            /* Handle common special case separately to accept singular matrix */
-            mat.xx = mat.yy = 1.;
-            mat.yx = mat.xy = 0.;
-            mat.tx = ctm_only(pgs).tx - pic->ImageMatrix.tx;
-            mat.ty = ctm_only(pgs).ty - pic->ImageMatrix.ty;
-        } else {
-            code = gs_matrix_invert(&pic->ImageMatrix, &mat);
-            if (code < 0)
-                return code;
-            code = gs_matrix_multiply(&mat, &ctm_only(pgs), &mat);
-            if (code < 0)
-                return code;
-        }
-        code = gs_bbox_transform(&image_rect, &mat, &device_rect);
+    image_rect.q.x = pic->Width;
+    image_rect.q.y = pic->Height;
+    if (pic->ImageMatrix.xx == ctm_only(pgs).xx &&
+        pic->ImageMatrix.xy == ctm_only(pgs).xy &&
+        pic->ImageMatrix.yx == ctm_only(pgs).yx &&
+        pic->ImageMatrix.yy == ctm_only(pgs).yy) {
+        /* Handle common special case separately to accept singular matrix */
+        mat.xx = mat.yy = 1.;
+        mat.yx = mat.xy = 0.;
+        mat.tx = ctm_only(pgs).tx - pic->ImageMatrix.tx;
+        mat.ty = ctm_only(pgs).ty - pic->ImageMatrix.ty;
+    } else {
+        code = gs_matrix_invert(&pic->ImageMatrix, &mat);
         if (code < 0)
             return code;
-        device_int_rect.p.x = (int)floor(device_rect.p.x);
-        device_int_rect.p.y = (int)floor(device_rect.p.y);
-        device_int_rect.q.x = (int)ceil(device_rect.q.x);
-        device_int_rect.q.y = (int)ceil(device_rect.q.y);
-        if (!gx_cpath_rect_visible(pcpath, &device_int_rect))
-            return 0;
+        code = gs_matrix_multiply(&mat, &ctm_only(pgs), &mat);
+        if (code < 0)
+            return code;
     }
+    code = gs_bbox_transform(&image_rect, &mat, &device_rect);
+    if (code < 0)
+        return code;
+    device_int_rect.p.x = (int)floor(device_rect.p.x);
+    device_int_rect.p.y = (int)floor(device_rect.p.y);
+    device_int_rect.q.x = (int)ceil(device_rect.q.x);
+    device_int_rect.q.y = (int)ceil(device_rect.q.y);
+    if (!gx_cpath_rect_visible(pcpath, &device_int_rect))
+        return 0;
     return 1;
 }
 
@@ -522,7 +521,7 @@ gs_image_next(gs_image_enum * penum, const byte * dbytes, uint dsize,
     plane_data[px].data = dbytes;
     plane_data[px].size = dsize;
     penum->error = false;
-    code = gs_image_next_planes(penum, plane_data, used);
+    code = gs_image_next_planes(penum, plane_data, used, false);
     *pused = used[px];
     if (code >= 0)
         next_plane(penum);
@@ -532,7 +531,7 @@ gs_image_next(gs_image_enum * penum, const byte * dbytes, uint dsize,
 int
 gs_image_next_planes(gs_image_enum * penum,
                      gs_const_string *plane_data /*[num_planes]*/,
-                     uint *used /*[num_planes]*/)
+                     uint *used /*[num_planes]*/, bool txfer_control)
 {
     const int num_planes = penum->num_planes;
     int i;
@@ -554,6 +553,18 @@ gs_image_next_planes(gs_image_enum * penum,
         if (penum->wanted[i] && plane_data[i].size != 0) {
             penum->planes[i].source.size = plane_data[i].size;
             penum->planes[i].source.data = plane_data[i].data;
+            /* The gs_string 'orig' in penum->planes is set here if the 'txfer_control' flag is set.
+             * In this case we now control the lifetime of the string. We need to know the actual
+             * address of the string, and that gets modified in the peunum->planes->source and size
+             * members, so we use 'orig' as both a marker for the control and the originalsize and location.
+             */
+            if (txfer_control) {
+                penum->planes[i].orig.data = plane_data[i].data;
+                penum->planes[i].orig.size = plane_data[i].size;
+            } else {
+                penum->planes[i].orig.data = NULL;
+                penum->planes[i].orig.size = 0;
+            }
         }
     }
     for (;;) {
@@ -575,10 +586,10 @@ gs_image_next_planes(gs_image_enum * penum,
                     /* Buffer a partial row. */
                     int copy = min(size, raster - pos);
                     uint old_size = penum->planes[i].row.size;
+                    gs_memory_t *mem = gs_image_row_memory(penum);
 
                     /* Make sure the row buffer is fully allocated. */
                     if (raster > old_size) {
-                        gs_memory_t *mem = gs_image_row_memory(penum);
                         byte *old_data = penum->planes[i].row.data;
                         byte *row =
                             (old_data == 0 ?
@@ -602,6 +613,17 @@ gs_image_next_planes(gs_image_enum * penum,
                            penum->planes[i].source.data, copy);
                     penum->planes[i].source.data += copy;
                     penum->planes[i].source.size = size -= copy;
+                    /* The gs_string 'orig' is only set if the 'txfer_control' flag was set when
+                     * the 'source' string data was initally passed in. In this case we now control the lifetime
+                     * of the string. So when we empty the source string, free it. We need to know the actual
+                     * address of the string, and that gets modified in the peunum->planes->source and size
+                     * members, so we use 'orig' as both a marker for the control and the originalsize and location.
+                     */
+                    if (penum->planes[i].source.size == 0 && penum->planes[i].orig.size != 0) {
+                        gs_free_string(mem, (byte *)penum->planes[i].orig.data, penum->planes[i].orig.size, "gs_image_next_planes");
+                        penum->planes[i].orig.size = 0;
+                        penum->planes[i].orig.data = NULL;
+                    }
                     penum->planes[i].pos = pos += copy;
                     used[i] += copy;
                 }
@@ -663,11 +685,22 @@ gs_image_next_planes(gs_image_enum * penum,
                 /* We transferred the row(s) from the source. */
                 penum->planes[i].source.data += count;
                 penum->planes[i].source.size -= count;
+                /* The gs_string 'orig' is only set if the 'txfer_control' flag was set when
+                 * the 'source' string data was initally passed in. In this case we now control the lifetime
+                 * of the string. So when we empty the source string, free it. We need to know the actual
+                 * address of the string, and that gets modified in the peunum->planes->source and size
+                 * members, so we use 'orig' as both a marker for the control and the originalsize and location.
+                 */
+                if (penum->planes[i].source.size == 0 && penum->planes[i].orig.size != 0) {
+                    gs_free_string(gs_image_row_memory(penum), (byte *)penum->planes[i].orig.data, penum->planes[i].orig.size, "gs_image_next_planes");
+                    penum->planes[i].orig.size = 0;
+                    penum->planes[i].orig.data = NULL;
+                }
                 used[i] += count;
             }
         }
         cache_planes(penum);
-        if (code > 0)
+        if (code != 0)
             break;
     }
     /* Return the retained data pointers. */

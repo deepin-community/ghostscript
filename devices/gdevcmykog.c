@@ -1,14 +1,16 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  1305 Grant Avenue - Suite 200,
-   Novato, CA 94945, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* psdcmykog device.
@@ -199,7 +201,7 @@ cmykog_open(gx_device * pdev)
 
   /* Finally, we open the device requesting the underlying buffers to be
    * planar, rather than chunky. See (1) at the top of this file. */
-  return gdev_prn_open_planar(pdev, true);
+  return gdev_prn_open_planar(pdev, pdev->color_info.num_components);
 }
 
 /* Close the printer */
@@ -522,7 +524,7 @@ cmykog_process(void *arg_, gx_device *dev_, gx_device *bdev, const gs_int_rect *
   my_rect.p.y = 0;
   my_rect.q.x = w;
   my_rect.q.y = h;
-  code = dev_proc(bdev, get_bits_rectangle)(bdev, &my_rect, &buffer->params, NULL);
+  code = dev_proc(bdev, get_bits_rectangle)(bdev, &my_rect, &buffer->params);
   if (code < 0)
     return code;
 
@@ -707,7 +709,7 @@ prn_done:
       if (arg->spot_file[i] != NULL)
         gp_fclose(arg->spot_file[i]);
       if(arg->spot_name[i][0])
-        unlink(arg->spot_name[i]);
+        gp_unlink(pdev->memory, arg->spot_name[i]);
     }
 #endif
     gs_free_object(pdev->memory, psd_ctx, "cmykog_print_page psd_ctx");
@@ -718,73 +720,21 @@ prn_done:
 
 /* Finally, the device definition itself */
 
-#define device_procs(get_color_mapping_procs)\
-{       cmykog_open,			/* open device */\
-        gx_default_get_initial_matrix,	/* initialize matrix */\
-        NULL,                           /* sync_output */\
-        gdev_prn_bg_output_page,        /* output_page */\
-        cmykog_close,                   /* close */\
-        NULL,                           /* map_rgb_color - not used */\
-        NULL,                           /* map_color_rgb - not used */\
-        NULL,                           /* fill_rectangle */\
-        NULL,                           /* tile_rectangle */\
-        NULL,                           /* copy_mono */\
-        NULL,                           /* copy_color */\
-        NULL,                           /* draw_line */\
-        NULL,                           /* get_bits */\
-        gx_devn_prn_get_params,         /* get_params */\
-        cmykog_put_params,              /* put_params */\
-        NULL,                           /* map_cmyk_color - not used */\
-        NULL,                           /* get_xfont_procs */\
-        NULL,                           /* get_xfont_device */\
-        NULL,                           /* map_rgb_alpha_color */\
-        gx_page_device_get_page_device, /* get_page_device */\
-        NULL,                           /* get_alpha_bits */\
-        NULL,                           /* copy_alpha */\
-        NULL,                           /* get_band */\
-        NULL,                           /* copy_rop */\
-        NULL,                           /* fill_path */\
-        NULL,                           /* stroke_path */\
-        NULL,                           /* fill_mask */\
-        NULL,                           /* fill_trapezoid */\
-        NULL,                           /* fill_parallelogram */\
-        NULL,                           /* fill_triangle */\
-        NULL,                           /* draw_thin_line */\
-        NULL,                           /* begin_image */\
-        NULL,                           /* image_data */\
-        NULL,                           /* end_image */\
-        NULL,                           /* strip_tile_rectangle */\
-        NULL,                           /* strip_copy_rop */\
-        NULL,                           /* get_clipping_box */\
-        NULL,                           /* begin_typed_image */\
-        NULL,                           /* get_bits_rectangle */\
-        NULL,                           /* map_color_rgb_alpha */\
-        NULL,                           /* create_compositor */\
-        NULL,                           /* get_hardware_params */\
-        NULL,                           /* text_begin */\
-        NULL,                           /* finish_copydevice */\
-        NULL,                           /* begin_transparency_group */\
-        NULL,                           /* end_transparency_group */\
-        NULL,                           /* begin_transparency_mask */\
-        NULL,                           /* end_transparency_mask */\
-        NULL,                           /* discard_transparency_layer */\
-        gx_devn_prn_get_color_mapping_procs,/* get_color_mapping_procs */\
-        cmykog_get_color_comp_index,    /* get_color_comp_index */\
-        gx_devn_prn_encode_color,       /* encode_color */\
-        gx_devn_prn_decode_color,       /* decode_color */\
-        NULL,                           /* pattern_manage */\
-        NULL,                           /* fill_rectangle_hl_color */\
-        NULL,				/* include_color_space */\
-        NULL,				/* fill_linear_color_scanline */\
-        NULL,				/* fill_linear_color_trapezoid */\
-        NULL,				/* fill_linear_color_triangle */\
-        NULL,                           /* update_spot_equivalent_colors */\
-        gx_devn_prn_ret_devn_params,    /* ret_devn_params */\
-        NULL,                           /* fillpage */\
-        NULL,                           /* push_transparency_state */\
-        NULL,                           /* pop_transparency_state */\
-        NULL,                           /* put_image */\
-        cmykog_dev_spec_op                 /* dev_spec_op */\
+static void
+psdcmykog_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, open_device, cmykog_open);
+    set_dev_proc(dev, close_device, cmykog_close);
+    set_dev_proc(dev, get_params, gx_devn_prn_get_params);
+    set_dev_proc(dev, put_params, cmykog_put_params);
+    set_dev_proc(dev, get_color_mapping_procs, gx_devn_prn_get_color_mapping_procs);
+    set_dev_proc(dev, get_color_comp_index, cmykog_get_color_comp_index);
+    set_dev_proc(dev, encode_color, gx_devn_prn_encode_color);
+    set_dev_proc(dev, decode_color, gx_devn_prn_decode_color);
+    set_dev_proc(dev, ret_devn_params, gx_devn_prn_ret_devn_params);
+    set_dev_proc(dev, dev_spec_op, cmykog_dev_spec_op);
 }
 
 fixed_colorant_name DevCMYKOGComponents[] = {
@@ -819,15 +769,13 @@ fixed_colorant_name DevCMYKOGComponents[] = {
 /*
  * PSDCMYKOG 8bits
  */
-static const gx_device_procs cmykog_procs = device_procs(get_cmykog_spot_color_mapping_procs);
-
 const gx_device_cmykog gs_psdcmykog_device =
 {
-  CMYKOG_DEVICE(cmykog_procs, "psdcmykog", 6, GX_CINFO_POLARITY_SUBTRACTIVE, 48, 255, 255, "DeviceCMYK", 600, 600),
+  CMYKOG_DEVICE(psdcmykog_initialize_device_procs, "psdcmykog", 6, GX_CINFO_POLARITY_SUBTRACTIVE, 48, 255, 255, "DeviceCMYK", 600, 600),
   /* device specific parameters */
   { 8,                        /* Bits per color - must match ncomp, depth, etc. above */
     DevCMYKOGComponents,      /* Names of color model colorants */
-    4,                        /* Number colorants for CMYK */
+    4,                        /* This is the underlygin ProcessColorModel, 4 for CMYK */
     6,                        /* MaxSeparations */
     -1,                       /* PageSpotColors has not been specified */
     {0},                      /* SeparationNames */

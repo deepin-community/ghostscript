@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -180,7 +180,7 @@ const byte *gs_image_planes_wanted(gs_image_enum *penum);
  * used[] and plane_data[] are set even in the error or end-of-image case.
  */
 int gs_image_next_planes(gs_image_enum *penum, gs_const_string *plane_data,
-                         uint *used);
+                         uint *used, bool txfer_control);
 
 /* Pass the next plane of data for an image.  See above for details. */
 int gs_image_next(gs_image_enum * penum, const byte * dbytes,

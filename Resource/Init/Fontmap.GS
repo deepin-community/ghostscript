@@ -1,4 +1,4 @@
-% Copyright (C) 2001-2021 Artifex Software, Inc.
+% Copyright (C) 2001-2023 Artifex Software, Inc.
 % All Rights Reserved.
 %
 % This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 % of the license contained in the file LICENSE in this distribution.
 %
 % Refer to licensing information at http://www.artifex.com or contact
-% Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-% CA 94945, U.S.A., +1(415)492-9861, for further information.
+% Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+% CA 94129, USA, for further information.
 %
 
 % Fontmap - standard font catalog for Ghostscript.
@@ -82,7 +82,11 @@
 % as well as with PostScript interpreters; .gsf fonts are compatible with
 % PostScript interpreters, but not with ATM or similar programs.
 
-% 
+% NOTE: (as of 9.56.0) The use of Postscript operators in the cidfmap file is now deprecated, for
+% compatibility with (and security of) the PDF interpreter implemented in C (rather than Postscript).
+% Thus operations such as "getenv", "cvn" and ".concatstrings" are no longer supported.
+
+%
 %
 % Fonts contributed by:
 %	URW++ Design and Development Incorporated

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -49,6 +49,9 @@
 #include "oper.h"
 #include "store.h"
 #include "gpcheck.h"
+#define FORCE_ASSERT_CHECKING 1
+#define DEBUG_TRACE_PS_OPERATORS 1
+#include "assert_.h"
 
 /*
  * We may or may not optimize the handling of the special fast operators
@@ -83,9 +86,13 @@ static int
 do_call_operator(op_proc_t op_proc, i_ctx_t *i_ctx_p)
 {
     int code;
+    assert(e_stack.p >= e_stack.bot - 1 && e_stack.p < e_stack.top + 1);
+    assert(o_stack.p >= o_stack.bot - 1 && o_stack.p < o_stack.top + 1);
     code = op_proc(i_ctx_p);
     if (gs_debug_c(gs_debug_flag_validate_clumps))
         ivalidate_clean_spaces(i_ctx_p);
+    assert(e_stack.p >= e_stack.bot - 1 && e_stack.p < e_stack.top + 1);
+    assert(o_stack.p >= o_stack.bot - 1 && o_stack.p < o_stack.top + 1);
     return code; /* A good place for a conditional breakpoint. */
 }
 static int
@@ -102,6 +109,8 @@ do_call_operator_verbose(op_proc_t op_proc, i_ctx_t *i_ctx_p)
             op_get_name_string(op_proc));
 #endif
     code = do_call_operator(op_proc, i_ctx_p);
+    if (code < 0)
+        if_debug1m('!', imemory, "[!]   error: %d\n", code);
 #if defined(SHOW_STACK_DEPTHS)
     if_debug2m('!', imemory, "[!][es=%d os=%d]\n",
             esp-i_ctx_p->exec_stack.stack.bot,
@@ -116,7 +125,9 @@ do_call_operator_verbose(op_proc_t op_proc, i_ctx_t *i_ctx_p)
 #endif
 
 /* Define debugging statistics (not threadsafe as uses globals) */
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+/* #define COLLECT_STATS_IDSTACK */
+
+#ifdef COLLECT_STATS_INTERP
 struct stats_interp_s {
     long top;
     long lit, lit_array, exec_array, exec_operator, exec_name;
@@ -624,6 +635,9 @@ again:
                     for (i = skip; i < skip + MIN_BLOCK_ESTACK; ++i) {
                         const ref *ep = ref_stack_index(&e_stack, i);
 
+                        if (ep == NULL)
+                            continue;
+
                         if (r_has_type_attrs(ep, t_null, a_executable)) {
                             skip = i + 1;
                             break;
@@ -677,6 +691,22 @@ again:
         !r_has_type(perrordict, t_dictionary)                          ||
         dict_find(perrordict, &error_name, &epref) <= 0))
         return code;            /* error name not in errordict??? */
+
+    if (code == gs_error_execstackoverflow
+        && obj_eq(imemory, &doref, epref)) {
+        /* This strongly suggests we're in an error handler that
+           calls itself infinitely, so Postscript is done, return
+           to the caller.
+         */
+         ref_stack_clear(&e_stack);
+         *pexit_code = gs_error_execstackoverflow;
+         return_error(gs_error_execstackoverflow);
+    }
+
+    if (!r_is_proc(epref)){
+        *pexit_code = gs_error_Fatal;
+        return_error(gs_error_Fatal);
+    }
 
     doref = *epref;
     epref = &doref;
@@ -865,7 +895,7 @@ copy_stack(i_ctx_t *i_ctx_p, const ref_stack_t * pstack, int skip, ref * arr)
     if (pstack == &o_stack && dict_find_string(systemdict, "SAFETY", &safety) > 0 &&
         dict_find_string(safety, "safe", &safe) > 0 && r_has_type(safe, t_boolean) &&
         safe->value.boolval == true) {
-        code = ref_stack_array_sanitize(i_ctx_p, arr, arr);
+        code = ref_stack_array_sanitize(i_ctx_p, arr, arr, 0);
         if (code < 0)
             return code;
     }
@@ -910,7 +940,8 @@ gs_errorinfo_put_string(i_ctx_t *i_ctx_p, const char *str)
 /* If an error occurs, leave the current object in *perror_object */
 /* and return a (negative) error code. */
 static int
-interp(i_ctx_t **pi_ctx_p /* context for execution, updated if resched */,
+interp(/* lgtm [cpp/use-of-goto] */
+       i_ctx_t **pi_ctx_p /* context for execution, updated if resched */,
        const ref * pref /* object to interpret */,
        ref * perror_object)
 {
@@ -1013,6 +1044,7 @@ interp(i_ctx_t **pi_ctx_p /* context for execution, updated if resched */,
      make_null(&ierror.full);
      ierror.obj = &ierror.full;
      make_null(&refnull);
+     refnull.value.intval = 0;
      pvalue = &refnull;
 
     /*
@@ -1158,7 +1190,8 @@ interp(i_ctx_t **pi_ctx_p /* context for execution, updated if resched */,
   case lit(t_shortarray): case nox(t_shortarray):\
   case plain(t_device): case plain_exec(t_device):\
   case plain(t_struct): case plain_exec(t_struct):\
-  case plain(t_astruct): case plain_exec(t_astruct)
+  case plain(t_astruct): case plain_exec(t_astruct):\
+  case plain(t_pdfctx): case plain_exec(t_pdfctx)
             /* Executable arrays are treated as literals in direct execution. */
 #define cases_lit_array()\
   case exec(t_array): case exec(t_mixedarray): case exec(t_shortarray)
@@ -1512,6 +1545,20 @@ remap:              if (iesp + 2 >= estop) {
                             /* the pre-check is still valid. */
                             iosp++;
                             ref_assign_inline(iosp, &token);
+                            /* With a construct like /f currentfile def //f we can
+                               end up here with IREF == &token which can go badly wrong,
+                               so find the current file we're interpeting on the estack
+                               and have IREF point to that ref, rather than "token"
+                             */
+                            if (IREF == &token) {
+                                ref *st;
+                                int code2 = z_current_file(i_ctx_p, &st);
+                                if (code2 < 0 || st == NULL) {
+                                    ierror.code = gs_error_Fatal;
+                                    goto rweci;
+                                }
+                                SET_IREF(st);
+                            }
                             goto rt;
                         }
                         store_state(iesp);
@@ -2066,6 +2113,7 @@ zsetstackprotect(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     ref *ep = oparray_find(i_ctx_p);
 
+    check_op(1);
     check_type(*op, t_boolean);
     if (ep == 0)
         return_error(gs_error_rangecheck);

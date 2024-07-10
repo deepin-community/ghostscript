@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,14 +9,15 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
 /* setscreen operator for Ghostscript library */
 #include "memory_.h"
 #include "string_.h"
+#include "assert_.h"
 #include <stdlib.h>             /* for qsort */
 #include "gx.h"
 #include "gserrors.h"
@@ -168,12 +169,12 @@ gs_currentscreenlevels(const gs_gstate * pgs)
 {
     int gi = 0;
 
-    if (pgs->device != 0)
+    if (pgs->device != NULL)
         gi = pgs->device->color_info.gray_index;
     if (gi != GX_CINFO_COMP_NO_INDEX)
-        return pgs->dev_ht->components[gi].corder.num_levels;
+        return pgs->dev_ht[HT_OBJTYPE_DEFAULT]->components[gi].corder.num_levels;
     else
-        return pgs->dev_ht->components[0].corder.num_levels;
+        return pgs->dev_ht[HT_OBJTYPE_DEFAULT]->components[0].corder.num_levels;
 }
 
 /* .setscreenphase */
@@ -321,9 +322,9 @@ gx_ht_copy_ht_order(gx_ht_order * pdest, gx_ht_order * psrc, gs_memory_t * mem)
                      psrc->procs, mem);
     if (code < 0)
         return code;
-    if (pdest->levels != 0)
+    if (pdest->levels != NULL)
         memcpy(pdest->levels, psrc->levels, psrc->num_levels * sizeof(uint));
-    if (pdest->bit_data != 0)
+    if (pdest->bit_data != NULL)
         memcpy(pdest->bit_data, psrc->bit_data,
                (size_t)psrc->num_bits * psrc->procs->bit_data_elt_size);
     pdest->transfer = psrc->transfer;
@@ -388,7 +389,7 @@ gx_ht_alloc_threshold_order(gx_ht_order * porder, uint width, uint height,
 {
     gx_ht_order order;
 
-    unsigned long num_bits = bitmap_raster(width) * 8 * height;
+    unsigned long num_bits = bitmap_raster(width) * (unsigned long)8 * height;
     const gx_ht_order_procs_t *procs;
     int code;
 
@@ -458,7 +459,6 @@ gx_sort_ht_order(gx_ht_bit * recs, uint N)
     for (i = 0; i < N; i++)
         recs[i].offset = i;
     qsort((void *)recs, N, sizeof(*recs), compare_samples);
-#ifndef GS_THREADSAFE
 #ifdef DEBUG
     if (gs_debug_c('H')) {
         uint i;
@@ -468,7 +468,6 @@ gx_sort_ht_order(gx_ht_bit * recs, uint N)
             dlprintf3("%5u: %5u: %u\n",
                       i, recs[i].offset, recs[i].mask);
     }
-#endif
 #endif
 }
 
@@ -576,13 +575,13 @@ gx_ht_order_release(gx_ht_order * porder, gs_memory_t * mem, bool free_cache)
 {
     /* "free cache" is a proxy for "differs from default" */
     if (free_cache) {
-        if (porder->cache != 0)
+        if (porder->cache != NULL)
             gx_ht_free_cache(mem, porder->cache);
     }
     porder->cache = 0;
     rc_decrement(porder->transfer, "gx_ht_order_release(transfer)");
     porder->transfer = 0;
-    if (porder->data_memory != 0) {
+    if (porder->data_memory != NULL) {
         gs_free_object(porder->data_memory, porder->bit_data,
                        "gx_ht_order_release(bit_data)");
         gs_free_object(porder->data_memory, porder->levels,
@@ -949,7 +948,8 @@ gx_gstate_dev_ht_install(
     gs_gstate *       pgs,
     gx_device_halftone *    pdht,
     gs_halftone_type        type,
-    const gx_device *       dev )
+    const gx_device *       dev,
+    gs_HT_objtype_t objtype )
 {
     gx_device_halftone      dht;
     int                     num_comps = pdht->num_dev_comp;
@@ -959,6 +959,8 @@ gx_gstate_dev_ht_install(
     bool                    mem_diff = pdht->rc.memory != pgs->memory;
     uint w, h;
     int dw, dh;
+
+    assert(objtype < HT_OBJTYPE_COUNT);
 
     /* construct the new device halftone structure */
     memset(&dht.order, 0, sizeof(dht.order));
@@ -988,7 +990,7 @@ gx_gstate_dev_ht_install(
      * by clearing the corresponding pointers in the operand halftone's
      * orders.
      */
-    if (pdht->components != 0) {
+    if (pdht->components != NULL) {
         int     input_ncomps = pdht->num_comp;
 
         for (i = 0; i < input_ncomps && code >= 0; i++) {
@@ -1030,12 +1032,17 @@ gx_gstate_dev_ht_install(
         gx_ht_order *porder = &dht.components[i].corder;
 
         if (dht.components[i].comp_number != i) {
-            if (used_default || mem_diff)
-                code = gx_ht_copy_ht_order(porder, &pdht->order, pgs->memory);
-            else {
-                gx_ht_move_ht_order(porder, &pdht->order);
-                used_default = true;
-            }
+            /* Previously this code would 'move' the default order from pdht to the
+             * dht component here, if we hadn't already done so, and would NULL out the default
+             * order in pdht to prevent it being freed when we released the halftone.
+             * However this didn't account for the possibility that one or more of the components
+             * of dht was already sharing the default order of the halftone. See gx_device_halftone_release
+             * which carefully checks to see if the default order is used by any component, in
+             * order to avoid double freeing it.
+             * We could do that check here, but the tiny benefit in not copying the data would
+             * probably be lost by the checks, so lets just always *copy* the default order if we need to.
+             */
+            code = gx_ht_copy_ht_order(porder, &pdht->order, pgs->memory);
             dht.components[i].comp_number = i;
         }
 
@@ -1101,27 +1108,28 @@ gx_gstate_dev_ht_install(
      * we still need.
      */
     if (code >= 0) {
-        gx_device_halftone *    pgsdht = pgs->dev_ht;
-        rc_header               tmp_rc;
+        gx_device_halftone **ppgsdht;
+        rc_header tmp_rc;
 
-        if (pgsdht != 0 && pgsdht->rc.ref_count == 1) {
-            if (pdht != pgsdht)
-                gx_device_halftone_release(pgsdht, pgsdht->rc.memory);
+        /* The pgsdht corresponds to the one we will be installing according to 'objtype' */
+        ppgsdht = &(pgs->dev_ht[objtype]);
+        if (*ppgsdht != NULL && (*ppgsdht)->rc.ref_count == 1) {
+             if (pdht != *ppgsdht)
+                gx_device_halftone_release(*ppgsdht, (*ppgsdht)->rc.memory);
         } else {
-            rc_unshare_struct( pgs->dev_ht,
+            rc_unshare_struct( *ppgsdht,
                                gx_device_halftone,
                                &st_device_halftone,
                                pgs->memory,
                                BEGIN code = gs_error_VMerror; goto err; END,
                                "gx_gstate_dev_ht_install" );
-            pgsdht = pgs->dev_ht;
         }
 
         /*
          * Everything worked. "Assume ownership" of the appropriate
          * portions of the source device halftone by clearing the
          * associated references.  Since we might have
-         * pdht == pgs->dev_ht, this must done before updating pgs->dev_ht.
+         * pdht == pgs->dev_ht[], this must done before updating pgs->dev_ht[].
          *
          * If the default order has been used for a device component, and
          * any of the source component orders share their levels or bit_data
@@ -1130,7 +1138,7 @@ gx_gstate_dev_ht_install(
          * be cleared immediately below, so subsequently it will not be
          * possible to tell if that this information is being shared.
          */
-        if (pdht->components != 0) {
+        if (pdht->components != NULL && !mem_diff) {
             int     input_ncomps = pdht->num_comp;
 
             for (i = 0; i < input_ncomps; i++) {
@@ -1146,13 +1154,13 @@ gx_gstate_dev_ht_install(
                     memset(p_s_order, 0, sizeof(*p_s_order));
             }
         }
-        if (used_default) {
+        if (used_default && !mem_diff) {
             memset(&pdht->order, 0, sizeof(pdht->order));
         }
 
-        tmp_rc = pgsdht->rc;
-        *pgsdht = dht;
-        pgsdht->rc = tmp_rc;
+        tmp_rc = (*ppgsdht)->rc;
+        **ppgsdht = dht;
+        (*ppgsdht)->rc = tmp_rc;
 
         /* update the effective transfer function array */
         gx_gstate_set_effective_xfer(pgs);
@@ -1180,6 +1188,22 @@ gx_gstate_dev_ht_install(
 }
 
 /*
+ * Copy the dev_ht[HT_OBJTYPE_DEFAULT] to the dev_ht[] for the specified object type.
+ */
+int
+gx_gstate_dev_ht_copy_to_objtype(gs_gstate *pgs, gs_HT_objtype_t objtype)
+{
+    gx_device_halftone *pdht = pgs->dev_ht[HT_OBJTYPE_DEFAULT];	/* the current dev_ht */
+
+    if (objtype >= HT_OBJTYPE_COUNT) {
+        return_error(gs_error_undefined);
+    }
+    rc_increment(pdht);
+    pgs->dev_ht[objtype] = pdht;
+    return 0;
+}
+
+/*
  * Install a new halftone in the graphics state.  Note that we copy the top
  * level of the gs_halftone and the gx_device_halftone, and take ownership
  * of any substructures.
@@ -1194,7 +1218,7 @@ gx_ht_install(gs_gstate * pgs, const gs_halftone * pht,
     int code;
 
     pdht->num_dev_comp = pgs->device->color_info.num_components;
-    if (old_ht != 0 && old_ht->rc.memory == mem &&
+    if (old_ht != NULL && old_ht->rc.memory == mem &&
         old_ht->rc.ref_count == 1
         )
         new_ht = old_ht;
@@ -1203,7 +1227,8 @@ gx_ht_install(gs_gstate * pgs, const gs_halftone * pht,
                           mem, return_error(gs_error_VMerror),
                           "gx_ht_install(new halftone)");
     code = gx_gstate_dev_ht_install(pgs,
-                             pdht, pht->type, gs_currentdevice_inline(pgs));
+                             pdht, pht->type, gs_currentdevice_inline(pgs),
+                             pht->objtype);
     if (code < 0) {
         if (new_ht != old_ht)
             gs_free_object(mem, new_ht, "gx_ht_install(new halftone)");
@@ -1242,7 +1267,7 @@ gx_ht_install(gs_gstate * pgs, const gs_halftone * pht,
 void
 gx_gstate_set_effective_xfer(gs_gstate * pgs)
 {
-    gx_device_halftone *pdht = pgs->dev_ht;
+    gx_device_halftone *pdht = pgs->dev_ht[HT_OBJTYPE_DEFAULT];
     gx_transfer_map *pmap;
     gx_ht_order *porder;
     int i, component_num, non_id_count;
@@ -1283,7 +1308,10 @@ gx_gstate_set_effective_xfer(gs_gstate * pgs)
         }
     }
 
-    if (pdht) { /* might not be initialized yet */
+    /* HT may not be initialized yet.  Only do if the target is a halftone device.
+       Per the spec, the HT is a self-contained description of a halftoning process.
+       We don't use any xfer function from the HT if we are not halftoning */
+    if (pdht && !device_is_contone(pgs->device)) {
 
         /* Since the transfer function is pickled into the threshold array (if any)*/
         /*  we need to free it so it can be reconstructed with the current transfer */

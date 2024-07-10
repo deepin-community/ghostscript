@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -126,8 +126,8 @@ struct cached_char_s {
     /* gx_cached_bits_common includes depth. */
 
     gx_cached_bits_common;	/* (must be first) */
-#define cc_depth(cc) ((cc)->cb_depth)
-#define cc_set_depth(cc, d) ((cc)->cb_depth = (d))
+#define cc_depth(cc) ((cc)->head.depth)
+#define cc_set_depth(cc, d) ((cc)->head.depth = (d))
     cached_fm_pair *pair;
     bool linked;
 #define cc_pair(cc) ((cc)->pair)

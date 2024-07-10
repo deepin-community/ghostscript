@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -85,7 +85,7 @@ xps_parse_gradient_stops(xps_context_t *ctx, char *base_uri, xps_item_t *node,
 
                 /* Set the rendering parameters */
                 rendering_params.black_point_comp = gsBLACKPTCOMP_ON;
-                rendering_params.graphics_type_tag = GS_PATH_TAG;
+                rendering_params.graphics_type_tag = GS_VECTOR_TAG;
                 rendering_params.override_icc = false;
                 rendering_params.preserve_black = gsBKPRESNOTSPECIFIED;
                 rendering_params.rendering_intent = gsPERCEPTUAL;
@@ -984,6 +984,7 @@ xps_parse_gradient_brush(xps_context_t *ctx, char *base_uri, xps_resource_t *dic
 
             gs_setblendmode(ctx->pgs, BLEND_MODE_Normal);
             gs_trans_mask_params_init(&params, TRANSPARENCY_MASK_Luminosity);
+            params.ColorSpace = gs_currentcolorspace_inline(ctx->pgs);
             gs_begin_transparency_mask(ctx->pgs, &params, &bbox, 0);
             /* I dont like this, but dont want to change interface of draw */
             /* For the opacity case, we want to make sure the functions

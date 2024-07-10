@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* MGR device driver */
@@ -66,31 +66,64 @@ static dev_proc_print_page(cmgrN_print_page);
 
 /* The device procedures */
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static gx_device_procs mgr_procs =
-    prn_procs(gdev_mgr_open, gdev_prn_bg_output_page, gdev_prn_close);
-static gx_device_procs mgrN_procs =
-    prn_color_procs(gdev_mgr_open, gdev_prn_bg_output_page, gdev_prn_close,
-        gx_default_gray_map_rgb_color, gx_default_gray_map_color_rgb);
-static gx_device_procs cmgr4_procs =
-    prn_color_procs(gdev_mgr_open, gdev_prn_bg_output_page, gdev_prn_close,
-        pc_4bit_map_rgb_color, pc_4bit_map_color_rgb);
-static gx_device_procs cmgr8_procs =
-    prn_color_procs(gdev_mgr_open, gdev_prn_bg_output_page, gdev_prn_close,
-        mgr_8bit_map_rgb_color, mgr_8bit_map_color_rgb);
+static void
+mgr_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono_bg(dev);
+
+    set_dev_proc(dev, open_device, gdev_mgr_open);
+
+    set_dev_proc(dev, encode_color, gx_default_b_w_mono_encode_color);
+    set_dev_proc(dev, decode_color, gx_default_b_w_mono_decode_color);
+}
+
+static void
+mgrN_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_gray_bg(dev);
+
+    set_dev_proc(dev, open_device, gdev_mgr_open);
+    set_dev_proc(dev, encode_color, gx_default_gray_encode_color);
+    set_dev_proc(dev, decode_color, gx_default_gray_decode_color);
+}
+
+static void
+cmgr4_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, open_device, gdev_mgr_open);
+    set_dev_proc(dev, map_rgb_color, pc_4bit_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, pc_4bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, pc_4bit_map_rgb_color);
+    set_dev_proc(dev, decode_color, pc_4bit_map_color_rgb);
+}
+
+static void
+cmgr8_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, open_device, gdev_mgr_open);
+    set_dev_proc(dev, map_rgb_color, mgr_8bit_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, mgr_8bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, mgr_8bit_map_rgb_color);
+    set_dev_proc(dev, decode_color, mgr_8bit_map_color_rgb);
+}
 
 /* The device descriptors themselves */
 gx_device_mgr far_data gs_mgrmono_device =
-  mgr_prn_device( mgr_procs,  "mgrmono", 1,  1, 1,   1,   0, 2, 0, mgr_print_page);
+  mgr_prn_device( mgr_initialize_device_procs,  "mgrmono", 1,  1, 1,   1,   0, 2, 0, mgr_print_page);
 gx_device_mgr far_data gs_mgrgray2_device =
-  mgr_prn_device(mgrN_procs,  "mgrgray2",1,  8, 2, 255,   0, 4, 0, mgrN_print_page);
+  mgr_prn_device(mgrN_initialize_device_procs,  "mgrgray2",1,  8, 2, 255,   0, 4, 0, mgrN_print_page);
 gx_device_mgr far_data gs_mgrgray4_device =
-  mgr_prn_device(mgrN_procs,  "mgrgray4",1,  8, 4, 255,   0,16, 0, mgrN_print_page);
+  mgr_prn_device(mgrN_initialize_device_procs,  "mgrgray4",1,  8, 4, 255,   0,16, 0, mgrN_print_page);
 gx_device_mgr far_data gs_mgrgray8_device =
-  mgr_prn_device(mgrN_procs,  "mgrgray8",1,  8, 8, 255,   0, 0, 0, mgrN_print_page);
+  mgr_prn_device(mgrN_initialize_device_procs,  "mgrgray8",1,  8, 8, 255,   0, 0, 0, mgrN_print_page);
 gx_device_mgr far_data gs_mgr4_device =
-  mgr_prn_device(cmgr4_procs, "mgr4",    3,  8, 4,   1,   1, 2, 2, cmgrN_print_page);
+  mgr_prn_device(cmgr4_initialize_device_procs, "mgr4",    3,  8, 4,   1,   1, 2, 2, cmgrN_print_page);
 gx_device_mgr far_data gs_mgr8_device =
-  mgr_prn_device(cmgr8_procs, "mgr8",    3,  8, 8, 255, 255, 6, 5, cmgrN_print_page);
+  mgr_prn_device(cmgr8_initialize_device_procs, "mgr8",    3,  8, 8, 255, 255, 6, 5, cmgrN_print_page);
 
 /* ------ Internal routines ------ */
 
@@ -239,14 +272,19 @@ mgrN_print_page(gx_device_printer *pdev, gp_file *pstream)
                                 break;
 
                         case 4:
-                                for (i = 0,dp = data, bp = cur.data; i < mgr_line_size; i++) {
+                        {
+                                int size = mgr_line_size - (bdev->width & 1);
+                                for (i = 0,dp = data, bp = cur.data; i < size; i++) {
                                         *dp =  mgr->bgreybacktable[*(bp++) >> 4] << 4;
                                     *(dp++) |= mgr->bgreybacktable[*(bp++) >> 4];
+                                }
+                                if (bdev->width & 1) {
+                                    *dp =  mgr->bgreybacktable[*(bp++) >> 4] << 4;
                                 }
                                 if ( gp_fwrite(data, sizeof(byte), mgr_line_size, pstream) < mgr_line_size )
                                         return_error(gs_error_ioerror);
                                 break;
-
+                        }
                         case 8:
                                 for (i = 0,bp = cur.data; i < mgr_line_size; i++, bp++)
                                       *bp = mgr->bgrey256backtable[*bp];

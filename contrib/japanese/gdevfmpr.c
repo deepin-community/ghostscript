@@ -30,7 +30,7 @@ static dev_proc_print_page(fmpr_print_page);
 
 /* The device descriptor */
 gx_device_printer gs_fmpr_device =
-  prn_device(prn_std_procs, "fmpr",
+  prn_device(gdev_prn_initialize_device_procs_mono, "fmpr",
              DEFAULT_WIDTH_10THS,
              DEFAULT_HEIGHT_10THS,
              180,		/* x_dpi */
@@ -184,13 +184,13 @@ fmpr_print_page(gx_device_printer *pdev, gp_file *prn_stream)
     }
     out_beg -= (out_beg - out) % bytes_per_column;
 
-    gs_sprintf(prn_buf, "\033[%da",
+    gs_snprintf(prn_buf, sizeof(prn_buf), "\033[%da",
             (out_beg - out) / bytes_per_column);
     prn_puts(pdev, prn_buf);
 
     /* Dot graphics */
     size = out_end - out_beg + 1;
-    gs_sprintf(prn_buf, "\033Q%d W", size / bytes_per_column);
+    gs_snprintf(prn_buf, sizeof(prn_buf), "\033Q%d W", size / bytes_per_column);
     prn_puts(pdev, prn_buf);
     prn_write(pdev, (const char *)out_beg, size);
 

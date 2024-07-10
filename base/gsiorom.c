@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -220,7 +220,7 @@ s_block_read_process(stream_state * st, stream_cursor_read * ignore_pr,
             /* the cbuf, then the cbuf must be empty.			 */
             if (max_count < count) {
 #ifdef DEBUG
-                if ((sbufptr(s)) != s->cursor.r.limit)
+                if ((sbufptr(s)) < s->cursor.r.limit)
                     emprintf(s->memory, "cbuf not empty as expected\n.");
 #endif
                 dest = s->cbuf;
@@ -305,6 +305,7 @@ romfs_open_file(gx_io_device *iodev, const char *fname, uint namelen,
     code = file_prepare_stream(fname, namelen, access, ROMFS_BLOCKSIZE+256, ps, fmode, mem);
     if (code < 0)
         return code;
+    (*ps)->modes = s_mode_read;
     sread_block(*ps, (*ps)->cbuf, (*ps)->cbsize, node);
     /* return success */
     return 0;

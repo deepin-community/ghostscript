@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -38,6 +38,8 @@
 #include "gsicc_manage.h"
 #include "gsform1.h"
 #include "gxpath.h"
+
+extern_st(st_gs_gstate);
 
 /* Forward references */
 static image_enum_proc_plane_data(pdf_image_plane_data);
@@ -80,6 +82,7 @@ typedef struct pdf_image_enum_s {
     gs_matrix mat;
     gs_color_space_index initial_colorspace;
     int JPEG_PassThrough;
+    int JPX_PassThrough;
 } pdf_image_enum;
 gs_private_st_composite(st_pdf_image_enum, pdf_image_enum, "pdf_image_enum",
   pdf_image_enum_enum_ptrs, pdf_image_enum_reloc_ptrs);
@@ -380,6 +383,7 @@ static int setup_type3_image(gx_device_pdf *pdev, const gs_gstate * pgs,
             gs_matrix_scale(&pim3a.ImageMatrix, 1, 1.0 / sy, &pim3a.ImageMatrix);
         }
         gs_matrix_multiply(&mi, &pim3a.MaskDict.ImageMatrix, &pim3a.MaskDict.ImageMatrix);
+        pim3a.imagematrices_are_untrustworthy = 1;
         pic1 = (gs_image_common_t *)&pim3a;
         /* Setting pdev->converting_image_matrix to communicate with pdf_image3_make_mcde. */
         gs_matrix_multiply(&mi, &ctm_only(pgs), &pdev->converting_image_matrix);
@@ -405,7 +409,7 @@ static int convert_type4_image(gx_device_pdf *pdev, const gs_gstate * pgs,
 {
     /* Try to convert the image to a plain masked image. */
     gx_drawing_color icolor;
-    int code;
+    int code = 1;
 
     pdev->image_mask_is_SMask = false;
     if (pdf_convert_image4_to_image1(pdev, pgs, pdcolor,
@@ -432,9 +436,11 @@ static int convert_type4_image(gx_device_pdf *pdev, const gs_gstate * pgs,
                                      pinfo, context);
         if (code < 0)
             return code;
-        return gs_grestore((gs_gstate *)pgs);
+        code = gs_grestore((gs_gstate *)pgs);
+        /* To account for the above pdf_begin_typed_image() being with a gsave/grestore */
+        (*pinfo)->pgs_level = pgs->level;
     }
-    return 1;
+    return code;
 }
 
 static int convert_type4_to_masked_image(gx_device_pdf *pdev, const gs_gstate * pgs,
@@ -1115,6 +1121,7 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
          * should get the data. But lets get the simple code working first.
          */
         pdev->JPEG_PassThrough = 0;
+        pdev->JPX_PassThrough = 0;
         pdev->image_mask_is_SMask = false;
         if (pdev->CompatibilityLevel < 1.2 ||
             (prect && !(prect->p.x == 0 && prect->p.y == 0 &&
@@ -1127,20 +1134,27 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
         goto exit;
 
     case IMAGE3X_IMAGETYPE:
-        pdev->JPEG_PassThrough = 0;
-        if (pdev->CompatibilityLevel < 1.4 ||
-            (prect && !(prect->p.x == 0 && prect->p.y == 0 &&
-                       prect->q.x == ((const gs_image3x_t *)pic)->Width &&
-                       prect->q.y == ((const gs_image3x_t *)pic)->Height))) {
-            use_fallback = 1;
+        {
+            int64_t OC = pdev->PendingOC;
+
+            pdev->JPEG_PassThrough = 0;
+            pdev->JPX_PassThrough = 0;
+            if (pdev->CompatibilityLevel < 1.4 ||
+                (prect && !(prect->p.x == 0 && prect->p.y == 0 &&
+                           prect->q.x == ((const gs_image3x_t *)pic)->Width &&
+                           prect->q.y == ((const gs_image3x_t *)pic)->Height))) {
+                use_fallback = 1;
+                goto exit;
+            }
+            pdev->image_mask_is_SMask = true;
+
+            pdev->PendingOC = 0;
+            code = gx_begin_image3x_generic((gx_device *)pdev, pgs, pmat, pic,
+                                            prect, pdcolor, pcpath, mem,
+                                            pdf_image3x_make_mid,
+                                            pdf_image3x_make_mcde, pinfo, OC);
             goto exit;
         }
-        pdev->image_mask_is_SMask = true;
-        code = gx_begin_image3x_generic((gx_device *)pdev, pgs, pmat, pic,
-                                        prect, pdcolor, pcpath, mem,
-                                        pdf_image3x_make_mid,
-                                        pdf_image3x_make_mcde, pinfo);
-        goto exit;
 
     case 4:
         /* If we are colour converting then we may not be able to preserve the
@@ -1195,6 +1209,7 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
                      * the image.
                      */
                     pdev->JPEG_PassThrough = 0;
+                    pdev->JPX_PassThrough = 0;
                     use_fallback = 0;
                     code = convert_type4_to_masked_image(pdev, pgs, pic, prect, pdcolor,
                                                          pcpath, mem,pinfo);
@@ -1207,6 +1222,7 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
             }
         }
         pdev->JPEG_PassThrough = 0;
+        pdev->JPX_PassThrough = 0;
         code = convert_type4_image(pdev, pgs, pmat, pic, prect, pdcolor,
                       pcpath, mem, pinfo, context, image, pnamed);
         if (code < 0)
@@ -1327,13 +1343,16 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
                             &pdf_image_enum_procs),
                         (gx_device *)pdev, num_components, format);
     pie->memory = mem;
+    pie->pgs = pgs;
+    if (pgs != NULL)
+        pie->pgs_level = pgs->level;
     width = rect.q.x - rect.p.x;
     pie->width = width;
     height = rect.q.y - rect.p.y;
     pie->bits_per_pixel =
         pim->BitsPerComponent * num_components / pie->num_planes;
     pie->rows_left = height;
-    if (pnamed != 0) /* Don't in-line the image if it is named. */
+    if (pnamed != 0 || pdev->PendingOC) /* Don't in-line the image if it is named. Or has Optional Content */
         in_line = false;
     else {
         double nbytes = (double)(((ulong) pie->width * pie->bits_per_pixel + 7) >> 3) *
@@ -1393,8 +1412,22 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
 
     /* We don't want to change the colour space of a mask, or an SMask (both of which are Gray) */
     if (!is_mask) {
-        if (image[0].pixel.ColorSpace != NULL && !(context == PDF_IMAGE_TYPE3_MASK))
-            convert_to_process_colors = setup_image_colorspace(pdev, &image[0], pcs, &pcs_orig, names, &cs_value);
+        if (image[0].pixel.ColorSpace != NULL) {
+            if (context != PDF_IMAGE_TYPE3_MASK)
+                convert_to_process_colors = setup_image_colorspace(pdev, &image[0], pcs, &pcs_orig, names, &cs_value);
+            else {
+                if (pdev->PDFA != 0 && pdev->params.ColorConversionStrategy != ccs_Gray)
+                {
+                    /* A SMask *must* be in DeviceGray (PDF 1.7 reference, page 555), but if we're producing a PDF/A
+                     * and not creating a Gray output then we can't write the SMask as DeviceGray!
+                     */
+                    emprintf(pdev->memory,
+                         "\nDetected SMask which must be in DeviceGray, but we are not converting to DeviceGray, reverting to normal PDF output\n");
+                    pdev->AbortPDFAX = true;
+                    pdev->PDFA = 0;
+                }
+            }
+        }
 
         if (pim->BitsPerComponent > 8 && convert_to_process_colors) {
             use_fallback = 1;
@@ -1414,7 +1447,6 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
             code = make_device_color_space(pdev, pdev->pcm_color_info_index, &pcs_device);
             if (code < 0)
                 goto fail_and_fallback;
-            rc_decrement(image[0].pixel.ColorSpace, "pdf_begin_typed_image(pixel.ColorSpace)");
             image[0].pixel.ColorSpace = pcs_device;
             image[0].pixel.BitsPerComponent = 8;
             code = pdf_color_space_named(pdev, pgs, &cs_value, &pranges, pcs_device, names,
@@ -1447,12 +1479,16 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
     if (code < 0)
         goto fail_and_fallback;
 
+    if (pdev->CompatibilityLevel < 1.5)
+        pdev->JPX_PassThrough = 0;
+
     if (!convert_to_process_colors)
     {
         gs_color_space_index csi;
 
         if (pdev->params.TransferFunctionInfo == tfi_Apply && pdev->transfer_not_identity && !is_mask) {
             pdev->JPEG_PassThrough = 0;
+            pdev->JPX_PassThrough = 0;
             csi = gs_color_space_get_index(image[0].pixel.ColorSpace);
             if (csi == gs_color_space_index_Indexed) {
                 csi = gs_color_space_get_index(image[0].pixel.ColorSpace->base_space);
@@ -1503,7 +1539,7 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
     }
     /* If we are not preserving the colour space unchanged, then we can't pass through JPEG */
     else
-        pdev->JPEG_PassThrough = 0;
+        pdev->JPEG_PassThrough = pdev->JPX_PassThrough = 0;
 
     /* Code below here deals with setting up the multiple data stream writing.
      * We can have up to 4 stream writers, which we keep in an array. We must
@@ -1518,6 +1554,7 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
      */
     if (in_line) {
         pdev->JPEG_PassThrough = 0;
+        pdev->JPX_PassThrough = 0;
         code = new_setup_lossless_filters((gx_device_psdf *) pdev,
                                              &pie->writer.binary[0],
                                              &image[0].pixel, in_line, convert_to_process_colors, (gs_matrix *)pmat, (gs_gstate *)pgs);
@@ -1559,7 +1596,7 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
         image[0].pixel.ColorSpace = pcs_device;
     }
 
-    if (pdev->JPEG_PassThrough) {
+    if (pdev->JPEG_PassThrough || pdev->JPX_PassThrough) {
 /*        if (pie->writer.alt_writer_count > 1) {
             s_close_filters(&pie->writer.binary[0].strm, uncompressed);
             memset(pie->writer.binary + 1, 0, sizeof(pie->writer.binary[1]));
@@ -1569,6 +1606,7 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
         pie->writer.alt_writer_count = 1;
     }
     pie->JPEG_PassThrough = pdev->JPEG_PassThrough;
+    pie->JPX_PassThrough = pdev->JPX_PassThrough;
 
     if (pie->writer.alt_writer_count > 1) {
         code = pdf_make_alt_stream(pdev, &pie->writer.binary[1]);
@@ -1681,6 +1719,7 @@ pdf_begin_typed_image(gx_device_pdf *pdev, const gs_gstate * pgs,
     /* Do the fallback */
     if (use_fallback) {
         pdev->JPEG_PassThrough = 0;
+        pdev->JPX_PassThrough = 0;
         code = gx_default_begin_typed_image
             ((gx_device *)pdev, pgs, pmat, pic, prect, pdcolor, pcpath, mem, pinfo);
     }
@@ -1757,8 +1796,10 @@ pdf_image_plane_data_alt(gx_image_enum_common_t * info,
                     if (flipped_count == 0)
                         flipped_count = block_bytes * nplanes;
                 }
-                image_flip_planes(row, bit_planes, offset, flip_count,
-                                  nplanes, pie->plane_depths[0]);
+                status = image_flip_planes(row, bit_planes, offset, flip_count,
+                                           nplanes, pie->plane_depths[0]);
+                if (status < 0)
+                    break;
                 status = sputs(pie->writer.binary[alt_writer_index].strm, row,
                                flipped_count, &ignore);
                 if (status < 0)
@@ -1789,7 +1830,10 @@ pdf_image_plane_data(gx_image_enum_common_t * info,
     pdf_image_enum *pie = (pdf_image_enum *) info;
     int i;
 
-    if (pie->JPEG_PassThrough) {
+    if (info->pgs != NULL && info->pgs->level < info->pgs_level)
+        return_error(gs_error_undefinedresult);
+
+    if (pie->JPEG_PassThrough || pie->JPX_PassThrough) {
         pie->rows_left -= height;
         *rows_used = height;
         return !pie->rows_left;
@@ -1860,7 +1904,7 @@ use_image_as_pattern(gx_device_pdf *pdev, pdf_resource_t *pres1,
     }
     if (code >= 0)
         code = (*dev_proc(pdev, dev_spec_op))((gx_device *)pdev,
-            gxdso_pattern_load, &inst, id);
+            gxdso_pattern_load, &id, sizeof(gs_id));
     if (code >= 0) {
         stream_puts(pdev->strm, "q ");
         code = pdf_cs_Pattern_colored(pdev, &v);
@@ -1897,8 +1941,29 @@ static int
 pdf_end_and_do_image(gx_device_pdf *pdev, pdf_image_writer *piw,
                      const gs_matrix *mat, gs_id ps_bitmap_id, pdf_image_usage_t do_image)
 {
-    int code = pdf_end_write_image(pdev, piw);
-    pdf_resource_t *pres = piw->pres;
+    int code = 0;
+    pdf_resource_t *pres = NULL;
+
+    /* In order to identify duplicated images which use the same SMask we must
+     * add the SMask entry to the image dictionary before we call pdf_end_write_image
+     * because that will hash the dictionaries and streams. If we haven't already
+     * added the SMask then the hash will not match any existing image which uses an SMask.
+     */
+    if (do_image == USE_AS_IMAGE) {
+        if (pdev->image_mask_id != gs_no_id && piw->pres && piw->pres->object) {
+            char buf[20];
+
+            gs_snprintf(buf, sizeof(buf), "%ld 0 R", pdev->image_mask_id);
+            code = cos_dict_put_string_copy((cos_dict_t *)piw->pres->object,
+                    pdev->image_mask_is_SMask ? "/SMask" : "/Mask", buf);
+            (*(piw->pres->object)).md5_valid = 0;
+            if (code < 0)
+                return code;
+        }
+    }
+
+    code = pdf_end_write_image(pdev, piw);
+    pres = piw->pres;
 
     switch (code) {
     default:
@@ -1908,16 +1973,6 @@ pdf_end_and_do_image(gx_device_pdf *pdev, pdf_image_writer *piw,
         break;
     case 0:
         if (do_image == USE_AS_IMAGE) {
-            if (pdev->image_mask_id != gs_no_id) {
-                char buf[20];
-
-                gs_sprintf(buf, "%ld 0 R", pdev->image_mask_id);
-                code = cos_dict_put_string_copy((cos_dict_t *)pres->object,
-                        pdev->image_mask_is_SMask ? "/SMask" : "/Mask", buf);
-                (*(pres->object)).md5_valid = 0;
-                if (code < 0)
-                    return code;
-            }
             if (pdev->image_mask_skip)
                 code = 0;
             else
@@ -2020,7 +2075,7 @@ pdf_image_end_image(gx_image_enum_common_t * info, bool draw_last)
 static int
 pdf_image_end_image_cvd(gx_image_enum_common_t * info, bool draw_last)
 {   pdf_lcvd_t *cvd = (pdf_lcvd_t *)info->dev;
-    int code = pdf_dump_converted_image(cvd->pdev, cvd);
+    int code = pdf_dump_converted_image(cvd->pdev, cvd, 0);
     int code1 = gx_image1_end_image(info, draw_last);
     int code2 = gs_closedevice((gx_device *)cvd->mask);
     int code3 = gs_closedevice((gx_device *)cvd);
@@ -2133,6 +2188,8 @@ pdf_image3_make_mcde(gx_device *dev, const gs_gstate *pgs,
         cvd->m = pdev->converting_image_matrix;
         cvd->mdev.mapped_x = origin->x;
         cvd->mdev.mapped_y = origin->y;
+        cvd->mdev.width += origin->x;
+        cvd->mdev.height += origin->y;
         *pmcdev = (gx_device *)&cvd->mdev;
         code = gx_default_begin_typed_image
             ((gx_device *)&cvd->mdev, pgs, pmat, pic, prect, pdcolor, NULL, mem,
@@ -2146,8 +2203,13 @@ pdf_image3_make_mcde(gx_device *dev, const gs_gstate *pgs,
         code = pdf_begin_typed_image
             ((gx_device_pdf *)dev, pgs, pmat, pic, prect, pdcolor, pcpath, mem,
             pinfo, PDF_IMAGE_TYPE3_DATA);
-        if (code < 0)
+        if (code < 0) {
+            gx_device_set_target((gx_device_forward *)(*pmcdev), NULL);
+            gs_closedevice((*pmcdev));
+            gs_free_object(mem, (*pmcdev), "pdf_image3_make_mcde(*pmcdev)");
+            *pmcdev = NULL;
             return code;
+        }
     }
     /* Due to equal image merging, we delay the adding of the "Mask" entry into
        a type 3 image dictionary until the mask is completed.
@@ -2187,6 +2249,7 @@ pdf_image3x_make_mcde(gx_device *dev, const gs_gstate *pgs,
     pdf_image_enum *pmie;
     int i;
     const gs_image3x_mask_t *pixm;
+    gx_device_pdf *pdf_dev = (gx_device_pdf *)dev;
 
     if (midev[0]) {
         if (midev[1])
@@ -2199,11 +2262,20 @@ pdf_image3x_make_mcde(gx_device *dev, const gs_gstate *pgs,
     code = pdf_make_mxd(pmcdev, midev[i], mem);
     if (code < 0)
         return code;
+
+    if (pminfo[0] != NULL)
+        pdf_dev->PendingOC = pminfo[0]->OC;
+    else
+        pdf_dev->PendingOC = 0;
+
     code = pdf_begin_typed_image
         ((gx_device_pdf *)dev, pgs, pmat, pic, prect, pdcolor, pcpath, mem,
          pinfo, PDF_IMAGE_TYPE3_DATA);
-    if (code < 0)
+    pdf_dev->PendingOC = 0;
+    if (code < 0) {
+        rc_decrement(*pmcdev, "pdf_image3x_make_mcde");
         return code;
+    }
     if ((*pinfo)->procs != &pdf_image_enum_procs) {
         /* We couldn't handle the image.  Bail out. */
         gx_image_end(*pinfo, false);
@@ -2291,6 +2363,83 @@ check_unsubstituted1(gx_device_pdf * pdev, pdf_resource_t *pres0)
     return ppat->substitute != NULL;
 }
 
+static int reset_gstate_for_pattern(gx_device_pdf * pdev, gs_gstate *destination, gs_gstate *source)
+{
+    if (pdev->vg_initial_set) {
+        destination->strokeconstantalpha = source->strokeconstantalpha;
+        source->strokeconstantalpha = pdev->vg_initial.strokeconstantalpha;
+        destination->fillconstantalpha = source->fillconstantalpha;
+        source->fillconstantalpha = pdev->vg_initial.fillconstantalpha;
+        if (destination->set_transfer.red != NULL)
+            destination->set_transfer.red->id = (source->set_transfer.red != NULL ? source->set_transfer.red->id : 0);
+        if (destination->set_transfer.green != NULL)
+            destination->set_transfer.green->id = (source->set_transfer.green != NULL ? source->set_transfer.green->id : 0);
+        if (destination->set_transfer.blue != NULL)
+            destination->set_transfer.blue->id = (source->set_transfer.blue != NULL ? source->set_transfer.blue->id : 0);
+        if (destination->set_transfer.gray != NULL)
+            destination->set_transfer.gray->id = (source->set_transfer.gray != NULL ? source->set_transfer.gray->id : 0);
+        if (source->set_transfer.red != NULL)
+            source->set_transfer.red->id = pdev->vg_initial.transfer_ids[0];
+        if (source->set_transfer.green != NULL)
+            source->set_transfer.green->id = pdev->vg_initial.transfer_ids[1];
+        if (source->set_transfer.blue != NULL)
+            source->set_transfer.blue->id = pdev->vg_initial.transfer_ids[2];
+        if (source->set_transfer.gray != NULL)
+            source->set_transfer.gray->id = pdev->vg_initial.transfer_ids[3];
+        destination->alphaisshape = source->alphaisshape;
+        source->alphaisshape = pdev->vg_initial.alphaisshape;
+        destination->blend_mode = source->blend_mode;
+        source->blend_mode = pdev->vg_initial.blend_mode;
+        if (destination->black_generation != NULL)
+            destination->black_generation->id = (source->black_generation != NULL ? source->black_generation->id : 0);
+        if (source->black_generation != NULL)
+            source->black_generation->id = pdev->vg_initial.black_generation_id;
+        if (destination->undercolor_removal != NULL)
+            destination->undercolor_removal->id = (source->undercolor_removal != NULL ? source->undercolor_removal->id : 0);
+        if (source->undercolor_removal != NULL)
+            source->undercolor_removal->id = pdev->vg_initial.undercolor_removal_id;
+        destination->overprint_mode = source->overprint_mode;
+        source->overprint_mode = pdev->vg_initial.overprint_mode;
+        destination->flatness = source->flatness;
+        source->flatness = pdev->vg_initial.flatness;
+        destination->smoothness = source->smoothness;
+        source->smoothness = pdev->vg_initial.smoothness;
+        destination->flatness = source->flatness;
+        source->flatness = pdev->vg_initial.flatness;
+        destination->text_knockout = source->text_knockout;
+        source->text_knockout = pdev->vg_initial.text_knockout;
+        destination->stroke_adjust = source->stroke_adjust;
+        source->stroke_adjust = pdev->vg_initial.stroke_adjust;
+        destination->line_params.half_width = source->line_params.half_width;
+        source->line_params.half_width = pdev->vg_initial.line_params.half_width;
+        destination->line_params.start_cap = source->line_params.start_cap;
+        source->line_params.start_cap = pdev->vg_initial.line_params.start_cap;
+        destination->line_params.end_cap = source->line_params.end_cap;
+        source->line_params.end_cap = pdev->vg_initial.line_params.end_cap;
+        destination->line_params.dash_cap = source->line_params.dash_cap;
+        source->line_params.dash_cap = pdev->vg_initial.line_params.dash_cap;
+        destination->line_params.join = source->line_params.join;
+        source->line_params.join = pdev->vg_initial.line_params.join;
+        destination->line_params.curve_join = source->line_params.curve_join;
+        source->line_params.curve_join = pdev->vg_initial.line_params.curve_join;
+        destination->line_params.miter_limit = source->line_params.miter_limit;
+        source->line_params.miter_limit = pdev->vg_initial.line_params.miter_limit;
+        destination->line_params.miter_check = source->line_params.miter_check;
+        source->line_params.miter_check = pdev->vg_initial.line_params.miter_check;
+        destination->line_params.dot_length = source->line_params.dot_length;
+        source->line_params.dot_length = pdev->vg_initial.line_params.dot_length;
+        destination->line_params.dot_length_absolute = source->line_params.dot_length_absolute;
+        source->line_params.dot_length_absolute = pdev->vg_initial.line_params.dot_length_absolute;
+        destination->line_params.dot_orientation = source->line_params.dot_orientation;
+        source->line_params.dot_orientation = pdev->vg_initial.line_params.dot_orientation;
+        if (destination->line_params.dash.pattern != NULL && destination->line_params.dash.pattern != source->line_params.dash.pattern)
+            gs_free_object(destination->memory, destination->line_params.dash.pattern, "free dash assigned during pattern accumulation");
+        memcpy(&destination->line_params.dash, &source->line_params.dash, sizeof(source->line_params.dash));
+        memcpy(&source->line_params.dash, &pdev->vg_initial.line_params.dash, sizeof(source->line_params.dash));
+    }
+    return 0;
+}
+
 /*
    The device specific operations - just pattern management.
    See gxdevcli.h about return codes.
@@ -2304,6 +2453,10 @@ gdev_pdf_dev_spec_op(gx_device *pdev1, int dev_spec_op, void *data, int size)
     gx_bitmap_id id = (gx_bitmap_id)size;
 
     switch (dev_spec_op) {
+        case gxdso_skip_icc_component_validation:
+            return 1;
+        case gxdso_supports_pattern_transparency:
+            return 1;
         case gxdso_pattern_can_accum:
             return 1;
         case gxdso_pdf_form_name:
@@ -2604,14 +2757,54 @@ gdev_pdf_dev_spec_op(gx_device *pdev1, int dev_spec_op, void *data, int size)
                 gs_pattern1_instance_t *pinst = param->pinst;
                 gs_gstate *pgs = param->graphics_state;
 
-                id = param->pinst_id;
                 code = pdf_check_soft_mask(pdev, (gs_gstate *)pgs);
                 if (code < 0)
                     return code;
-                code = pdf_enter_substream(pdev, resourcePattern, id, &pres, false,
-                        pdev->CompressStreams);
+                if (pdev->context == PDF_IN_NONE) {
+                    code = pdf_open_page(pdev, PDF_IN_STREAM);
+                    if (code < 0)
+                        return code;
+                }
+                code = pdf_prepare_fill_stroke(pdev, (gs_gstate *)pgs, false);
                 if (code < 0)
                     return code;
+                if (pdev->PatternDepth == 0 && pdev->initial_pattern_states != NULL) {
+                    int pdepth = 0;
+
+                    while (pdev->initial_pattern_states[pdepth] != 0x00) {
+                        gs_free_object(pdev->pdf_memory, pdev->initial_pattern_states[pdepth], "Freeing dangling pattern state");
+                        pdev->initial_pattern_states[pdepth] = NULL;
+                        pdepth++;
+                    }
+                    gs_free_object(pdev->pdf_memory->non_gc_memory, pdev->initial_pattern_states, "Freeing dangling pattern state stack");
+                }
+
+                {
+                    gs_gstate **new_states;
+                    int pdepth;
+
+                    new_states = (gs_gstate **)gs_alloc_bytes(pdev->pdf_memory->non_gc_memory, sizeof(gs_gstate *) * (pdev->PatternDepth + 2), "pattern initial graphics state stack");
+                    memset(new_states, 0x00, sizeof(gs_gstate *) * (pdev->PatternDepth + 2));
+                    for (pdepth = 0; pdepth < pdev->PatternDepth;pdepth++)
+                        new_states[pdepth] = pdev->initial_pattern_states[pdepth];
+                    gs_free_object(pdev->pdf_memory->non_gc_memory, pdev->initial_pattern_states, "Freeing old pattern state stack");
+                    pdev->initial_pattern_states = new_states;
+                }
+                pdev->initial_pattern_states[pdev->PatternDepth] = (gs_gstate *)gs_alloc_struct(pdev->pdf_memory, gs_gstate, &st_gs_gstate, "gdev_pdf_dev_spec_op");
+                if (pdev->initial_pattern_states[pdev->PatternDepth] == NULL)
+                    return code;
+                memset(pdev->initial_pattern_states[pdev->PatternDepth], 0x00, sizeof(gs_gstate));
+                pdev->initial_pattern_states[pdev->PatternDepth]->memory = pdev->pdf_memory;
+
+                reset_gstate_for_pattern(pdev, pdev->initial_pattern_states[pdev->PatternDepth], pgs);
+                code = pdf_enter_substream(pdev, resourcePattern, pinst->id, &pres, false,
+                        pdev->CompressStreams);
+                if (code < 0) {
+                    gs_free_object(pdev->pdf_memory, pdev->initial_pattern_states[pdev->PatternDepth], "Freeing dangling pattern state");
+                    pdev->initial_pattern_states[pdev->PatternDepth] = NULL;
+                    return code;
+                }
+
                 /* We have started a new substream, to avoid confusing the 'saved viewer state'
                  * (the stack of pdfwrite's saved copies of graophics states) we need to reset the
                  * soft_mask_id, which is the ID of the SMask we have already created in the pdfwrite
@@ -2620,10 +2813,13 @@ gdev_pdf_dev_spec_op(gx_device *pdev1, int dev_spec_op, void *data, int size)
                  * the ID is restored when we finish capturing the pattern.
                  */
                 pdev->state.soft_mask_id = pgs->soft_mask_id;
-                pres->rid = id;
+                pres->rid = pinst->id;
                 code = pdf_store_pattern1_params(pdev, pres, pinst);
-                if (code < 0)
+                if (code < 0) {
+                    gs_free_object(pdev->pdf_memory, pdev->initial_pattern_states[pdev->PatternDepth], "Freeing dangling pattern state");
+                    pdev->initial_pattern_states[pdev->PatternDepth] = NULL;
                     return code;
+                }
                 /* Scale the coordinate system, because object handlers assume so. See none_to_stream. */
                 pprintg2(pdev->strm, "%g 0 0 %g 0 0 cm\n",
                          72.0 / pdev->HWResolution[0], 72.0 / pdev->HWResolution[1]);
@@ -2632,46 +2828,71 @@ gdev_pdf_dev_spec_op(gx_device *pdev1, int dev_spec_op, void *data, int size)
             }
             return 1;
         case gxdso_pattern_finish_accum:
-            if (pdev->CompatibilityLevel <= 1.7) {
-                if (pdev->substream_Resources == NULL) {
-                    pdev->substream_Resources = cos_dict_alloc(pdev, "pdf_pattern(Resources)");
-                    if (pdev->substream_Resources == NULL)
-                        return_error(gs_error_VMerror);
-                }
-                code = pdf_add_procsets(pdev->substream_Resources, pdev->procsets);
-                if (code < 0)
-                    return code;
-            }
-            pres = pres1 = pdev->accumulating_substream_resource;
-            code = pdf_exit_substream(pdev);
-            if (code < 0)
-                return code;
-            if (pdev->substituted_pattern_count > 300 &&
-                    pdev->substituted_pattern_drop_page != pdev->next_page) { /* arbitrary */
-                pdf_drop_resources(pdev, resourcePattern, check_unsubstituted1);
-                pdev->substituted_pattern_count = 0;
-                pdev->substituted_pattern_drop_page = pdev->next_page;
-            }
-            code = pdf_find_same_resource(pdev, resourcePattern, &pres, check_unsubstituted2);
-            if (code < 0)
-                return code;
-            if (code > 0) {
-                pdf_pattern_t *ppat = (pdf_pattern_t *)pres1;
+            {
+                pattern_accum_param_s *param = (pattern_accum_param_s *)data;
+                gs_gstate *pgs = param->graphics_state;
 
-                code = pdf_cancel_resource(pdev, pres1, resourcePattern);
-                if (code < 0)
+                if (pdev->CompatibilityLevel <= 1.7) {
+                    if (pdev->substream_Resources == NULL) {
+                        pdev->substream_Resources = cos_dict_alloc(pdev, "pdf_pattern(Resources)");
+                        if (pdev->substream_Resources == NULL)
+                            return_error(gs_error_VMerror);
+                    }
+                    code = pdf_add_procsets(pdev->substream_Resources, pdev->procsets);
+                    if (code < 0) {
+                        gs_free_object(pdev->pdf_memory, pdev->initial_pattern_states[pdev->PatternDepth], "Freeing dangling pattern state");
+                        pdev->initial_pattern_states[pdev->PatternDepth] = NULL;
+                        return code;
+                    }
+                }
+                pres = pres1 = pdev->accumulating_substream_resource;
+                code = pdf_exit_substream(pdev);
+                if (code < 0) {
+                    gs_free_object(pdev->pdf_memory, pdev->initial_pattern_states[pdev->PatternDepth], "Freeing dangling pattern state");
+                    pdev->initial_pattern_states[pdev->PatternDepth] = NULL;
                     return code;
-                /* Do not remove pres1, because it keeps the substitution. */
-                ppat->substitute = (pdf_pattern_t *)pres;
-                pres->where_used |= pdev->used_mask;
-                pdev->substituted_pattern_count++;
-            } else if (pres->object->id < 0)
-                pdf_reserve_object_id(pdev, pres, 0);
-            pdev->PatternDepth--;
-            pdev->PatternsSinceForm--;
+                }
+                if (pdev->substituted_pattern_count > 300 &&
+                        pdev->substituted_pattern_drop_page != pdev->next_page) { /* arbitrary */
+                    pdf_drop_resources(pdev, resourcePattern, check_unsubstituted1);
+                    pdev->substituted_pattern_count = 0;
+                    pdev->substituted_pattern_drop_page = pdev->next_page;
+                }
+                code = pdf_find_same_resource(pdev, resourcePattern, &pres, check_unsubstituted2);
+                if (code < 0) {
+                    gs_free_object(pdev->pdf_memory, pdev->initial_pattern_states[pdev->PatternDepth], "Freeing dangling pattern state");
+                    pdev->initial_pattern_states[pdev->PatternDepth] = NULL;
+                    return code;
+                }
+                if (code > 0) {
+                    pdf_pattern_t *ppat = (pdf_pattern_t *)pres1;
+
+                    code = pdf_cancel_resource(pdev, pres1, resourcePattern);
+                    if (code < 0) {
+                        gs_free_object(pdev->pdf_memory, pdev->initial_pattern_states[pdev->PatternDepth], "Freeing dangling pattern state");
+                        pdev->initial_pattern_states[pdev->PatternDepth] = NULL;
+                        return code;
+                    }
+                    /* Do not remove pres1, because it keeps the substitution. */
+                    ppat->substitute = (pdf_pattern_t *)pres;
+                    pres->where_used |= pdev->used_mask;
+                    pdev->substituted_pattern_count++;
+                } else if (pres->object->id < 0)
+                    pdf_reserve_object_id(pdev, pres, 0);
+                reset_gstate_for_pattern(pdev, pgs, pdev->initial_pattern_states[pdev->PatternDepth - 1]);
+                gs_free_object(pdev->pdf_memory, pdev->initial_pattern_states[pdev->PatternDepth - 1], "Freeing dangling pattern state");
+                pdev->initial_pattern_states[pdev->PatternDepth - 1] = NULL;
+                if (pdev->PatternDepth == 1) {
+                    gs_free_object(pdev->pdf_memory->non_gc_memory, pdev->initial_pattern_states, "Freeing dangling pattern state");
+                    pdev->initial_pattern_states = NULL;
+                }
+
+                pdev->PatternDepth--;
+                pdev->PatternsSinceForm--;
+            }
             return 1;
         case gxdso_pattern_load:
-            pres = pdf_find_resource_by_gs_id(pdev, resourcePattern, id);
+            pres = pdf_find_resource_by_gs_id(pdev, resourcePattern, *((gx_bitmap_id *)data));
             if (pres == 0)
                 return 0;
             pres = pdf_substitute_pattern(pres);
@@ -2728,6 +2949,29 @@ gdev_pdf_dev_spec_op(gx_device *pdev1, int dev_spec_op, void *data, int size)
             pdev->PassThroughWriter = 0;
             return 0;
             break;
+        case gxdso_JPX_passthrough_query:
+            pdev->JPX_PassThrough = pdev->params.PassThroughJPXImages;
+            return 1;
+            break;
+        case gxdso_JPX_passthrough_begin:
+            return 0;
+            break;
+        case gxdso_JPX_passthrough_data:
+            if (pdev->JPX_PassThrough && pdev->PassThroughWriter)
+            {
+                uint ignore;
+                if (sputs(pdev->PassThroughWriter,
+                           data, size,
+                           &ignore) < 0)
+                           return_error(gs_error_ioerror);
+            }
+            return 0;
+            break;
+        case gxdso_JPX_passthrough_end:
+            pdev->JPX_PassThrough = 0;
+            pdev->PassThroughWriter = 0;
+            return 0;
+            break;
         case gxdso_event_info:
             {
                 dev_param_req_t *request = (dev_param_req_t *)data;
@@ -2760,6 +3004,12 @@ gdev_pdf_dev_spec_op(gx_device *pdev1, int dev_spec_op, void *data, int size)
             break;
         case gxdso_in_smask_construction:
             return pdev->smask_construction;
+        case gxdso_pending_optional_content:
+            {
+                int64_t *object = data;
+                pdev->PendingOC = *object;
+            }
+            break;
         case gxdso_get_dev_param:
             {
                 int code;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -71,6 +71,7 @@ zinstallsystemnames(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     if (r_space(op) != avm_global || imemory_save_level(iimemory_global) != 0)
         return_error(gs_error_invalidaccess);
     check_read_type(*op, t_shortarray);
@@ -97,6 +98,7 @@ zsetobjectformat(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     ref cont;
 
+    check_op(1);
     check_type(*op, t_integer);
     if (op->value.intval < 0 || op->value.intval > 4)
         return_error(gs_error_rangecheck);
@@ -122,6 +124,7 @@ zbosobject(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     int code;
 
+    check_op(4);
     check_type(op[-3], t_integer);
     check_type(op[-2], t_integer);
     check_write_type(*op, t_string);
