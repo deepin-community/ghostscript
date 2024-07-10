@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 #include "gx.h"
@@ -24,6 +24,11 @@
  */
 #define FORCE_TESTING_SUBCLASSING 0
 
+/* This installs the 'kernel' device classes. If you add any devices here you should
+ * almost certainly edit gdevp14.c, gs_pdf14_device_push() and add the new device to the list
+ * of devices which the push of the compositor claims are already installed (to prevent
+ * a second copy being installed by gdev_prn_open).
+ */
 int install_internal_subclass_devices(gx_device **ppdev, int *devices_loaded)
 {
     int code = 0;
@@ -39,7 +44,7 @@ int install_internal_subclass_devices(gx_device **ppdev, int *devices_loaded)
 #else
     if (!dev->NupHandlerPushed && dev->NupControl != 0) {
 #endif
-        code = gx_device_subclass(dev, (gx_device *)&gs_nup_device, sizeof(Nup_device_subclass_data));
+        code = gx_device_nup_device_install(dev);
         if (code < 0)
             return code;
 

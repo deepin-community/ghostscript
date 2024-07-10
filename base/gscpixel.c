@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -110,7 +110,7 @@ gx_remap_concrete_DevicePixel(const gs_color_space * pcs, const frac * pconc,
 static int
 gx_set_overprint_DevicePixel(const gs_color_space * pcs, gs_gstate * pgs)
 {
-    gs_overprint_params_t   params;
+    gs_overprint_params_t params = { 0 };
 
     params.retain_any_comps = false;
     params.effective_opm = pgs->color[0].effective_opm = 0;

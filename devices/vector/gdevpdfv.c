@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -42,12 +42,12 @@ extern const gx_device_color_type_t gx_dc_pattern2;
  */
 #define ENCODE_VALUE(v, emax, vmin, vmax)\
   ( ((v) - (vmin)) * ((double)(emax) / ((vmax) - (vmin))) )
-/*
- * Because of the Acrobat Reader limitation noted in gdevpdfx.h,
- * we must limit coordinate values to 14 bits.
- */
-#define MIN_MESH_COORDINATE (-0x400000 / 256.0)
-#define MAX_MESH_COORDINATE ( 0x3fffff / 256.0)
+#define PDFA_MIN_MESH_COORDINATE (-0x800000 / 256.0)
+#define PDFA_MAX_MESH_COORDINATE ( 0x7fffff / 256.0)
+#define PDFA_ENCODE_MESH_COORDINATE(v)\
+  ENCODE_VALUE(v, 0xffffff, PDFA_MIN_MESH_COORDINATE, PDFA_MAX_MESH_COORDINATE)
+#define MIN_MESH_COORDINATE (-0x800000 )
+#define MAX_MESH_COORDINATE ( 0x7fffff )
 #define ENCODE_MESH_COORDINATE(v)\
   ENCODE_VALUE(v, 0xffffff, MIN_MESH_COORDINATE, MAX_MESH_COORDINATE)
 
@@ -157,7 +157,7 @@ pdf_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
 
         if (pcd_XObject == 0)
             return_error(gs_error_VMerror);
-        gs_sprintf(key, "/R%ld", pcs_image->id);
+        gs_snprintf(key, sizeof(key), "/R%ld", pcs_image->id);
         /* This is non-obvious code. Previously we would put the image object (pcs_image)
          * into the Resources dit. When we come to write out the Resources dict
          * that code writes a reference (index 0 R) using the ID from the object.
@@ -203,7 +203,7 @@ pdf_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
     {
         char buf[MAX_REF_CHARS + 6 + 1]; /* +6 for /R# Do\n */
 
-        gs_sprintf(buf, "/R%ld Do\n", pcs_image->id);
+        gs_snprintf(buf, sizeof(buf), "/R%ld Do\n", pcs_image->id);
         cos_stream_add_bytes(pdev, pcos, (const byte *)buf, strlen(buf));
     }
 
@@ -231,6 +231,14 @@ pdf_store_pattern1_params(gx_device_pdf *pdev, pdf_resource_t *pres,
     bbox[1] = t->BBox.p.y;
     bbox[2] = t->BBox.q.x;
     bbox[3] = t->BBox.q.y;
+    if (pdev->accumulating_charproc) {
+        /* Assume here we can only be installing a pattern while acumulating a
+         * charproc if the font is a coloured type 3 font. In this case we will
+         * have set the CTM to be the identity scaled by 100 (!). See gdevpdtt.c
+         * install_PS_charproc_accumulator() for details.
+         */
+        gs_make_identity(&smat2);
+    }
     /* The graphics library assumes a shifted origin to provide
        positive bitmap pixel indices. Compensate it now. */
     smat2.tx += pinst->step_matrix.tx;
@@ -242,7 +250,7 @@ pdf_store_pattern1_params(gx_device_pdf *pdev, pdf_resource_t *pres,
      * form is nested inside a form, the default space is the space of the
      * first form, and therefore we do *not* remove the resolution scaling.
      */
-    if (pdev->FormDepth == 0 || (pdev->FormDepth > 0 && pdev->PatternsSinceForm > 0)) {
+    if ((pdev->FormDepth == 0 || (pdev->FormDepth > 0 && pdev->PatternsSinceForm > 0)) && !pdev->accumulating_charproc) {
         gs_matrix scaled;
 
         gs_make_scaling(1 / scale_x, 1 / scale_y, &scaled);
@@ -250,6 +258,9 @@ pdf_store_pattern1_params(gx_device_pdf *pdev, pdf_resource_t *pres,
     } else {
         smat = smat2;
     }
+    if ((smat.xx == 0.0 && smat.yy == 0.0) && (smat.xy == 0.0 && smat.yx == 0.0))
+        return_error(gs_error_undefinedresult);
+
     if (pdev->ForOPDFRead) {
         if (pdev->PatternDepth) {
             gs_matrix_multiply(&smat, &pdev->AccumulatedPatternMatrix, &smat2);
@@ -360,6 +371,9 @@ pdf_put_uncolored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
             if (code < 0)
                 return code;
             *ppres = pdf_find_resource_by_gs_id(pdev, resourcePattern, pdc->mask.id);
+            if (*ppres == NULL)
+                return_error(gs_error_undefined);
+
             *ppres = pdf_substitute_pattern(*ppres);
             if (!pdev->AR4_save_bug && pdev->CompatibilityLevel <= 1.3) {
                 /* We reconnized AR4 behavior as reserving "q Q" stack elements
@@ -608,7 +622,7 @@ pdf_put_linear_shading(gx_device_pdf *pdev, cos_dict_t *pscd, const float *Coord
     if (Extend[0] | Extend[1]) {
         char extend_str[1 + 5 + 1 + 5 + 1 + 1]; /* [bool bool] */
 
-        gs_sprintf(extend_str, "[%s %s]",
+        gs_snprintf(extend_str, sizeof(extend_str), "[%s %s]",
                 (Extend[0] ? "true" : "false"),
                 (Extend[1] ? "true" : "false"));
         code = cos_dict_put_c_key_string(pscd, "/Extend",
@@ -675,6 +689,7 @@ typedef struct pdf_mesh_data_params_s {
     int num_points;
     int num_components;
     bool is_indexed;
+    int rescale;            /* If the co-ordinates won't fit into crappy Acrobat values, scale them here and in the pattern Matrix */
     const float *Domain;	/* iff Function */
     const gs_range_t *ranges;
 } pdf_mesh_data_params_t;
@@ -696,9 +711,13 @@ put_clamped(byte *p, double v, int num_bytes)
         *p++ = (byte)(i >> shift);
 }
 static inline void
-put_clamped_coord(byte *p, double v, int num_bytes)
+put_clamped_coord(byte *p, double v, int num_bytes, const pdf_mesh_data_params_t *pmdp)
 {
-    put_clamped(p, ENCODE_MESH_COORDINATE(v), num_bytes);
+    if (pmdp->rescale != 1.0) {
+        v = v / pmdp->rescale;
+        put_clamped(p, PDFA_ENCODE_MESH_COORDINATE(v), num_bytes);
+    } else
+        put_clamped(p, ENCODE_MESH_COORDINATE(v), num_bytes);
 }
 
 /* Convert floating-point mesh data to packed binary. */
@@ -719,8 +738,8 @@ put_float_mesh_data(gx_device_pdf *pdev, cos_stream_t *pscs, shade_coord_stream_
     if ((code = shade_next_coords(cs, pts, num_points)) < 0)
         return code;
     for (i = 0; i < num_points; ++i) {
-        put_clamped_coord(b + 1 + i * 6, fixed2float(pts[i].x), 3);
-        put_clamped_coord(b + 4 + i * 6, fixed2float(pts[i].y), 3);
+        put_clamped_coord(b + 1 + i * 6, fixed2float(pts[i].x), 3, pmdp);
+        put_clamped_coord(b + 4 + i * 6, fixed2float(pts[i].y), 3, pmdp);
     }
     if ((code = cos_stream_add_bytes(pdev, pscs, b + (flag < 0),
                                      (flag >= 0) + num_points * 6)) < 0)
@@ -766,7 +785,7 @@ put_float_mesh_data(gx_device_pdf *pdev, cos_stream_t *pscs, shade_coord_stream_
 /* Write a mesh Shading. */
 static int
 pdf_put_mesh_shading(gx_device_pdf *pdev, cos_stream_t *pscs, const gs_shading_t *psh,
-                     const gs_range_t *pranges)
+                     const gs_range_t *pranges, int *rescale)
 {
     cos_dict_t *const pscd = cos_stream_dict(pscs);
     gs_color_space *pcs = psh->params.ColorSpace;
@@ -789,6 +808,8 @@ pdf_put_mesh_shading(gx_device_pdf *pdev, cos_stream_t *pscs, const gs_shading_t
         num_comp = gs_color_space_num_components(pcs);
     }
     data_params.ranges = pranges;
+    data_params.rescale = 1;
+
 
     /* Write parameters common to all mesh Shadings. */
     shade_next_init(&cs, pmp, NULL);
@@ -798,10 +819,18 @@ pdf_put_mesh_shading(gx_device_pdf *pdev, cos_stream_t *pscs, const gs_shading_t
 
         if (pca == 0)
             return_error(gs_error_VMerror);
-        for (i = 0; i < 2; ++i)
-            if ((code = pdf_array_add_real2(pca, MIN_MESH_COORDINATE,
+        for (i = 0; i < 2; ++i) {
+            if (pdev->CompatibilityLevel < 1.5) {
+                if ((code = pdf_array_add_real2(pca, PDFA_MIN_MESH_COORDINATE,
+                                            PDFA_MAX_MESH_COORDINATE)) < 0)
+                    return code;
+            }
+            else {
+                if ((code = pdf_array_add_real2(pca, MIN_MESH_COORDINATE,
                                             MAX_MESH_COORDINATE)) < 0)
-                return code;
+                    return code;
+            }
+        }
         data_params.is_indexed = false;
         if (gs_color_space_get_index(pcs) == gs_color_space_index_Indexed) {
             data_params.is_indexed = true;
@@ -857,6 +886,148 @@ pdf_put_mesh_shading(gx_device_pdf *pdev, cos_stream_t *pscs, const gs_shading_t
                                        bits_per_component)) < 0
         )
         return code;
+
+    if (from_array && pdev->CompatibilityLevel < 1.5 ) {
+        float min_x, max_x, min_y, max_y, z;
+        int i = 0, j, num_points = 1, num_components = 1;
+        float c = 0;
+        float x, y;
+
+        /*
+         * Because of the Acrobat Reader limitation noted in gdevpdfx.h,
+         * we must limit coordinate values to 16 bits. We no longer
+         * attempt to support Acrobat 1.3 and below (which only permit 14 bits).
+         */
+        min_x = min_y = PDFA_MIN_MESH_COORDINATE;
+        max_x = max_y = PDFA_MAX_MESH_COORDINATE;
+
+        switch(ShadingType(psh)){
+            case shading_type_Tensor_product_patch:
+                    while ((flag = shade_next_flag(&cs, 0)) >= 0){
+                        num_points = (flag == 0 ? 16 : 12);
+                        num_components = num_comp * (flag == 0 ? 4 : 2);
+
+                        for (j = 0; j < num_points;j++) {
+                            code = cs.get_decoded(&cs, 0, NULL, &x);
+                            if (code < 0)
+                                break;
+                            code = cs.get_decoded(&cs, 0, NULL, &y);
+                            if (code < 0)
+                                break;
+                            for (i = 0; i < num_components; ++i) {
+                                code = cs.get_decoded(&cs, 0, NULL, &c);
+                                if (code < 0)
+                                    break;
+                            }
+                            if (x < min_x)
+                                min_x = x;
+                            if (y < min_y)
+                                min_y = y;
+                            if (x > max_x)
+                                max_x = x;
+                            if (y > max_y)
+                                max_y = y;
+                        }
+                    }
+                break;
+            case shading_type_Coons_patch:
+                    while ((flag = shade_next_flag(&cs, 0)) >= 0){
+                        num_points = (flag == 0 ? 12 : 8);
+                        num_components = num_comp * (flag == 0 ? 4 : 2);
+
+                        for (j = 0; j < num_points;j++) {
+                            code = cs.get_decoded(&cs, 0, NULL, &x);
+                            if (code < 0)
+                                break;
+                            code = cs.get_decoded(&cs, 0, NULL, &y);
+                            if (code < 0)
+                                break;
+                            for (i = 0; i < num_components; ++i) {
+                                code = cs.get_decoded(&cs, 0, NULL, &c);
+                                if (code < 0)
+                                    break;
+                            }
+                            if (x < min_x)
+                                min_x = x;
+                            if (y < min_y)
+                                min_y = y;
+                            if (x > max_x)
+                                max_x = x;
+                            if (y > max_y)
+                                max_y = y;
+                        }
+                    }
+                break;
+            case shading_type_Free_form_Gouraud_triangle:
+                {
+                    while ((flag = shade_next_flag(&cs, 0)) >= 0){
+                        code = cs.get_decoded(&cs, 0, NULL, &x);
+                        if (code < 0)
+                            break;
+                        code = cs.get_decoded(&cs, 0, NULL, &y);
+                        if (code < 0)
+                            break;
+                        for (i = 0; i < num_comp; ++i) {
+                            code = cs.get_decoded(&cs, 0, NULL, &c);
+                            if (code < 0)
+                                break;
+                        }
+                        if (x < min_x)
+                            min_x = x;
+                        if (y < min_y)
+                            min_y = y;
+                        if (x > max_x)
+                            max_x = x;
+                        if (y > max_y)
+                            max_y = y;
+                    }
+                }
+                break;
+            case shading_type_Lattice_form_Gouraud_triangle:
+                {
+                    while (!seofp(cs.s)) {
+                        code = cs.get_decoded(&cs, 0, NULL, &x);
+                        if (code < 0)
+                            break;
+                        code = cs.get_decoded(&cs, 0, NULL, &y);
+                        if (code < 0)
+                            break;
+                        for (i = 0; i < num_comp; ++i) {
+                            code = cs.get_decoded(&cs, 0, NULL, &c);
+                            if (code < 0)
+                                break;
+                        }
+                        if (x < min_x)
+                            min_x = x;
+                        if (y < min_y)
+                            min_y = y;
+                        if (x > max_x)
+                            max_x = x;
+                        if (y > max_y)
+                            max_y = y;
+                    }
+                }
+                break;
+            default:
+                break;
+        }
+        s_init(&cs.ds, NULL);
+        sread_string(&cs.ds, pmp->DataSource.data.str.data,
+                     pmp->DataSource.data.str.size);
+        cs.s = &cs.ds;
+
+        *rescale = (int)ceil(min_x / PDFA_MIN_MESH_COORDINATE);
+        z = ceil(min_y / PDFA_MIN_MESH_COORDINATE);
+        if (z > *rescale)
+            *rescale = (int)z;
+        z = ceil(max_x / PDFA_MAX_MESH_COORDINATE);
+        if (z > *rescale)
+            *rescale = (int)z;
+        z = ceil(max_y / PDFA_MAX_MESH_COORDINATE);
+        if (z > *rescale)
+            *rescale = (int)z;
+        data_params.rescale = *rescale;
+    }
 
     switch (ShadingType(psh)) {
     case shading_type_Free_form_Gouraud_triangle: {
@@ -935,7 +1106,7 @@ pdf_put_mesh_shading(gx_device_pdf *pdev, cos_stream_t *pscs, const gs_shading_t
     }
     code1 =  cos_dict_put_c_key_int(pscd, "/BitsPerFlag", bits_per_flag);
     if (code1 < 0)
-        return code;
+        return code1;
     return code;
 }
 
@@ -955,7 +1126,7 @@ pdf_put_pattern2(gx_device_pdf *pdev, const gs_gstate * pgs, const gx_drawing_co
     cos_object_t *psco;
     const gs_range_t *pranges;
     int code = pdf_cs_Pattern_colored(pdev, &v);
-    int code1 = 0;
+    int code1 = 0, rescale = 1;
     gs_matrix smat;
     gs_point dist;
 
@@ -977,7 +1148,7 @@ pdf_put_pattern2(gx_device_pdf *pdev, const gs_gstate * pgs, const gx_drawing_co
         code = pdf_put_shading_common(pdev, cos_stream_dict((cos_stream_t *)psco), pgs,
                                       psh, pinst->shfill, &pranges);
         if (code >= 0)
-            code1 = pdf_put_mesh_shading(pdev, (cos_stream_t *)psco, psh, pranges);
+            code1 = pdf_put_mesh_shading(pdev, (cos_stream_t *)psco, psh, pranges, &rescale);
         else
             /* We won't use this shading, we fall back because we couldn't write it */
             psres->where_used = 0;
@@ -1012,6 +1183,10 @@ pdf_put_pattern2(gx_device_pdf *pdev, const gs_gstate * pgs, const gx_drawing_co
             yscale = 72.0 / pdev->HWResolution[1];
         }
 
+        if (rescale != 1) {
+            xscale *= rescale;
+            yscale *= rescale;
+        }
         smat.xx *= xscale, smat.yx *= xscale, smat.tx *= xscale;
         smat.xy *= yscale, smat.yy *= yscale, smat.ty *= yscale;
     }

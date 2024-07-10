@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -591,9 +591,11 @@ buildfont1or4(i_ctx_t *i_ctx_p, os_ptr op, build_proc_refs * pbuild,
               font_type ftype, build_font_options_t options)
 {
     charstring_font_refs_t refs;
-    int code = charstring_font_get_refs(op, &refs);
+    int code;
     gs_type1_data data1;
 
+    check_op(2);
+    code = charstring_font_get_refs(op, &refs);
     if (code < 0)
         return code;
     data1.interpret = gs_type1_interpret;

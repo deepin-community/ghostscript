@@ -48,8 +48,15 @@ static int sixel_print_page(gx_device_printer *pdev,
 /* The device descriptor */
 static dev_proc_output_page(sixel_output_page);
 static dev_proc_print_page(xes_print_page);
-static gx_device_procs xes_procs =
-  prn_procs(gdev_prn_open, sixel_output_page, gdev_prn_close);
+
+static void
+sixel_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
+
+    set_dev_proc(dev, output_page, sixel_output_page);
+}
+
 
 #ifdef A4
 #  define BOTTOM_MARGIN 0.5
@@ -60,7 +67,7 @@ static gx_device_procs xes_procs =
 #endif
 
 gx_device_printer gs_xes_device =
-    prn_device(xes_procs, "xes",
+    prn_device(sixel_initialize_device_procs, "xes",
                DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                300, 300,		/* x_dpi, y_dpi */
                0, BOTTOM_MARGIN, 0, 0,	/* left, bottom, right, top margin */
@@ -173,7 +180,7 @@ sixel_print_page(gx_device_printer *pdev, gp_file *prn_stream, const char *init)
               if ( tmp[l] == last ) {
                 count++;
                 if (count==32767) {
-                  run[gs_sprintf(run, "%d", count)]='\0';
+                  run[gs_snprintf(run, sizeof(run), "%d", count)]='\0';
                   for (t=run; *t; t++) gp_fputc( *t, prn_stream );
                   gp_fputc( last, prn_stream );
                   last = '\0';
@@ -186,7 +193,7 @@ sixel_print_page(gx_device_printer *pdev, gp_file *prn_stream, const char *init)
                     case 0: break;
                     case 1: gp_fputc( last, prn_stream );
                             break;
-                    default:run[gs_sprintf(run, "%d", count)]='\0';
+                    default:run[gs_snprintf(run, sizeof(run), "%d", count)]='\0';
                             for (t=run; *t; t++) gp_fputc( *t, prn_stream );
                             gp_fputc( last, prn_stream );
                             break;
@@ -203,7 +210,7 @@ sixel_print_page(gx_device_printer *pdev, gp_file *prn_stream, const char *init)
       case 0: break;
       case 1: gp_fputc( last, prn_stream );
               break;
-      default:run[gs_sprintf(run, "%d", count)]='\0';
+      default:run[gs_snprintf(run, sizeof(run), "%d", count)]='\0';
               for (t=run; *t; t++) gp_fputc( *t, prn_stream );
               gp_fputc( last, prn_stream );
               break;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -1512,7 +1512,7 @@ pcl_ht_init_render_methods(pcl_state_t * pcs, gs_memory_t * pmem)
         if ((pcs->rendering_info[i].flags & HT_FIXED) != 0)
             continue;
         gs_c_param_list_write(&list, pmem);
-        gs_sprintf(nbuff, "Dither_%d", i);
+        gs_snprintf(nbuff, sizeof(nbuff), "Dither_%d", i);
         if ((param_request((gs_param_list *) & list, nbuff) >= 0) &&
             (gs_getdeviceparams(pcur_dev, (gs_param_list *) & list) >= 0)) {
             gs_param_dict dict;

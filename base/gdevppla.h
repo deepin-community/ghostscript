@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -27,7 +27,7 @@
 int gdev_prn_set_procs_planar(gx_device *pdev);
 
 /* Open a printer device, conditionally setting it to be planar. */
-int gdev_prn_open_planar(gx_device *pdev, bool upb);
+int gdev_prn_open_planar(gx_device *pdev, int num_planar_planes);
 
 /* Augment get/put_params to add UsePlanarBuffer. */
 int gdev_prn_get_params_planar(gx_device * pdev, gs_param_list * plist,

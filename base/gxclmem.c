@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -400,7 +400,7 @@ memfile_fopen(char fname[gp_file_name_sizeof], const char *fmode,
 
     /* Return the address of this memfile as a string for use in future clist_fopen calls */
     fname[0] = 0xff;        /* a flag that this is a memfile name */
-    gs_sprintf(fname+1, "%p", f);
+    gs_snprintf(fname+1, gp_file_name_sizeof-1, "%p", f);
 
 #ifdef DEBUG
         tot_compressed = 0;
@@ -490,8 +490,7 @@ memfile_fclose(clist_file_ptr cf, const char *fname, bool delete)
     /* leaks if other users of the memfile don't 'fclose with delete=true */
     if (f->openlist != NULL || ((f->base_memfile != NULL) && f->base_memfile->is_open)) {
         /* TODO: do the cleanup rather than just giving an error */
-        emprintf1(f->memory,
-                  "Attempt to delete a memfile still open for read: "PRI_INTPTR"\n",
+        if_debug1(':', "Attempt to delete a memfile still open for read: "PRI_INTPTR"\n",
                   (intptr_t)f);
         return_error(gs_error_invalidfileaccess);
     } else {
@@ -1007,11 +1006,12 @@ memfile_fread_chars(void *data, uint len, clist_file_ptr cf)
 {
     char *str = (char *)data;
     MEMFILE *f = (MEMFILE *) cf;
-    uint count = len, num_read, move_count;
+    uint count = len, move_count;
+    int64_t num_read;
 
     num_read = f->log_length - f->log_curr_pos;
-    if (count > num_read)
-        count = num_read;
+    if ((int64_t)count > num_read)
+        count = (int)num_read;
     num_read = count;
 
     while (count) {
@@ -1266,9 +1266,10 @@ init_proc(gs_gxclmem_init);
 int
 gs_gxclmem_init(gs_memory_t *mem)
 {
+    gs_lib_ctx_core_t *core = mem->gs_lib_ctx->core;
 #ifdef PACIFY_VALGRIND
-    VALGRIND_HG_DISABLE_CHECKING(&clist_io_procs_memory_global, sizeof(clist_io_procs_memory_global));
+    VALGRIND_HG_DISABLE_CHECKING(&core->clist_io_procs_memory, sizeof(core->clist_io_procs_memory));
 #endif
-    clist_io_procs_memory_global = &clist_io_procs_memory;
+    core->clist_io_procs_memory = &clist_io_procs_memory;
     return 0;
 }

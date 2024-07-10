@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /*
@@ -79,14 +79,18 @@ static dev_proc_print_page_copies(lj3100sw_print_page_copies);
 static dev_proc_close_device(lj3100sw_close);
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static gx_device_procs prn_lj3100sw_procs =
-    prn_params_procs(gdev_prn_open, gdev_prn_bg_output_page, lj3100sw_close,
-             gdev_prn_get_params, gdev_prn_put_params);
+static void
+lj3100sw_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono_bg(dev);
+
+    set_dev_proc(dev, close_device, lj3100sw_close);
+}
 
 /* workaround to emulate the missing prn_device_margins_copies macro */
 #define gx_default_print_page_copies lj3100sw_print_page_copies
 gx_device_printer far_data gs_lj3100sw_device =
-    prn_device_margins/*_copies*/(prn_lj3100sw_procs, "lj3100sw",
+    prn_device_margins/*_copies*/(lj3100sw_initialize_device_procs, "lj3100sw",
              DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
              X_DPI, Y_DPI,
              XCORRECTION, YCORRECTION,
@@ -187,9 +191,9 @@ lj3100sw_print_page_copies(gx_device_printer *pdev, gp_file *prn_stream, int num
         if (gdev_prn_file_is_new(pdev)) {
                 lj3100sw_output_section_header(prn_stream, 1, 0, 0);
                 lj3100sw_output_repeated_data_bytes(prn_stream, buffer, &ptr, 0x1b, 12);
-                ptr += gs_sprintf(ptr, "\r\nBD");
+                ptr += gs_snprintf(ptr, sizeof(buffer) - (ptr - buffer), "\r\nBD");
                 lj3100sw_output_repeated_data_bytes(prn_stream, buffer, &ptr, 0, 5520);
-                ptr += gs_sprintf(ptr, "%s\r\n%s %d\r\n%s %d\r\n%s %d\r\n%s %d\r\n%s %d\r\n%s %d\r\n",
+                ptr += gs_snprintf(ptr, sizeof(buffer) - (ptr - buffer), "%s\r\n%s %d\r\n%s %d\r\n%s %d\r\n%s %d\r\n%s %d\r\n%s %d\r\n",
                                "NJ",
                                "PQ", -1,
                                "RE",  high_resolution ? 6 : 2,
@@ -201,7 +205,7 @@ lj3100sw_print_page_copies(gx_device_printer *pdev, gp_file *prn_stream, int num
         }
 
         lj3100sw_output_section_header(prn_stream, 3, ppdev->NumCopies, 0);
-        ptr += gs_sprintf(ptr, "%s %d\r\n%s\r\n",
+        ptr += gs_snprintf(ptr, sizeof(buffer) - (ptr - buffer), "%s %d\r\n%s\r\n",
                        "CM", 1,
                        "PD");
         *ptr++ = 0;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -112,7 +112,7 @@ zsave(i_ctx_t *i_ctx_p)
 }
 
 /* <save> restore - */
-static int restore_check_operand(os_ptr, alloc_save_t **, gs_dual_memory_t *);
+static int restore_check_operand(i_ctx_t *i_ctx_p, alloc_save_t **, gs_dual_memory_t *);
 static int restore_check_stack(const i_ctx_t *i_ctx_p, const ref_stack_t *, const alloc_save_t *, bool);
 static void restore_fix_stack(i_ctx_t *i_ctx_p, ref_stack_t *, const alloc_save_t *, bool);
 
@@ -120,14 +120,13 @@ static void restore_fix_stack(i_ctx_t *i_ctx_p, ref_stack_t *, const alloc_save_
 int
 restore_check_save(i_ctx_t *i_ctx_p, alloc_save_t **asave)
 {
-    os_ptr op = osp;
-    int code = restore_check_operand(op, asave, idmemory);
+    int code = restore_check_operand(i_ctx_p, asave, idmemory);
 
     if (code < 0)
         return code;
     if_debug2m('u', imemory, "[u]vmrestore "PRI_INTPTR", id = %lu\n",
                (intptr_t) alloc_save_client_data(*asave),
-               (ulong) op->value.saveid);
+               (ulong) osp->value.saveid);
     if (I_VALIDATE_BEFORE_RESTORE)
         ivalidate_clean_spaces(i_ctx_p);
     /* Check the contents of the stacks. */
@@ -159,10 +158,12 @@ restore_check_save(i_ctx_t *i_ctx_p, alloc_save_t **asave)
 int
 dorestore(i_ctx_t *i_ctx_p, alloc_save_t *asave)
 {
+    os_ptr op = osp;
     bool last;
     vm_save_t *vmsave;
     int code;
 
+    check_op(1);
     osp--;
 
     /* Reset l_new in all stack entries if the new save level is zero. */
@@ -231,13 +232,16 @@ zrestore(i_ctx_t *i_ctx_p)
 
 /* Check the operand of a restore. */
 static int
-restore_check_operand(os_ptr op, alloc_save_t ** pasave,
+restore_check_operand(i_ctx_t *i_ctx_p, alloc_save_t ** pasave,
                       gs_dual_memory_t *idmem)
 {
+    os_ptr op = osp;
     vm_save_t *vmsave;
     ulong sid;
     alloc_save_t *asave;
 
+    check_op(1);
+    *pasave = NULL;
     check_type(*op, t_save);
     vmsave = r_ptr(op, vm_save_t);
     if (vmsave == 0)		/* invalidated save */
@@ -324,6 +328,7 @@ restore_check_stack(const i_ctx_t *i_ctx_p, const ref_stack_t * pstack,
                 case t_fontID:
                 case t_struct:
                 case t_astruct:
+                case t_pdfctx:
                     ptr = stkp->value.pstruct;
                     break;
                 case t_save:
@@ -434,10 +439,9 @@ zvmstatus(i_ctx_t *i_ctx_p)
 static int
 zforgetsave(i_ctx_t *i_ctx_p)
 {
-    os_ptr op = osp;
     alloc_save_t *asave;
     vm_save_t *vmsave;
-    int code = restore_check_operand(op, &asave, idmemory);
+    int code = restore_check_operand(i_ctx_p, &asave, idmemory);
 
     if (code < 0)
         return 0;

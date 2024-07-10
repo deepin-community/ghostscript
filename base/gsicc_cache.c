@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /*  GS ICC link cache.  Initial stubbing of functions.  */
@@ -35,6 +35,7 @@
 #include "gxsync.h"
 #include "gzstate.h"
 #include "stdint_.h"
+#include "assert_.h"
         /*
          *  Note that the the external memory used to maintain
          *  links in the CMS is generally not visible to GS.
@@ -47,6 +48,7 @@
          *  of links.
          */
 #define ICC_CACHE_MAXLINKS (MAX_THREADS*2)	/* allow up to two active links per thread */
+#define ICC_CACHE_NOT_VALID_COUNT 20  /* This should not really occur. If it does we need to take a closer look */
 
 /* Static prototypes */
 
@@ -61,7 +63,7 @@ static int gsicc_compute_linkhash(gsicc_manager_t *icc_manager, gx_device *dev,
                                   gsicc_rendering_param_t *rendering_params,
                                   gsicc_hashlink_t *hash);
 
-static void gsicc_remove_link(gsicc_link_t *link, const gs_memory_t *memory);
+static void gsicc_remove_link(gsicc_link_t *link);
 
 static void gsicc_get_buff_hash(unsigned char *data, int64_t *hash, unsigned int num_bytes);
 
@@ -100,28 +102,30 @@ gsicc_cache_new(gs_memory_t *memory)
 
     /* We want this to be maintained in stable_memory.  It should be be effected by the
        save and restores */
-    result = gs_alloc_struct(memory->stable_memory, gsicc_link_cache_t, &st_icc_linkcache,
+    memory = memory->stable_memory;
+    result = gs_alloc_struct(memory, gsicc_link_cache_t, &st_icc_linkcache,
                              "gsicc_cache_new");
     if ( result == NULL )
         return(NULL);
     result->head = NULL;
     result->num_links = 0;
     result->cache_full = false;
-    result->memory = memory->stable_memory;
-    result->lock = gx_monitor_label(gx_monitor_alloc(memory->stable_memory),
+    result->memory = memory;
+    result->full_wait = NULL; /* Required so finaliser can work when result freed. */
+    rc_init_free(result, memory, 1, rc_gsicc_link_cache_free);
+    result->lock = gx_monitor_label(gx_monitor_alloc(memory),
                                     "gsicc_cache_new");
     if (result->lock == NULL) {
-        gs_free_object(memory->stable_memory, result, "gsicc_cache_new");
+        rc_decrement(result, "gsicc_cache_new");
         return(NULL);
     }
-    result->full_wait = gx_semaphore_label(gx_semaphore_alloc(memory->stable_memory),
-                                    "gsicc_cache_new");
+    result->full_wait = gx_semaphore_label(gx_semaphore_alloc(memory),
+                                           "gsicc_cache_new");
     if (result->full_wait == NULL) {
-        gx_monitor_free(result->lock);
-        gs_free_object(memory->stable_memory, result, "gsicc_cache_new");
+        /* Don't free result->lock, as the finaliser for result does that! */
+        rc_decrement(result, "gsicc_cache_new");
         return(NULL);
     }
-    rc_init_free(result, memory->stable_memory, 1, rc_gsicc_link_cache_free);
     if_debug2m(gs_debug_flag_icc, memory,
                "[icc] Allocating link cache = "PRI_INTPTR" memory = "PRI_INTPTR"\n",
 	       (intptr_t)result, (intptr_t)result->memory);
@@ -134,11 +138,15 @@ rc_gsicc_link_cache_free(gs_memory_t * mem, void *ptr_in, client_name_t cname)
     /* Ending the entire cache.  The ref counts on all the links should be 0 */
     gsicc_link_cache_t *link_cache = (gsicc_link_cache_t * ) ptr_in;
 
-    if_debug2m(gs_debug_flag_icc, mem,
+    /* mem is unused, but we are passed it anyway by the ref counting mechanisms. */
+    assert(link_cache != NULL && mem == link_cache->memory);
+    if (link_cache == NULL)
+        return;
+    if_debug2m(gs_debug_flag_icc, link_cache->memory,
                "[icc] Removing link cache = "PRI_INTPTR" memory = "PRI_INTPTR"\n",
                (intptr_t)link_cache, (intptr_t)link_cache->memory);
     /* NB: freeing the link_cache will call icc_linkcache_finalize */
-    gs_free_object(mem->stable_memory, link_cache, "rc_gsicc_link_cache_free");
+    gs_free_object(link_cache->memory, link_cache, "rc_gsicc_link_cache_free");
 }
 
 /* release the monitor of the link_cache when it is freed */
@@ -147,17 +155,21 @@ icc_linkcache_finalize(const gs_memory_t *mem, void *ptr)
 {
     gsicc_link_cache_t *link_cache = (gsicc_link_cache_t * ) ptr;
 
+    /* mem is unused, but we are passed it anyway by the ref counting mechanisms. */
+    assert(link_cache != NULL && mem == link_cache->memory);
+    if (link_cache == NULL)
+        return;
     while (link_cache->head != NULL) {
         if (link_cache->head->ref_count != 0) {
-            emprintf2(mem, "link at "PRI_INTPTR" being removed, but has ref_count = %d\n",
+            if_debug2m(gs_debug_flag_icc, link_cache->memory, "link at "PRI_INTPTR" being removed, but has ref_count = %d\n",
                       (intptr_t)link_cache->head, link_cache->head->ref_count);
             link_cache->head->ref_count = 0;	/* force removal */
         }
-        gsicc_remove_link(link_cache->head, mem);
+        gsicc_remove_link(link_cache->head);
     }
 #ifdef DEBUG
     if (link_cache->num_links != 0) {
-        emprintf1(mem, "num_links is %d, should be 0.\n", link_cache->num_links);
+        emprintf1(link_cache->memory, "num_links is %d, should be 0.\n", link_cache->num_links);
     }
 #endif
     if (link_cache->rc.ref_count == 0) {
@@ -179,15 +191,16 @@ gsicc_alloc_link_dev(gs_memory_t *memory, cmm_profile_t *src_profile,
     gsicc_link_t *result;
     int cms_flags = 0;
 
-    result = (gsicc_link_t*) gs_malloc(memory->stable_memory, 1,
+    memory = memory->non_gc_memory;
+    result = (gsicc_link_t*)gs_alloc_byte_array(memory, 1,
         sizeof(gsicc_link_t), "gsicc_alloc_link_dev");
 
     if (result == NULL)
         return NULL;
-    result->lock = gx_monitor_label(gx_monitor_alloc(memory->stable_memory),
+    result->lock = gx_monitor_label(gx_monitor_alloc(memory),
         "gsicc_link_new");
     if (result->lock == NULL) {
-        gs_free_object(memory->stable_memory, result, "gsicc_alloc_link(lock)");
+        gs_free_object(memory, result, "gsicc_alloc_link(lock)");
         return NULL;
     }
     gx_monitor_enter(result->lock);
@@ -212,35 +225,35 @@ gsicc_alloc_link_dev(gs_memory_t *memory, cmm_profile_t *src_profile,
     result->includes_devlink = 0;
     result->is_identity = false;
     result->valid = true;
-    result->memory = memory->stable_memory;
+    result->memory = memory;
 
     if_debug1m('^', result->memory, "[^]icclink "PRI_INTPTR" init = 1\n",
                (intptr_t)result);
 
     if (src_profile->profile_handle == NULL) {
         src_profile->profile_handle = gsicc_get_profile_handle_buffer(
-            src_profile->buffer, src_profile->buffer_size, memory->stable_memory);
+            src_profile->buffer, src_profile->buffer_size, memory);
     }
 
     if (des_profile->profile_handle == NULL) {
         des_profile->profile_handle = gsicc_get_profile_handle_buffer(
-            des_profile->buffer, des_profile->buffer_size, memory->stable_memory);
+            des_profile->buffer, des_profile->buffer_size, memory);
     }
 
     /* Check for problems.. */
     if (src_profile->profile_handle == 0 || des_profile->profile_handle == 0) {
-        gs_free_object(memory->stable_memory, result, "gsicc_alloc_link_dev");
+        gs_free_object(memory, result, "gsicc_alloc_link_dev");
         return NULL;
     }
 
     /* [0] is chunky, littleendian, noalpha, 16-in, 16-out */
     result->link_handle = gscms_get_link(src_profile->profile_handle,
         des_profile->profile_handle, rendering_params, cms_flags,
-        memory->stable_memory);
+        memory);
 
     /* Check for problems.. */
     if (result->link_handle == NULL) {
-        gs_free_object(memory->stable_memory, result, "gsicc_alloc_link_dev");
+        gs_free_object(memory, result, "gsicc_alloc_link_dev");
         return NULL;
     }
 
@@ -258,10 +271,12 @@ gsicc_alloc_link_dev(gs_memory_t *memory, cmm_profile_t *src_profile,
 
 /* And the related release of the link */
 void
-gsicc_free_link_dev(gs_memory_t *memory, gsicc_link_t *link)
+gsicc_free_link_dev(gsicc_link_t *link)
 {
-    gs_memory_t *nongc_mem = memory->non_gc_memory;
-    gs_free_object(nongc_mem, link, "gsicc_free_link_dev");
+    if (link == NULL)
+        return;
+    link->procs.free_link(link);
+    gs_free_object(link->memory, link, "gsicc_free_link_dev");
 }
 
 static gsicc_link_t *
@@ -271,7 +286,8 @@ gsicc_alloc_link(gs_memory_t *memory, gsicc_hashlink_t hashcode)
 
     /* The link has to be added in stable memory. We want them
        to be maintained across the gsave and grestore process */
-    result = gs_alloc_struct(memory->stable_memory, gsicc_link_t, &st_icc_link,
+    memory = memory->stable_memory;
+    result = gs_alloc_struct(memory, gsicc_link_t, &st_icc_link,
                              "gsicc_alloc_link");
     if (result == NULL)
         return NULL;
@@ -294,12 +310,12 @@ gsicc_alloc_link(gs_memory_t *memory, gsicc_hashlink_t hashcode)
     result->includes_devlink = 0;
     result->is_identity = false;
     result->valid = false;		/* not yet complete */
-    result->memory = memory->stable_memory;
+    result->memory = memory;
 
-    result->lock = gx_monitor_label(gx_monitor_alloc(memory->stable_memory),
+    result->lock = gx_monitor_label(gx_monitor_alloc(memory),
                                     "gsicc_link_new");
     if (result->lock == NULL) {
-        gs_free_object(memory->stable_memory, result, "gsicc_alloc_link(lock)");
+        gs_free_object(memory, result, "gsicc_alloc_link(lock)");
         return NULL;
     }
     gx_monitor_enter(result->lock);     /* this link is owned by this thread until built and made "valid" */
@@ -351,11 +367,13 @@ gsicc_link_free_contents(gsicc_link_t *icc_link)
 }
 
 void
-gsicc_link_free(gsicc_link_t *icc_link, const gs_memory_t *memory)
+gsicc_link_free(gsicc_link_t *icc_link)
 {
+    if (icc_link == NULL)
+        return;
     gsicc_link_free_contents(icc_link);
 
-    gs_free_object(memory->stable_memory, icc_link, "gsicc_link_free");
+    gs_free_object(icc_link->memory, icc_link, "gsicc_link_free");
 }
 
 void
@@ -527,6 +545,7 @@ gsicc_findcachelink(gsicc_hashlink_t hash, gsicc_link_cache_t *icc_link_cache,
 {
     gsicc_link_t *curr, *prev;
     int64_t hashcode = hash.link_hashcode;
+    int cache_loop = 0;
 
     /* Look through the cache for the hashcode */
     gx_monitor_enter(icc_link_cache->lock);
@@ -554,18 +573,25 @@ gsicc_findcachelink(gsicc_hashlink_t hash, gsicc_link_cache_t *icc_link_cache,
                        "icclink", (intptr_t)curr, curr->ref_count);
             while (curr->valid == false) {
                 gx_monitor_leave(icc_link_cache->lock); /* exit to let other threads run briefly */
+                if (cache_loop > ICC_CACHE_NOT_VALID_COUNT) {
+                    /* Clearly something is wrong.  Return NULL.
+                       File a bug report. */
+                    emprintf(curr->memory, "Reached maximum invalid counts \n");
+                    return NULL;
+                }
+                cache_loop++;
                 gx_monitor_enter(curr->lock);			/* wait until we can acquire the lock */
                 gx_monitor_leave(curr->lock);			/* it _should be valid now */
                 /* If it is still not valid, but we were able to lock, it means that the thread	*/
-                /* that was building it failed to be able to complete building it		*/
-                /* this is probably a fatal error. MV ???					*/
+                /* that was building it failed to be able to complete building it.  Try this only
+                   a limited number of times before we bail. */
                 if (curr->valid == false) {
-		  emprintf1(curr->memory, "link "PRI_INTPTR" lock released, but still not valid.\n", (intptr_t)curr);	/* Breakpoint here */
+		            if_debug1m(gs_debug_flag_icc, curr->memory, "link "PRI_INTPTR" lock released, but still not valid.\n", (intptr_t)curr);	/* Breakpoint here */
                 }
                 gx_monitor_enter(icc_link_cache->lock);	/* re-enter to loop and check */
             }
             gx_monitor_leave(icc_link_cache->lock);
-            return(curr);	/* success */
+            return curr;	/* success */
         }
         prev = curr;
         curr = curr->next;
@@ -576,18 +602,18 @@ gsicc_findcachelink(gsicc_hashlink_t hash, gsicc_link_cache_t *icc_link_cache,
 
 /* Remove link from cache.  Notify CMS and free */
 static void
-gsicc_remove_link(gsicc_link_t *link, const gs_memory_t *memory)
+gsicc_remove_link(gsicc_link_t *link)
 {
     gsicc_link_t *curr, *prev;
     gsicc_link_cache_t *icc_link_cache = link->icc_link_cache;
 
-    if_debug2m(gs_debug_flag_icc, memory,
+    if_debug2m(gs_debug_flag_icc, link->memory,
                "[icc] Removing link = "PRI_INTPTR" memory = "PRI_INTPTR"\n",
-               (intptr_t)link, (intptr_t)memory->stable_memory);
+               (intptr_t)link, (intptr_t)link->memory);
     /* NOTE: link->ref_count must be 0: assert ? */
     gx_monitor_enter(icc_link_cache->lock);
     if (link->ref_count != 0) {
-      emprintf2(memory, "link at "PRI_INTPTR" being removed, but has ref_count = %d\n", (intptr_t)link, link->ref_count);
+      if_debug2m(gs_debug_flag_icc, link->memory, "link at "PRI_INTPTR" being removed, but has ref_count = %d\n", (intptr_t)link, link->ref_count);
     }
     curr = icc_link_cache->head;
     prev = NULL;
@@ -614,7 +640,7 @@ gsicc_remove_link(gsicc_link_t *link, const gs_memory_t *memory)
             gx_semaphore_signal(icc_link_cache->full_wait);	/* let a waiting thread run */
         }
         gx_monitor_leave(icc_link_cache->lock);
-        gsicc_link_free(link, memory);	/* outside link cache now. */
+        gsicc_link_free(link);	/* outside link cache now. */
     } else {
         /* even if we didn't find the link to remove, unlock the cache */
         gx_monitor_leave(icc_link_cache->lock);
@@ -635,7 +661,7 @@ gsicc_get_srcprofile(gsicc_colorbuffer_t data_cs,
     case GS_UNTOUCHED_TAG:
     default:
         break;
-    case GS_PATH_TAG:
+    case GS_VECTOR_TAG:
         if (data_cs == gsRGB) {
             (*profile) = srcgtag_profile->rgb_profiles[gsSRC_GRAPPRO];
             *render_cond = srcgtag_profile->rgb_rend_cond[gsSRC_GRAPPRO];
@@ -722,9 +748,14 @@ gsicc_get_link(const gs_gstate *pgs1, gx_device *dev_in,
     /* If present, use an graphic object defined source profile */
     if (pgs->icc_manager != NULL &&
         pgs->icc_manager->srcgtag_profile != NULL) {
-            if (gs_input_profile->data_cs == gsRGB
+            /* This is to do with 'object' based colour management which allows the user to
+             * selectively disable (or override) colour management based on the colour space
+             * and object type. The problem is that the profile data_cs is not what we'd expect
+             * for CIEBased input, so we need to check an additional member. See Bug #706789.
+             */
+            if ((gs_input_profile->data_cs == gsRGB
                 || gs_input_profile->data_cs == gsCMYK
-                || gs_input_profile->data_cs == gsGRAY) {
+                || gs_input_profile->data_cs == gsGRAY) && gs_input_profile->default_match < CIE_A) {
                 gsicc_get_srcprofile(gs_input_profile->data_cs,
                                       dev->graphics_type_tag,
                                       pgs->icc_manager->srcgtag_profile,
@@ -776,11 +807,8 @@ gsicc_get_link(const gs_gstate *pgs1, gx_device *dev_in,
                     if (render_cond.cmm == gsCMM_NONE) {
                         gsicc_link_t *link;
 
-                        if (gs_input_profile->data_cs == gsRGB) {
-                            link = gsicc_nocm_get_link(pgs, dev, 3);
-                        } else {
-                            link = gsicc_nocm_get_link(pgs, dev, 4);
-                        }
+                        link = gsicc_nocm_get_link(pgs, dev, gs_input_profile->num_comps);
+
                         /* Set the identity case if we are in that situation */
                         if (link != NULL) {
                             if (gs_input_profile->num_comps ==
@@ -870,6 +898,9 @@ gsicc_alloc_link_entry(gsicc_link_cache_t *icc_link_cache,
 {
     gs_memory_t *cache_mem = icc_link_cache->memory;
     gsicc_link_t *link;
+    int retries = 0;
+
+    assert(cache_mem == cache_mem->stable_memory);
 
     *ret_link = NULL;
     /* First see if we can add a link */
@@ -908,18 +939,22 @@ gsicc_alloc_link_entry(gsicc_link_cache_t *icc_link_cache,
                 return true;
 
             gx_monitor_enter(icc_link_cache->lock);	    /* restore the lock */
+            /* we will re-test the num_links above while locked to insure */
+            /* that some other thread didn't grab the slot and max us out */
+            if (retries++ > 10)
+                return false;
         } else {
             /* Remove the zero ref_count link profile we found.		*/
             /* Even if we remove this link, we may still be maxed out so*/
             /* the outermost 'while' will check to make sure some other	*/
             /* thread did not grab the one we remove.			*/
-            gsicc_remove_link(link, cache_mem);
+            gsicc_remove_link(link);
         }
     }
     /* insert an empty link that we will reserve so we can unlock while	*/
     /* building the link contents. If successful, the entry will set	*/
     /* the hash for the link, Set valid=false, and lock the profile     */
-    (*ret_link) = gsicc_alloc_link(cache_mem->stable_memory, hash);
+    (*ret_link) = gsicc_alloc_link(cache_mem, hash);
     /* NB: the link returned will be have the lock owned by this thread */
     /* the lock will be released when the link becomes valid.           */
     if (*ret_link) {
@@ -953,7 +988,7 @@ gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
     gsicc_manager_t *icc_manager = pgs->icc_manager;
     gsicc_link_cache_t *icc_link_cache = pgs->icc_link_cache;
     gs_memory_t *cache_mem = pgs->icc_link_cache->memory;
-    gcmmhprofile_t *cms_input_profile;
+    gcmmhprofile_t *cms_input_profile = NULL;
     gcmmhprofile_t *cms_output_profile = NULL;
     gcmmhprofile_t *cms_proof_profile = NULL;
     gcmmhprofile_t *cms_devlink_profile = NULL;
@@ -1029,6 +1064,7 @@ gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
             gsicc_get_profile_handle_clist(gs_input_profile,
                                            gs_input_profile->memory);
         gs_input_profile->profile_handle = cms_input_profile;
+
         /* It is possible that we are not using color management
            due to a setting forced from srcgtag object (the None option)
            which has made its way though the clist in the clist imaging
@@ -1038,14 +1074,11 @@ gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
         if (gs_input_profile->rend_is_valid &&
             gs_input_profile->rend_cond.cmm == gsCMM_NONE) {
 
-            if (gs_input_profile->data_cs == gsRGB) {
-                link = gsicc_nocm_get_link(pgs, dev, 3);
-            } else {
-                link = gsicc_nocm_get_link(pgs, dev, 4);
-            }
+            link = gsicc_nocm_get_link(pgs, dev, gs_input_profile->num_comps);
+
             /* Set the identity case if we are in that situation */
             if (link != NULL) {
-                if (gs_input_profile->num_comps ==
+                if (dev_profile != NULL && gs_input_profile->num_comps ==
                     dev_profile->device_profile[GS_DEFAULT_DEVICE_PROFILE]->num_comps) {
                     link->is_identity = true;
                 }
@@ -1069,7 +1102,7 @@ gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
                                include_devicelink))
         return link;
     if (link == NULL)
-        return NULL;		/* error, couldn't allocate a link */
+        return NULL;		/* error, couldn't allocate a link.  Nothing to cleanup */
 
     /* Here the link was new and the contents have valid=false and we	*/
     /* own the lock for the link_profile. Build the profile, set valid	*/
@@ -1090,20 +1123,25 @@ gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
                 gsicc_get_profile_handle_buffer(gs_input_profile->buffer,
                                                 gs_input_profile->buffer_size,
                                                 memory);
-            if (cms_input_profile == NULL)
-                return NULL;
+            if (cms_input_profile == NULL) {
+                link->ref_count--;
+                goto icc_link_error;
+            }
+
             gs_input_profile->profile_handle = cms_input_profile;
             /* This *must* be a default profile that was not set up at start-up/
                However it could be one from the icc creator code which does not
                do an initialization at the time of creation from CalRGB etc. */
             code = gsicc_initialize_default_profile(gs_input_profile);
-            if (code < 0) return NULL;
+            if (code < 0) {
+                link->ref_count--;
+                goto icc_link_error;
+            }
         } else {
             /* Cant create the link.  No profile present,
-               nor any defaults to use for this.  Really
-               need to throw an error for this case. */
-            gsicc_remove_link(link, cache_mem);
-            return NULL;
+               nor any defaults to use for this. */
+            link->ref_count--;
+            goto icc_link_error;
         }
     }
     /* No need to worry about an output profile handle if our source is a
@@ -1120,7 +1158,10 @@ gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
             gs_output_profile->profile_handle = cms_output_profile;
             /* This *must* be a default profile that was not set up at start-up */
             code = gsicc_initialize_default_profile(gs_output_profile);
-            if (code < 0) return NULL;
+            if (code < 0)  {
+                link->ref_count--;
+                goto icc_link_error;
+            }
         } else {
               /* See if we have a clist device pointer. */
             if ( gs_output_profile->dev != NULL ) {
@@ -1132,10 +1173,9 @@ gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
                 gs_output_profile->profile_handle = cms_output_profile;
             } else {
                 /* Cant create the link.  No profile present,
-                   nor any defaults to use for this.  Really
-                   need to throw an error for this case. */
-                gsicc_remove_link(link, cache_mem);
-                return NULL;
+                   nor any defaults to use for this. */
+                link->ref_count--;
+                goto icc_link_error;
             }
         }
     }
@@ -1152,8 +1192,8 @@ gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
                     gx_monitor_enter(proof_profile->lock);
             } else {
                 /* Cant create the link */
-                gsicc_remove_link(link, cache_mem);
-                return NULL;
+                link->ref_count--;
+                goto icc_link_error;
             }
         }
     }
@@ -1170,8 +1210,8 @@ gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
                     gx_monitor_enter(devlink_profile->lock);
             } else {
                 /* Cant create the link */
-                gsicc_remove_link(link, cache_mem);
-                return NULL;
+                link->ref_count--;
+                goto icc_link_error;
             }
         }
     }
@@ -1193,14 +1233,15 @@ gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
         gs_input_profile->default_match == DEFAULT_GRAY &&
         pgs->icc_manager != NULL && devicegraytok) {
         if (icc_manager->graytok_profile == NULL) {
+            assert(pgs->icc_manager->memory == pgs->icc_manager->memory->stable_memory);
             icc_manager->graytok_profile =
                 gsicc_set_iccsmaskprofile(GRAY_TO_K, strlen(GRAY_TO_K),
                                           pgs->icc_manager,
-                                          pgs->icc_manager->memory->stable_memory);
+                                          pgs->icc_manager->memory);
             if (icc_manager->graytok_profile == NULL) {
-                /* Cant create the link */	/* FIXME: clean up allocations and locksso far ??? */
-                gsicc_remove_link(link, cache_mem);
-                return NULL;
+                /* Cant create the link */
+                link->ref_count--;
+                goto icc_link_error;
             }
         }
         if (icc_manager->smask_profiles == NULL) {
@@ -1273,10 +1314,18 @@ gsicc_get_link_profile(const gs_gstate *pgs, gx_device *dev,
             gx_semaphore_signal(icc_link_cache->full_wait);	/* let a waiting thread run */
         }
         gx_monitor_leave(link->lock);
-        gsicc_remove_link(link, cache_mem);
-        return NULL;
+        goto icc_link_error;
     }
     return link;
+
+icc_link_error:
+    /* Something went very wrong. Clean up so that the cache
+       does not maintain an invalid entry.  Any other allocations
+       (e.g. profile handles) would get freed when the profiles
+        are freed */
+    gsicc_remove_link(link);
+
+    return NULL;
 }
 
 /* The following is used to transform a named color value at a particular tint
@@ -1515,9 +1564,12 @@ gsicc_support_named_color(const gs_color_space *pcs, const gs_gstate *pgs)
     byte *pname = NULL; /* Silence compiler warning */
     uint name_size = 0; /* Silence compiler warning */
     bool is_supported;
+    bool none_colorant;
 
     /* Get the data for the named profile */
     named_profile = pgs->icc_manager->device_named;
+    if (named_profile == NULL)
+        return false;
 
     if (named_profile->buffer != NULL &&
         named_profile->profile_handle == NULL) {
@@ -1547,8 +1599,10 @@ gsicc_support_named_color(const gs_color_space *pcs, const gs_gstate *pgs)
             name_size = strlen(names[i]);
         }
 
+        none_colorant = (strncmp((char*)pname, "None", name_size) == 0);
+
         /* Classify */
-        if (strncmp((char *)pname, "None", name_size) == 0 ||
+        if (none_colorant ||
             strncmp((char *)pname, "All", name_size) == 0) {
             num_other++;
         } else {
@@ -1564,12 +1618,18 @@ gsicc_support_named_color(const gs_color_space *pcs, const gs_gstate *pgs)
 
         /* Check if the colorant is supported */
         is_supported = false;
-        for (k = 0; k < num_entries; k++) {
-            if (name_size == namedcolor_table->named_color[k].name_size) {
-                if (strncmp((const char *)namedcolor_table->named_color[k].colorant_name,
-                    (const char *)pname, name_size) == 0) {
-                    is_supported = true;
-                    break;
+
+        /* If we have a none colorant name in the DeviceN list, just ignore it */
+        if (none_colorant && type == gs_color_space_index_DeviceN)
+            is_supported = true;
+        else {
+            for (k = 0; k < num_entries; k++) {
+                if (name_size == namedcolor_table->named_color[k].name_size) {
+                    if (strncmp((const char*)namedcolor_table->named_color[k].colorant_name,
+                        (const char*)pname, name_size) == 0) {
+                        is_supported = true;
+                        break;
+                    }
                 }
             }
         }

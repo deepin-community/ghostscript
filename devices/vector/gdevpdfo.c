@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -225,15 +225,24 @@ cos_write(const cos_object_t *pco, gx_device_pdf *pdev, gs_id object_id)
 
 /* Write a cos object as a PDF object. */
 int
+cos_stream_write(const cos_object_t *pco, gx_device_pdf *pdev, gs_id object_id);
+
+int
 cos_write_object(cos_object_t *pco, gx_device_pdf *pdev, pdf_resource_type_t type)
 {
     int code;
 
     if (pco->id == 0 || pco->written)
         return_error(gs_error_Fatal);
-    pdf_open_separate(pdev, pco->id, type);
+    if (pco->cos_procs->write == cos_stream_write)
+        pdf_open_separate_noObjStm(pdev, pco->id, type);
+    else
+        pdf_open_separate(pdev, pco->id, type);
     code = cos_write(pco, pdev, pco->id);
-    pdf_end_separate(pdev, type);
+    if (pco->cos_procs->write == cos_stream_write)
+        pdf_end_separate_noObjStm(pdev, type);
+    else
+        pdf_end_separate(pdev, type);
     pco->written = true;
     return code;
 }
@@ -701,7 +710,7 @@ cos_array_add_int(cos_array_t *pca, int i)
     char str[sizeof(int) * 8 / 3 + 3]; /* sign, rounding, 0 terminator */
     cos_value_t v;
 
-    gs_sprintf(str, "%d", i);
+    gs_snprintf(str, sizeof(str), "%d", i);
     return cos_array_add(pca, cos_string_value(&v, (byte *)str, strlen(str)));
 }
 int
@@ -1380,7 +1389,7 @@ cos_dict_put_c_key_int(cos_dict_t *pcd, const char *key, int value)
 {
     char str[sizeof(int) * 8 / 3 + 3]; /* sign, rounding, 0 terminator */
 
-    gs_sprintf(str, "%d", value);
+    gs_snprintf(str, sizeof(str), "%d", value);
     return cos_dict_put_c_key_string(pcd, key, (byte *)str, strlen(str));
 }
 int
@@ -1485,6 +1494,8 @@ cos_dict_find(const cos_dict_t *pcd, const byte *key_data, uint key_size)
 const cos_value_t *
 cos_dict_find_c_key(const cos_dict_t *pcd, const char *key)
 {
+    if (pcd == NULL)
+        return NULL;
     return cos_dict_find(pcd, (const byte *)key, strlen(key));
 }
 
@@ -1654,7 +1665,7 @@ cos_param_list_writer_init(gx_device_pdf *pdev, cos_param_list_writer_t *pclist,
 /* ------ Streams ------ */
 
 static cos_proc_release(cos_stream_release);
-static cos_proc_write(cos_stream_write);
+cos_proc_write(cos_stream_write);
 static cos_proc_equal(cos_stream_equal);
 static cos_proc_hash(cos_stream_hash);
 const cos_object_procs_t cos_stream_procs = {
@@ -1847,7 +1858,7 @@ cos_stream_contents_write(const cos_stream_t *pcs, gx_device_pdf *pdev)
     return code;
 }
 
-static int
+int
 cos_stream_write(const cos_object_t *pco, gx_device_pdf *pdev, gs_id object_id)
 {
     stream *s = pdev->strm;

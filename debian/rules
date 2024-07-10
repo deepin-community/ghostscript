@@ -9,8 +9,7 @@ include /usr/share/dpkg/pkg-info.mk
 # detect if build targets experimental suite (or is a draft)
 DEB_SUITE_EXP = $(filter experimental% UNRELEASED,$(DEB_DISTRIBUTION))
 
-pkg-x11 = ghostscript-x
-pkg-data = libgs$(GS_VERSION_MAJOR)-common
+pkg-data = libgs10-common
 
 binaries := $(shell dh_listpackages)
 
@@ -41,7 +40,7 @@ export DPKG_GENSYMBOLS_CHECK_LEVEL=$(if $(DEB_SUITE_EXP)$(STAGE1),0,1)
 # # FIXME: Enable parallel when not causing spurious errors like this:
 # <https://buildd.debian.org/status/fetch.php?pkg=ghostscript&arch=amd64&ver=9.25~dfsg-6&stamp=1541195477&raw=0>
 %:
-	dh $@ --no-parallel --with pkgkde_symbolshelper
+	dh $@ --no-parallel
 
 # use upstream bootstrapping script
 override_dh_autoreconf:
@@ -54,12 +53,14 @@ override_dh_auto_configure:
 	dh_auto_configure -- \
 		--without-pcl \
 		--with-x --disable-gtk \
-		--enable-dynamic \
 		--disable-compile-inits \
 		--with-fontpath=$(subst $() ,:,$(strip $(fontdirs)))
 
 override_dh_auto_build:
 	dh_auto_build -- so $(gs_opts)
+
+execute_after_dh_auto_build-indep:
+	sphinx-build -bhtml doc/src doc/build/html
 
 # check that tracked issues are solved
 override_dh_auto_test:
@@ -104,13 +105,8 @@ ifneq ($(filter $(pkg-data),$(binaries)),)
 		debian/$(pkg-data)/usr/share/ghostscript/$(GS_DOT_VERSION)/Resource/Font/*
 endif
 
+execute_after_dh_installdocs-indep:
+	dh_sphinxdoc
+
 override_dh_compress:
 	dh_compress -X.pdf
-
-override_dh_strip:
-	dh_strip --dbgsym-migration='ghostscript-dbg (<< 9.53.3~dfsg-2~)'
-
-# suppress shlibs resolving for library shipped with its only executable
-override_dh_makeshlibs:
-	dh_makeshlibs --package=$(pkg-x11) -n
-	dh_makeshlibs --no-package=$(pkg-x11)

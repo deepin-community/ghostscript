@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -100,6 +100,7 @@ zsetpagedevice(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     int code;
 
+    check_op(1);
 /******
     if ( igs->in_cachedevice )
         return_error(gs_error_undefined);
@@ -151,6 +152,7 @@ zcallbeginpage(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     gx_device *dev = gs_currentdevice(igs);
 
+    check_op(1);
     check_type(*op, t_integer);
     if ((dev = (*dev_proc(dev, get_page_device))(dev)) != 0) {
         int code = (*dev->page_procs.begin_page)(dev, igs);
@@ -170,6 +172,7 @@ zcallendpage(i_ctx_t *i_ctx_p)
     gx_device *dev = gs_currentdevice(igs);
     int code;
 
+    check_op(2);
     check_type(op[-1], t_integer);
     check_type(*op, t_integer);
     if ((dev = (*dev_proc(dev, get_page_device))(dev)) != 0) {
@@ -234,6 +237,8 @@ z2gstate(i_ctx_t *i_ctx_p)
 static int
 z2copy_gstate(i_ctx_t *i_ctx_p)
 {
+    os_ptr op = osp;
+    check_op(2);
     if (!save_page_device(igs))
         return zcopy_gstate(i_ctx_p);
     return push_callout(i_ctx_p, "%copygstatepagedevice");
@@ -243,6 +248,8 @@ z2copy_gstate(i_ctx_t *i_ctx_p)
 static int
 z2currentgstate(i_ctx_t *i_ctx_p)
 {
+    os_ptr op = osp;
+    check_op(1);
     if (!save_page_device(igs))
         return zcurrentgstate(i_ctx_p);
     return push_callout(i_ctx_p, "%currentgstatepagedevice");
@@ -392,6 +399,7 @@ z2setgstate(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     int code;
 
+    check_op(1);
     check_stype(*op, st_igstate_obj);
     code = restore_page_device(i_ctx_p, igs, igstate_ptr(op));
     if (code < 0) return code;

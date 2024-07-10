@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Canon Bubble Jet BJ-10e, BJ200, and BJ300 printer driver */
@@ -106,12 +106,17 @@ static dev_proc_open_device(bj200_open);
 
 static dev_proc_print_page(bj10e_print_page);
 
-static gx_device_procs prn_bj200_procs =
 /* Since the print_page doesn't alter the device, this device can print in the background */
-  prn_procs(bj200_open, gdev_prn_bg_output_page, gdev_prn_close);
+static void
+bj200_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono_bg(dev);
+
+    set_dev_proc(dev, open_device, bj200_open);
+}
 
 const gx_device_printer far_data gs_bj200_device =
-  prn_device(prn_bj200_procs, "bj200",
+  prn_device(bj200_initialize_device_procs, "bj200",
         DEFAULT_WIDTH_10THS,
         DEFAULT_HEIGHT_10THS,
         360,				/* x_dpi */
@@ -142,11 +147,16 @@ const gx_device_printer far_data gs_bj200_device =
 
 static dev_proc_open_device(bj10e_open);
 
-static gx_device_procs prn_bj10e_procs =
-  prn_procs(bj10e_open, gdev_prn_output_page, gdev_prn_close);
+static void
+bj10e_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono_bg(dev);
+
+    set_dev_proc(dev, open_device, bj10e_open);
+}
 
 const gx_device_printer far_data gs_bj10e_device =
-  prn_device(prn_bj10e_procs, "bj10e",
+  prn_device(bj10e_initialize_device_procs, "bj10e",
         DEFAULT_WIDTH_10THS,
         DEFAULT_HEIGHT_10THS,
         360,				/* x_dpi */

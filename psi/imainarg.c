@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -114,11 +114,11 @@ static void print_help_trailer(const gs_main_instance *);
 /* ------ Main program ------ */
 
 /* Process the command line with a given instance. */
-static gp_file *
-gs_main_arg_fopen(const char *fname, void *vminst)
+static stream *
+gs_main_arg_sopen(const char *fname, void *vminst)
 {
     gs_main_set_lib_paths((gs_main_instance *) vminst);
-    return lib_fopen(&((gs_main_instance *)vminst)->lib_path,
+    return lib_sopen(&((gs_main_instance *)vminst)->lib_path,
                      ((gs_main_instance *)vminst)->heap, fname);
 }
 static void
@@ -140,7 +140,7 @@ gs_main_init_with_args01(gs_main_instance * minst, int argc, char *argv[])
 
     /* Now we actually process them */
     code = arg_init(&args, (const char **)argv, argc,
-                    gs_main_arg_fopen, (void *)minst,
+                    gs_main_arg_sopen, (void *)minst,
                     minst->get_codepoint,
                     minst->heap);
     if (code < 0)
@@ -229,7 +229,8 @@ gs_main_init_with_args01(gs_main_instance * minst, int argc, char *argv[])
                 if (gs_debug[':'] && !have_dumped_args) {
                     int i;
 
-                    dmprintf1(minst->heap, "%% Args passed to instance "PRI_INTPTR": ",
+                    if (gs_debug_c(gs_debug_flag_init_details))
+                        dmprintf1(minst->heap, "%% Args passed to instance "PRI_INTPTR": ",
                               (intptr_t)minst);
                     for (i=1; i<argc; i++)
                         dmprintf1(minst->heap, "%s ", argv[i]);
@@ -833,7 +834,10 @@ run_stdin:
 
                     if (strlen(adef) == 10 && strncmp(adef, "OutputFile", 10) == 0 && strlen(eqp) > 0) {
                         code = gs_add_outputfile_control_path(minst->heap, eqp);
-                        if (code < 0) return code;
+                        if (code < 0) {
+                            arg_free((char *)adef, minst->heap);
+                            return code;
+                        }
                     }
 
                     ialloc_set_space(idmemory, avm_system);
@@ -1259,7 +1263,7 @@ static const char help_debug[] = "\
  --debug                       list debugging options\n";
 #endif
 static const char help_trailer[] = "\
-For more information, see %s.\n\
+For more information, see %s\n\
 Please report bugs to bugs.ghostscript.com.\n";
 static const char help_devices[] = "Available devices:";
 static const char help_default_device[] = "Default output device:";
@@ -1452,11 +1456,19 @@ static void
 print_help_trailer(const gs_main_instance *minst)
 {
     char buffer[gp_file_name_sizeof];
-    const char *use_htm = "Use.htm", *p = buffer;
+    const char *use_htm = "Use.html", *p = buffer;
+    const char *rtd_url = "https://ghostscript.readthedocs.io/en";
+    const char *latest_ver="latest";
+    const char *vers = latest_ver;
+    const char *gs_str = "gs";
+    const char *gs = "";
     uint blen = sizeof(buffer);
 
-    if (gp_file_name_combine(gs_doc_directory, strlen(gs_doc_directory),
-            use_htm, strlen(use_htm), false, buffer, &blen) != gp_combine_success)
-        p = use_htm;
+    if (strlen(GS_PRODUCT) == strlen(GS_PRODUCTFAMILY)) {
+        vers = GS_STRINGIZE(GS_DOT_VERSION);
+        gs = gs_str;
+    }
+
+    snprintf(buffer, blen, "%s/%s%s/%s", rtd_url, gs, vers, use_htm);
     outprintf(minst->heap, help_trailer, p);
 }

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -287,6 +287,7 @@ gx_image_enum_begin(gx_device * dev, const gs_gstate * pgs,
     int orthogonal;
     int force_interpolation = 0;
 
+    penum->pcs = NULL;
     penum->clues = NULL;
     penum->icc_setup.has_transfer = false;
     penum->icc_setup.is_lab = false;
@@ -432,32 +433,70 @@ gx_image_enum_begin(gx_device * dev, const gs_gstate * pgs,
     }
 
     /* Can we restrict the amount of image we need? */
-    while (pcpath) /* So we can break out of it */
+    while (!pim->imagematrices_are_untrustworthy) /* So we can break out of it */
     {
-        gs_rect rect, rect_out;
+        gs_rect rect, rect_src;
         gs_matrix mi;
         const gs_matrix *m = pgs != NULL ? &ctm_only(pgs) : NULL;
-        gs_fixed_rect obox;
         gs_int_rect irect;
         if (m == NULL || (code = gs_matrix_invert(m, &mi)) < 0 ||
             (code = gs_matrix_multiply(&mi, &pic->ImageMatrix, &mi)) < 0) {
             /* Give up trying to shrink the render box, but continue processing */
             break;
         }
-        gx_cpath_outer_box(pcpath, &obox);
-        rect.p.x = fixed2float(obox.p.x);
-        rect.p.y = fixed2float(obox.p.y);
-        rect.q.x = fixed2float(obox.q.x);
-        rect.q.y = fixed2float(obox.q.y);
-        code = gs_bbox_transform(&rect, &mi, &rect_out);
+        if (pcpath)
+        {
+            gs_fixed_rect obox;
+            gx_cpath_outer_box(pcpath, &obox);
+            rect.p.x = fixed2float(obox.p.x);
+            rect.p.y = fixed2float(obox.p.y);
+            rect.q.x = fixed2float(obox.q.x);
+            rect.q.y = fixed2float(obox.q.y);
+        }
+        else
+        {
+            rect.p.x = 0;
+            rect.p.y = 0;
+            rect.q.x = dev->width;
+            rect.q.y = dev->height;
+        }
+        /* rect is in destination space. Calculate rect_src, in source space. */
+        code = gs_bbox_transform(&rect, &mi, &rect_src);
         if (code < 0) {
             /* Give up trying to shrink the render/decode boxes, but continue processing */
             break;
         }
-        irect.p.x = (int)(rect_out.p.x-1.0);
-        irect.p.y = (int)(rect_out.p.y-1.0);
-        irect.q.x = (int)(rect_out.q.x+1.0);
-        irect.q.y = (int)(rect_out.q.y+1.0);
+        /* Need to expand the region to allow for the fact that the mitchell
+         * scaler reads multiple pixels in. */
+        /* If mi.{xx,yy} > 1 then we are downscaling. During downscaling,
+         * the support increases to ensure that we don't lose pixels contributions
+         * entirely. */
+        if (pim->Interpolate)
+        {
+            float support = any_abs(mi.xx);
+            int isupport;
+            if (any_abs(mi.yy) > support)
+                support = any_abs(mi.yy);
+            if (any_abs(mi.xy) > support)
+                support = any_abs(mi.xy);
+            if (any_abs(mi.yx) > support)
+                support = any_abs(mi.yx);
+            /* If upscaling (support < 1) then we need 2 extra lines on each side of the source region
+             * (2 being the maximum support for mitchell scaling).
+             * If downscaling, then the number of lines is increased to avoid individual
+             * contributions dropping out. */
+            isupport = 2; /* Mitchell support. */
+            if (support > 1)
+                isupport = (int)ceil(isupport * support);
+            rect_src.p.x -= isupport;
+            rect_src.p.y -= isupport;
+            rect_src.q.x += isupport;
+            rect_src.q.y += isupport+1; /* +1 is a fudge! */
+        }
+        irect.p.x = (int)floor(rect_src.p.x);
+        irect.p.y = (int)floor(rect_src.p.y);
+        irect.q.x = (int)ceil(rect_src.q.x);
+        irect.q.y = (int)ceil(rect_src.q.y);
         /* We therefore only need to render within irect. Restrict rrect to this. */
         if (penum->rrect.x < irect.p.x) {
             penum->rrect.w -= irect.p.x - penum->rrect.x;
@@ -480,29 +519,6 @@ gx_image_enum_begin(gx_device * dev, const gs_gstate * pgs,
             penum->rrect.h = irect.q.y - penum->rrect.y;
             if (penum->rrect.h < 0)
                 penum->rrect.h = 0;
-        }
-        /* Need to expand the region to allow for the fact that the mitchell
-         * scaler reads multiple pixels in. */
-        /* If mi.{xx,yy} > 1 then we are downscaling. During downscaling,
-         * the support increases to ensure that we don't lose pixels contributions
-         * entirely. */
-        /* I do not understand the need for the +/- 1 fudge factors,
-         * but they seem to be required. Increasing the decode rectangle can
-         * never be bad at least... RJW */
-        {
-            float support = any_abs(mi.xx);
-            int isupport;
-            if (any_abs(mi.yy) > support)
-                support = any_abs(mi.yy);
-            if (any_abs(mi.xy) > support)
-                support = any_abs(mi.xy);
-            if (any_abs(mi.yx) > support)
-                support = any_abs(mi.yx);
-            isupport = (int)(MAX_ISCALE_SUPPORT * (support+1)) + 1;
-            irect.p.x -= isupport;
-            irect.p.y -= isupport;
-            irect.q.x += isupport;
-            irect.q.y += isupport;
         }
         if (penum->drect.x < irect.p.x) {
             penum->drect.w -= irect.p.x - penum->drect.x;
@@ -808,6 +824,8 @@ gx_image_enum_begin(gx_device * dev, const gs_gstate * pgs,
          (x_extent.x | y_extent.y) == 0 ? image_landscape :
          image_skewed);
     penum->pgs = pgs;
+    if (pgs != NULL)
+        penum->pgs_level = pgs->level;
     penum->pcs = pcs;
     rc_increment_cs(pcs); /* Grab a ref (will decrement in gx_image1_end_image() */
     penum->memory = mem;
@@ -911,6 +929,12 @@ gx_image_enum_begin(gx_device * dev, const gs_gstate * pgs,
          * row in device space. */
         dda_init(penum->dda.row.x, mtx, col_extent.x, height);
         dda_init(penum->dda.row.y, mty, col_extent.y, height);
+        if (dda_will_overflow(penum->dda.row.x) ||
+            dda_will_overflow(penum->dda.row.y))
+        {
+            code = gs_error_rangecheck;
+            goto fail;
+        }
         if (penum->posture == image_portrait) {
             penum->dst_width = row_extent.x;
             penum->dst_height = col_extent.y;
@@ -935,6 +959,12 @@ gx_image_enum_begin(gx_device * dev, const gs_gstate * pgs,
          * actually rendering. */
         dda_init(penum->dda.strip.x, penum->cur.x, row_extent.x, width);
         dda_init(penum->dda.strip.y, penum->cur.y, row_extent.y, width);
+        if (dda_will_overflow(penum->dda.strip.x) ||
+            dda_will_overflow(penum->dda.strip.y))
+        {
+            code = gs_error_rangecheck;
+            goto fail;
+        }
         if (penum->rect.x) {
             dda_advance(penum->dda.strip.x, penum->rect.x);
             dda_advance(penum->dda.strip.y, penum->rect.x);
@@ -1043,7 +1073,13 @@ gx_image_enum_begin(gx_device * dev, const gs_gstate * pgs,
 fail:
     gs_free_object(mem, buffer, "image buffer");
     gs_free_object(mem, penum->clues, "gx_image_enum_begin");
+    if (penum->clip_dev != NULL) {
+        rc_decrement(penum->clip_dev, "error in gx_begin_image1");
+        penum->clip_dev = NULL;
+    }
     gs_free_object(mem, penum->clip_dev, "image clipper");
+    rc_decrement_cs(penum->pcs, "error in gx_begin_image1");
+    penum->pcs = NULL;
     gs_free_object(mem, penum, "gx_begin_image1");
     return code;
 }

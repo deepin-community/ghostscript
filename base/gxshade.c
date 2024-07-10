@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -87,6 +87,7 @@ shade_next_init(shade_coord_stream_t * cs,
     cs->is_eod = cs_eod;
     cs->left = 0;
     cs->ds_EOF = false;
+    cs->first_patch = 1;
 }
 
 /* Check for the End-Of-Data state form a stream. */
@@ -365,7 +366,7 @@ top:
         }
     if (num_colors <= 32) {
         /****** WRONG FOR MULTI-PLANE HALFTONES ******/
-        num_colors *= pgs->dev_ht->components[0].corder.num_levels;
+        num_colors *= pgs->dev_ht[HT_OBJTYPE_DEFAULT]->components[0].corder.num_levels;
     }
     if (psh->head.type == 2 || psh->head.type == 3) {
         max_error *= 0.25;
@@ -390,7 +391,7 @@ top:
             return code;
     }
     rendering_params.black_point_comp = pgs->blackptcomp;
-    rendering_params.graphics_type_tag = GS_PATH_TAG;
+    rendering_params.graphics_type_tag = GS_VECTOR_TAG;
     rendering_params.override_icc = false;
     rendering_params.preserve_black = gsBKPRESNOTSPECIFIED;
     rendering_params.rendering_intent = pgs->renderingintent;

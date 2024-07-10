@@ -2,21 +2,20 @@ Source: ghostscript
 Section: text
 Priority: optional
 Maintainer: Debian Printing Team <debian-printing@lists.debian.org>
-Uploaders:
- Jonas Smedegaard <dr@jones.dk>,
+Uploaders: Steve M. Robbins <smr@debian.org>
 Build-Depends:
  debhelper-compat (= 13),
  dh-linktree,
+ dh-sequence-pkgkde-symbolshelper,
  fonts-urw-base35,
  freeglut3-dev,
- pkg-kde-tools,
  libcups2-dev [!kfreebsd-any],
  libcupsimage2-dev [!kfreebsd-any],
  libexpat-dev,
- libfontconfig1-dev,
+ libfontconfig-dev,
  libfreetype-dev,
  libice-dev,
- libidn11-dev,
+ libidn-dev,
  libijs-dev,
  libjbig2dec0-dev (>= 0.19),
  libjpeg-dev,
@@ -29,118 +28,143 @@ Build-Depends:
  libx11-dev,
  libxext-dev,
  libxt-dev,
- zlib1g-dev:native,
- pkg-config,
+ pkgconf,
  rename,
-Standards-Version: 4.6.0
+ zlib1g-dev:native,
+Build-Depends-Indep:
+ python3-sphinx,
+ python3-sphinx-rtd-theme,
+ python3-sphinx-copybutton,
+ rst2pdf,
+Standards-Version: 4.6.2
 Homepage: https://www.ghostscript.com/
-Vcs-Git: https://salsa.debian.org/printing-team/ghostscript.git
-Vcs-Browser: https://salsa.debian.org/printing-team/ghostscript
+Vcs-Git: https://salsa.debian.org/debian/ghostscript.git
+Vcs-Browser: https://salsa.debian.org/debian/ghostscript
 Rules-Requires-Root: no
 
 Package: ghostscript
 Architecture: any
 Multi-Arch: foreign
 Depends:
- libgs9 (= ${binary:Version}),
+ libgs10 (= ${binary:Version}),
  ${misc:Depends},
  ${shlibs:Depends},
-Suggests:
- ghostscript-x,
 Provides:
+ ghostscript-x (= ${binary:Version}),
  postscript-viewer,
+Conflicts:
+ ghostscript-x (<< 10.02.0~dfsg-1),
+Replaces:
+ ghostscript-x (<< 10.02.0~dfsg-1),
+Breaks:
+ manpages-l10n (<< 4.22),
+Suggests:
+ texlive-binaries
 Description: interpreter for the PostScript language and for PDF
  GPL Ghostscript is used for PostScript/PDF preview and printing.
- Usually as a back-end to a program such as ghostview, it can display
- PostScript and PDF documents in an X11 environment.
+ Usually as a back-end to a program such as ghostview,
+ it can display PostScript and PDF documents in an X11 environment.
  .
- Furthermore, it can render PostScript and PDF files as graphics to be
- printed on non-PostScript printers. Supported printers include common
- dot-matrix, inkjet and laser models.
-
-Package: ghostscript-x
-Architecture: any
-Depends:
- ghostscript (= ${binary:Version}),
- ${misc:Depends},
- ${shlibs:Depends},
-Description: interpreter for the PostScript language and for PDF - X11 support
- GPL Ghostscript is used for PostScript/PDF preview and printing.
- Usually as a back-end to a program such as ghostview, it can display
- PostScript and PDF documents in an X11 environment.
+ Furthermore, it can render PostScript and PDF files as graphics
+ to be printed on non-PostScript printers.
+ Supported printers include common dot-matrix, inkjet and laser models.
  .
- This package contains the GPL Ghostscript output device for X11.
+ The suggested texlive-binaries package is only required when using dvipdf.
 
 Package: ghostscript-doc
 Section: doc
 Architecture: all
 Multi-Arch: foreign
 Depends:
- libjs-jquery,
  ${misc:Depends},
- ${shlibs:Depends},
+ ${sphinxdoc:Depends},
 Suggests:
  ghostscript,
 Description: interpreter for the PostScript language and for PDF - Documentation
  GPL Ghostscript is used for PostScript/PDF preview and printing.
- Usually as a back-end to a program such as ghostview, it can display
- PostScript and PDF documents in an X11 environment.
+ Usually as a back-end to a program such as ghostview,
+ it can display PostScript and PDF documents in an X11 environment.
  .
- This package contains documentation for GPL Ghostscript, mainly
- targeted developers and advanced users.
+ This package contains documentation for GPL Ghostscript,
+ mainly targeted developers and advanced users.
 
-Package: libgs9
+Package: libgs10
 Section: libs
 Architecture: any
 Pre-Depends:
  ${misc:Pre-Depends},
 Depends:
- libgs9-common (= ${source:Version}),
+ libgs10-common (= ${source:Version}),
  poppler-data,
  ${misc:Depends},
  ${shlibs:Depends},
 Multi-Arch: same
 Description: interpreter for the PostScript language and for PDF - Library
  GPL Ghostscript is used for PostScript/PDF preview and printing.
- Usually as a back-end to a program such as ghostview, it can display
- PostScript and PDF documents in an X11 environment.
+ Usually as a back-end to a program such as ghostview,
+ it can display PostScript and PDF documents in an X11 environment.
  .
- This package provides the Ghostscript library which makes the
- facilities of GPL Ghostscript available to applications.
+ This package provides the Ghostscript library
+ which makes the facilities of GPL Ghostscript available
+ to applications.
 
-Package: libgs9-common
+Package: libgs-common
 Section: libs
 Architecture: all
 Depends:
  ${misc:Depends},
+Replaces:
+ libgs9-common (<< 10),
+Breaks:
+ libgs9-common (<< 10),
+Multi-Arch: foreign
+Description: interpreter for the PostScript language and for PDF - ICC profiles
+ GPL Ghostscript is used for PostScript/PDF preview and printing.
+ Usually as a back-end to a program such as ghostview,
+ it can display PostScript and PDF documents in an X11 environment.
+ .
+ This package provides common ICC profiles.
+
+Package: libgs10-common
+Section: libs
+Architecture: all
+Depends:
+ ${misc:Depends},
+ libgs-common
 Recommends:
  fonts-droid-fallback,
+Replaces:
+ libgs-common (<< 10.0.0~dfsg-5),
+Breaks:
+ libgs-common (<< 10.0.0~dfsg-5),
 Multi-Arch: foreign
 Description: interpreter for the PostScript language and for PDF - common files
  GPL Ghostscript is used for PostScript/PDF preview and printing.
- Usually as a back-end to a program such as ghostview, it can display
- PostScript and PDF documents in an X11 environment.
+ Usually as a back-end to a program such as ghostview,
+ it can display PostScript and PDF documents in an X11 environment.
  .
- This package provides common architecture-independent files needed by
- the GPL Ghostscript library.
+ This package provides common architecture-independent files
+ needed by the GPL Ghostscript library.
  .
- By default, GPL Ghostscript uses a font from the fonts-droid package to
- approximate glyphs in PDFs for which the requested CJK TrueType font
- is missing.  If the fonts-droid package is not installed, these glyphs
- will be rendered as bullets.
+ By default, GPL Ghostscript uses a font from the fonts-droid package
+ to approximate glyphs in PDFs
+ for which the requested CJK TrueType font is missing.
+ If the fonts-droid package is not installed,
+ these glyphs will be rendered as bullets.
 
 Package: libgs-dev
 Section: libdevel
 Architecture: any
 Depends:
- libgs9 (= ${binary:Version}),
+ libgs10 (= ${binary:Version}),
  ${misc:Depends},
 Multi-Arch: same
 Description: interpreter for the PostScript language and for PDF - Development Files
  GPL Ghostscript is used for PostScript/PDF preview and printing.
- Usually as a back-end to a program such as ghostview, it can display
- PostScript and PDF documents in an X11 environment.
+ Usually as a back-end to a program such as ghostview,
+ it can display PostScript and PDF documents in an X11 environment.
  .
- This package provides the development files for the GPL Ghostscript
- library which makes the facilities of GPL Ghostscript available to
- applications.
+ This package provides the development files
+ for the GPL Ghostscript library
+ which makes the facilities of GPL Ghostscript available
+ to applications.

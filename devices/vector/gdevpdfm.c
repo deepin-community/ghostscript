@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -171,12 +171,12 @@ pdfmark_make_dest(char dstr[MAX_DEST_STRING], gx_device_pdf * pdev,
     else if (pdfmark_find_key("/Action", pairs, count, &action) &&
              pdf_key_eq(&action, "/GoToR")
         )
-        gs_sprintf(dstr, "[%d ", page - 1);
+        gs_snprintf(dstr, MAX_DEST_STRING, "[%d ", page - 1);
     else {
         code = update_max_page_reference(pdev, &page);
         if (code < 0)
             return code;
-        gs_sprintf(dstr, "[%ld 0 R ", pdf_page_id(pdev, page));
+        gs_snprintf(dstr, MAX_DEST_STRING, "[%ld 0 R ", pdf_page_id(pdev, page));
     }
     len = strlen(dstr);
     if (len + view_string.size > MAX_DEST_STRING)
@@ -555,10 +555,12 @@ pdfmark_put_ao_pairs(gx_device_pdf * pdev, cos_dict_t *pcd,
                     i += 4, j += 2;
                 } else
                     cstr[j++] = cstr[i++];
-            if (j != i)
+            if (j != i) {
                 pcv->contents.chars.data =
-                    gs_resize_string(pdev->pdf_memory, cstr, csize, j,
-                                     "pdfmark_put_ao_pairs");
+                gs_resize_string(pdev->pdf_memory, cstr, csize, j,
+                                 "pdfmark_put_ao_pairs");
+                pcv->contents.chars.size = j;
+            }
         } else if (pdf_key_eq(pair, "/Rect")) {
             gs_rect rect;
             char rstr[MAX_RECT_STRING];
@@ -879,6 +881,8 @@ pdfmark_put_ao_pairs(gx_device_pdf * pdev, cos_dict_t *pcd,
                 i = 2;
                 if (Dest.size > 5 && Dest.data[2] == 0x00 && Dest.data[3] == 0x00)
                     i += 2;
+                /* If it has preceeding NULLs, then it has a terminating NULL as well, get rid of that too */
+                Dest.size--;
             }
 
             if (Dest.data[i] == '/') {
@@ -910,7 +914,7 @@ pdfmark_put_ao_pairs(gx_device_pdf * pdev, cos_dict_t *pcd,
         char dstr[1 + (sizeof(long) * 8 / 3 + 1) + 25 + 1];
         long page_id = pdf_page_id(pdev, pdev->next_page + 1);
 
-        gs_sprintf(dstr, "[%ld 0 R /XYZ null null null]", page_id);
+        gs_snprintf(dstr, MAX_DEST_STRING, "[%ld 0 R /XYZ null null null]", page_id);
         cos_dict_put_c_key_string(pcd, "/Dest", (const unsigned char*) dstr,
                                   strlen(dstr));
     }
@@ -938,7 +942,8 @@ pdfmark_annot(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
      * Print flag enabled, so we need to prescan for that here.
      */
     if(pdev->PDFA != 0) {
-        int i, Flags = 0;
+        int i;
+        unsigned int Flags = 0;
         /* Check all the keys to see if we have a /F (Flags) key/value pair defined */
         for (i = 0; i < count; i += 2) {
             const gs_param_string *pair = &pairs[i];
@@ -947,9 +952,13 @@ pdfmark_annot(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
                 char Buffer[32];
 
                 pair = &pairs[i+1];
-                memcpy(Buffer, pair->data, pair->size);
-                Buffer[pair->size] = 0x00;
-                code = sscanf(Buffer, "%ld", (long *)&Flags);
+                if (pair->size >= sizeof(Buffer))
+                    code = 0;
+                else {
+                    memcpy(Buffer, pair->data, pair->size);
+                    Buffer[pair->size] = 0x00;
+                    code = sscanf(Buffer, "%u", &Flags);
+                }
                 if (code != 1)
                     emprintf(pdev->memory,
                              "Annotation has an invalid /Flags attribute\n");
@@ -1767,7 +1776,7 @@ pdfmark_PS(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
         if (level1_id != gs_no_id) {
             char r[MAX_DEST_STRING];
 
-            gs_sprintf(r, "%ld 0 R", level1_id);
+            gs_snprintf(r, sizeof(r), "%ld 0 R", level1_id);
             code = cos_dict_put_c_key_string(cos_stream_dict(pcs), "/Level1",
                                              (byte *)r, strlen(r));
             if (code < 0)
@@ -1931,6 +1940,31 @@ pdfmark_PAGELABEL(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
     return 0;
 }
 
+static int is_XMP_Key(const gs_param_string *param)
+{
+    if (pdf_key_eq(param, "/Title"))
+        return 1;
+    if (pdf_key_eq(param, "/Author"))
+        return 1;
+    if (pdf_key_eq(param, "/Subject"))
+        return 1;
+    if (pdf_key_eq(param, "/Keywords"))
+        return 1;
+    if (pdf_key_eq(param, "/Creator"))
+        return 1;
+    if (pdf_key_eq(param, "/Producer"))
+        return 1;
+    /* These two aren't string data types and so won't affect anything
+     * in the DOCINFO pdfmark, which is the only client for this code currently
+     * but we may want to use this in future for other purposed.
+     */
+    if (pdf_key_eq(param, "/CreationDate"))
+        return 1;
+    if (pdf_key_eq(param, "/ModDate"))
+        return 1;
+    return 0;
+}
+
 /* DOCINFO pdfmark */
 static int
 pdfmark_DOCINFO(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
@@ -1954,23 +1988,14 @@ pdfmark_DOCINFO(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
                 continue;
         }
 
-        if (pdev->PDFA !=0) {
+        if (pdev->PDFA !=0 && is_XMP_Key(pair)) {
             const gs_param_string *p = pairs + i + 1;
             bool abort = false;
 
-            if (p->size > 9 && memcmp(p->data, "(\\376\\377", 9) == 0)
-                abort = true;
-            else {
-                int j;
-                for (j = 0;j < p->size;j++)
-                {
-                    if (p->data[j] == '\\' || p->data[j] > 0x7F || p->data[j] < 0x20)
-                    {
-                        abort = true;
-                        break;
-                    }
-                }
-            }
+            /* Ensure that we can write the XMP string. If not, handle this according to PDFACompatibilityPolicy */
+            code = pdf_xmp_write_translated(pdev, NULL, p->data + 1, p->size - 2, NULL);
+            abort = code < 0;
+
             if (abort == true)
             {
                 /* Can't handle UTF16BE in PDF/A1, so abort this pair or abort PDF/A or just abort,
@@ -2423,45 +2448,29 @@ static int
 pdfmark_MP(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
            const gs_matrix *pctm, const gs_param_string *objname)
 {
-    return 0;			/****** NOT IMPLEMENTED YET ******/
-}
-
-/* [ tag propdict /DP pdfmark */
-static int
-pdfmark_DP(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
-           const gs_matrix *pctm, const gs_param_string *objname)
-{
-    return 0;			/****** NOT IMPLEMENTED YET ******/
-}
-
-/* [ tag /BMC pdfmark */
-static int
-pdfmark_BMC(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
-            const gs_matrix *pctm, const gs_param_string *objname)
-{
     int code;
     char *tag;
 
     if (count != 1) return_error(gs_error_rangecheck);
 
     tag = (char *)gs_alloc_bytes(pdev->memory, (pairs[0].size + 1) * sizeof(unsigned char),
-                "pdfmark_BMC");
+                "pdfmark_MP");
     memcpy(tag, pairs[0].data, pairs[0].size);
     tag[pairs[0].size] = 0x00;
 
     code = pdf_open_contents(pdev, PDF_IN_STREAM);
     if (code < 0) return code;
 
-    pprints1(pdev->strm, "%s BMC\n", tag);
+    pprints1(pdev->strm, "%s MP\n", tag);
 
-    gs_free_object(pdev->memory, tag, "pdfmark_BMC");
+    gs_free_object(pdev->memory, tag, "pdfmark_MP");
     return 0;
 }
 
-/* [ tag propdict /BDC pdfmark */
+/* [ tag propdict /DP pdfmark */
 static int
-pdfmark_BDC(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
-            const gs_matrix *pctm, const gs_param_string *objname)
+pdfmark_DP(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
+           const gs_matrix *pctm, const gs_param_string *objname)
 {
     int code;
     cos_object_t *pco;
@@ -2506,7 +2515,7 @@ pdfmark_BDC(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
         code = pdf_replace_names(pdev, &pairs[1], &pairs[1]);
         if (code<0) return code;
         cstring = (char *)gs_alloc_bytes(pdev->memory, (pairs[1].size + 1) * sizeof(unsigned char),
-            "pdfmark_BDC");
+            "pdfmark_DP");
         memcpy(cstring, pairs[1].data, pairs[1].size);
         cstring[pairs[1].size] = 0x00;
 
@@ -2517,8 +2526,8 @@ pdfmark_BDC(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
         code = cos_dict_put_c_strings((cos_dict_t*) pco, cstring, "");
         if(code < 0) return code;
         COS_WRITE_OBJECT(pco, pdev, resourceProperties);
-        COS_RELEASE(pco, "pdfmark_BDC");
-        gs_free_object(pdev->memory, cstring, "pdfmark_BDC");
+        COS_RELEASE(pco, "pdfmark_DP");
+        gs_free_object(pdev->memory, cstring, "pdfmark_DP");
     }
 
     pres = pdf_find_resource_by_resource_id(pdev, resourceProperties, pco->id);
@@ -2528,7 +2537,7 @@ pdfmark_BDC(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
     }
 
     cstring = (char *)gs_alloc_bytes(pdev->memory, (pairs[0].size + 1) * sizeof(unsigned char),
-                "pdfmark_BDC");
+                "pdfmark_DP");
     memcpy(cstring, pairs[0].data, pairs[0].size);
     cstring[pairs[0].size] = 0x00;
 
@@ -2537,10 +2546,181 @@ pdfmark_BDC(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
     if (code < 0) return code;
 
     pprints1(pdev->strm, "%s", cstring); /* write tag */
-    pprintld1(pdev->strm, "/R%ld BDC\n", pco->id);
+    pprintld1(pdev->strm, "/R%ld DP\n", pco->id);
     pco->pres->where_used |= pdev->used_mask;
     if ((code = pdf_add_resource(pdev, pdev->substream_Resources, "/Properties", pco->pres))<0)
         return code;
+
+    gs_free_object(pdev->memory, cstring, "pdfmark_DP");
+    return 0;
+}
+
+/* [ tag /BMC pdfmark */
+static int
+pdfmark_BMC(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
+            const gs_matrix *pctm, const gs_param_string *objname)
+{
+    int code;
+    char *tag;
+
+    if (count != 1) return_error(gs_error_rangecheck);
+
+    tag = (char *)gs_alloc_bytes(pdev->memory, (pairs[0].size + 1) * sizeof(unsigned char),
+                "pdfmark_BMC");
+    memcpy(tag, pairs[0].data, pairs[0].size);
+    tag[pairs[0].size] = 0x00;
+
+    code = pdf_open_contents(pdev, PDF_IN_STREAM);
+    if (code < 0) return code;
+
+    pprints1(pdev->strm, "%s BMC\n", tag);
+
+    gs_free_object(pdev->memory, tag, "pdfmark_BMC");
+    return 0;
+}
+
+/* [ tag propdict /BDC pdfmark */
+static int
+pdfmark_BDC(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
+            const gs_matrix *pctm, const gs_param_string *objname)
+{
+    int code, id = 0, i, esc_size = 0;
+    cos_object_t *pco = NULL;
+    char *cstring;
+    pdf_resource_t *pres;
+
+    if (count != 2) return_error(gs_error_rangecheck);
+
+    /* check tag for /Name object syntax */
+    if ((pairs[0].data)[0] != '/') return_error(gs_error_rangecheck);
+
+    /* check propdict for {object name} syntax */
+    if (pdf_objname_is_valid(pairs[1].data, pairs[1].size))
+    {
+        code = pdf_refer_named(pdev, &pairs[1], &pco);
+        if(code < 0) return code;
+        id = pco->id;
+    }
+    else /* << inline prop dict >> */
+    {
+        /* strip << and >> */
+        if ((pairs[1].data)[0]=='<'&&(pairs[1].data)[1]=='<')
+        {
+            int ix = 0;
+            byte *p = (byte *)pairs[1].data;
+
+            /* Fortunately we don't use the 'size' when freeing the memory
+             * so we can quickly copy the string content up two places and reduce
+             * the size by 2 to remove the '<<'. This saves an alloc and free of the
+             * string data.
+             */
+            for (ix = 0; ix < pairs[1].size - 2;ix++)
+                p[ix] = pairs[1].data[ix + 2];
+            pairs[1].size-=2;
+
+            if ((pairs[1].data)[pairs[1].size-1]=='>'&&(pairs[1].data)[pairs[1].size-2]=='>')
+            pairs[1].size-=2;
+
+            /* convert inline propdict to C string with object names replaced by refs */
+            code = pdf_replace_names(pdev, &pairs[1], &pairs[1]);
+            if (code<0) return code;
+            cstring = (char *)gs_alloc_bytes(pdev->memory, (pairs[1].size + 1) * sizeof(unsigned char),
+                "pdfmark_BDC");
+            memcpy(cstring, pairs[1].data, pairs[1].size);
+            cstring[pairs[1].size] = 0x00;
+
+            code = pdf_make_named_dict(pdev, NULL, (cos_dict_t**) &pco, true);
+            if (code<0) return code;
+
+            /* copy inline propdict to new object */
+            code = cos_dict_put_c_strings((cos_dict_t*) pco, cstring, "");
+            if(code < 0) return code;
+
+            COS_WRITE_OBJECT(pco, pdev, resourceProperties);
+
+            COS_RELEASE(pco, "pdfmark_BDC");
+            gs_free_object(pdev->memory, cstring, "pdfmark_BDC");
+            id = pco->id;
+        }
+        else {
+            if ((pairs[1].data)[pairs[1].size-1]!='R') {
+                if ((pairs[1].data)[pairs[1].size-2]==' ' && (pairs[1].data)[pairs[1].size-1]!='R')
+                    return_error(gs_error_rangecheck);
+                if (sscanf((const char *)pairs[1].data, "%d 0 R", &id) != 1)
+                    return_error(gs_error_unknownerror);
+            }
+
+        }
+    }
+
+    pres = pdf_find_resource_by_resource_id(pdev, resourceProperties, id);
+    if (pres==0){
+        if (pco != NULL) {
+            if ((code = pdf_alloc_resource(pdev, resourceProperties, pco->id, &(pco->pres), pco->id))<0) {
+                return code;
+            }
+        }
+        else
+            if ((code = pdf_alloc_resource(pdev, resourceProperties, id, &pres, id))<0)
+                return code;
+    }
+
+    /* We need to make sure we escape any white space in the tag */
+    for (i = 0;i < pairs[0].size;i++) {
+        switch(pairs[0].data[i]) {
+            case 0x00:
+            case 0x09:
+            case 0x0a:
+            case 0x0c:
+            case 0x0d:
+            case 0x20:
+                esc_size += 3;
+                break;
+            default:
+                esc_size++;
+                break;
+        }
+    }
+
+    cstring = (char *)gs_alloc_bytes(pdev->memory, (esc_size + 1) * sizeof(unsigned char),
+                "pdfmark_BDC");
+    esc_size = 0;
+    for (i = 0;i < pairs[0].size;i++) {
+        switch(pairs[0].data[i]) {
+            case 0x00:
+            case 0x09:
+            case 0x0a:
+            case 0x0c:
+            case 0x0d:
+            case 0x20:
+                cstring[esc_size++] = '#';
+                cstring[esc_size++] = (pairs[0].data[i] >> 4) + 0x30;
+                cstring[esc_size++] = (pairs[0].data[i] & 0x0f) + 0x30;
+                break;
+            default:
+                cstring[esc_size++] = pairs[0].data[i];
+                break;
+        }
+    }
+    cstring[esc_size] = 0x00;
+
+    /* make sure we write to the correct stream */
+    code = pdf_open_contents(pdev, PDF_IN_STREAM);
+    if (code < 0) return code;
+
+    pprints1(pdev->strm, "%s", cstring); /* write tag */
+    pprintld1(pdev->strm, "/R%ld BDC\n", id);
+    if (pco != NULL) {
+        pco->pres->where_used |= pdev->used_mask;
+        if ((code = pdf_add_resource(pdev, pdev->substream_Resources, "/Properties", pco->pres))<0)
+            return code;
+    }
+    else {
+        pres->where_used |= pdev->used_mask;
+        if ((code = pdf_add_resource(pdev, pdev->substream_Resources, "/Properties", pres))<0)
+            return code;
+    }
+
 
     gs_free_object(pdev->memory, cstring, "pdfmark_BDC");
     return 0;
@@ -2775,6 +2955,24 @@ pdfmark_Ext_Metadata(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
     }
     return 0;
 }
+
+static int
+pdfmark_OCProperties(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
+             const gs_matrix * pctm, const gs_param_string * objname)
+{
+    char *str;
+
+    str = (char *)gs_alloc_bytes(pdev->memory, pairs[0].size + 1, "pdfmark_OCProperties");
+    memset(str, 0x00, pairs[0].size + 1);
+    memcpy(str, pairs[0].data, pairs[0].size);
+
+    (void)cos_dict_put_c_key_string(pdev->Catalog, "/OCProperties",
+                                     (byte *)str, strlen(str));
+
+    gs_free_object(pdev->memory, str, "pdfmark_OCProperties");
+    return 0;
+}
+
 /* ---------------- Dispatch ---------------- */
 
 /*
@@ -2834,6 +3032,7 @@ static const pdfmark_name mark_names[] =
     /* Metadata and extension */
     {"Metadata",     pdfmark_Metadata,     0},
     {"Ext_Metadata", pdfmark_Ext_Metadata, 0},
+    {"OCProperties", pdfmark_OCProperties, PDFMARK_ODD_OK},
         /* End of list. */
     {0, 0}
 };
@@ -2849,6 +3048,9 @@ pdfmark_process(gx_device_pdf * pdev, const gs_param_string_array * pma)
     gs_matrix ctm;
     const pdfmark_name *pmn;
     int code = 0;
+
+    if (size < 2)
+        return_error(gs_error_stackunderflow);
 
     {	int cnt, len = pts[-1].size;
         char buf[200]; /* 6 doubles should fit (%g == -0.14285714285714285e-101 = 25 chars) */

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -92,6 +92,8 @@ public_st_base_color_space();
 
 /* ------ Create/copy/destroy ------ */
 
+/* Ghostscript object finalizers can be called many times and hence
+ * must be idempotent. */
 static void
 gs_cspace_final(const gs_memory_t *cmem, void *vptr)
 {
@@ -100,17 +102,22 @@ gs_cspace_final(const gs_memory_t *cmem, void *vptr)
 
     if (pcs->interpreter_free_cspace_proc != NULL) {
         (*pcs->interpreter_free_cspace_proc) ((gs_memory_t *)cmem, pcs);
+        pcs->interpreter_free_cspace_proc = NULL;
     }
     if (pcs->type->final)
         pcs->type->final(pcs);
     if_debug2m('c', cmem, "[c]cspace final "PRI_INTPTR" %d\n", (intptr_t)pcs, (int)pcs->id);
     rc_decrement_only_cs(pcs->base_space, "gs_cspace_final");
-    if (pcs->params.device_n.devn_process_space != NULL)
-        rc_decrement_only_cs(pcs->params.device_n.devn_process_space, "gs_cspace_final");
+    pcs->base_space = NULL;
+    if (gs_color_space_get_index(pcs) == gs_color_space_index_DeviceN) {
+        if (pcs->params.device_n.devn_process_space != NULL) {
+            rc_decrement_only_cs(pcs->params.device_n.devn_process_space, "gs_cspace_final");
+            pcs->params.device_n.devn_process_space = NULL;
+        }
+    }
     /* No need to decrement the ICC profile data.  It is handled
        by the finalize of the ICC space which is called above using
        pcs->type->final(pcs);  */
-
 }
 
 static gs_color_space *
@@ -130,6 +137,7 @@ gs_cspace_alloc_with_id(gs_memory_t *mem, ulong id,
     pcs->interpreter_data = NULL;
     pcs->interpreter_free_cspace_proc = NULL;
     pcs->cmm_icc_profile_data = NULL;
+    pcs->ICC_Alternate_space = gs_ICC_Alternate_None;
     pcs->icc_equivalent = NULL;
     pcs->params.device_n.devn_process_space = NULL;
     return pcs;
@@ -425,7 +433,8 @@ void cs_adjust_counts_icc(gs_gstate *pgs, int delta)
     gs_color_space *pcs = gs_currentcolorspace_inline(pgs);
 
     if (pcs) {
-        cs_adjust_counts(pgs, delta);
+        cs_adjust_color_count(pgs, delta);
+        rc_adjust_const(pcs, delta, "cs_adjust_counts_icc");
     }
 }
 
@@ -434,7 +443,8 @@ void cs_adjust_swappedcounts_icc(gs_gstate *pgs, int delta)
     gs_color_space *pcs = gs_swappedcolorspace_inline(pgs);
 
     if (pcs) {
-        cs_adjust_swappedcounts(pgs, delta);
+        cs_adjust_swappedcolor_count(pgs, delta);
+        rc_adjust_const(pcs, delta, "cs_adjust_swappedcounts_icc");
     }
 }
 
@@ -513,16 +523,7 @@ gx_set_spot_only_overprint(gs_gstate* pgs)
 {
     gs_overprint_params_t   params = { 0 };
     gx_device* dev = pgs->device;
-    gx_color_index drawn_comps = 0;
-    gx_device_color_info* pcinfo = (dev == 0 ? 0 : &dev->color_info);
-
-    if (dev) {
-        /* check if color model behavior must be determined */
-        if (pcinfo->opmode == GX_CINFO_OPMODE_UNKNOWN)
-            drawn_comps = check_cmyk_color_model_comps(dev);
-        else
-            drawn_comps = pcinfo->process_comps;
-    }
+    gx_color_index drawn_comps = dev == NULL ? 0 : gx_get_process_comps(dev);
 
     params.retain_any_comps = true;
     params.op_state = OP_STATE_NONE;
@@ -595,10 +596,19 @@ check_cmyk_color_model_comps(gx_device * dev)
     gx_device_color_info *          pcinfo = &dev->color_info;
     uchar                           ncomps = pcinfo->num_components;
     int                             cyan_c, magenta_c, yellow_c, black_c;
-    subclass_color_mappings         scm;
     frac                            frac_14 = frac_1 / 4;
     frac                            out[GX_DEVICE_COLOR_MAX_COMPONENTS];
     gx_color_index                  process_comps;
+    const gx_cm_color_map_procs    *cmprocs;
+    const gx_device                *cmdev;
+
+
+    if (pcinfo->num_components < 4                     ||
+        pcinfo->polarity == GX_CINFO_POLARITY_ADDITIVE ||
+        pcinfo->gray_index == GX_CINFO_COMP_NO_INDEX) {
+        pcinfo->opmsupported = GX_CINFO_OPMSUPPORTED_NOT;
+        return 0;
+    }
 
     /* check for the appropriate components */
     if ( ncomps < 4                                       ||
@@ -629,26 +639,34 @@ check_cmyk_color_model_comps(gx_device * dev)
         return 0;
 
     /* check the mapping */
-    scm = get_color_mapping_procs_subclass(dev);
+    cmprocs = dev_proc(dev, get_color_mapping_procs)(dev, &cmdev);
 
-    map_cmyk_subclass(scm, frac_14, frac_0, frac_0, frac_0, out);
-    if (!check_single_comp(cyan_c, frac_14, ncomps, out))
+    cmprocs->map_cmyk(cmdev, frac_14, frac_0, frac_0, frac_0, out);
+    if (!check_single_comp(cyan_c, frac_14, ncomps, out)) {
+        pcinfo->opmsupported = GX_CINFO_OPMSUPPORTED_NOT;
         return 0;
-    map_cmyk_subclass(scm, frac_0, frac_14, frac_0, frac_0, out);
-    if (!check_single_comp(magenta_c, frac_14, ncomps, out))
+    }
+    cmprocs->map_cmyk(cmdev, frac_0, frac_14, frac_0, frac_0, out);
+    if (!check_single_comp(magenta_c, frac_14, ncomps, out)) {
+        pcinfo->opmsupported = GX_CINFO_OPMSUPPORTED_NOT;
         return 0;
-    map_cmyk_subclass(scm, frac_0, frac_0, frac_14, frac_0, out);
-    if (!check_single_comp(yellow_c, frac_14, ncomps, out))
-        return false;
-    map_cmyk_subclass(scm, frac_0, frac_0, frac_0, frac_14, out);
-    if (!check_single_comp(black_c, frac_14, ncomps, out))
+    }
+    cmprocs->map_cmyk(cmdev, frac_0, frac_0, frac_14, frac_0, out);
+    if (!check_single_comp(yellow_c, frac_14, ncomps, out)) {
+        pcinfo->opmsupported = GX_CINFO_OPMSUPPORTED_NOT;
         return 0;
+    }
+    cmprocs->map_cmyk(cmdev, frac_0, frac_0, frac_0, frac_14, out);
+    if (!check_single_comp(black_c, frac_14, ncomps, out)) {
+        pcinfo->opmsupported = GX_CINFO_OPMSUPPORTED_NOT;
+        return 0;
+    }
 
     process_comps =  ((gx_color_index)1 << cyan_c)
                    | ((gx_color_index)1 << magenta_c)
                    | ((gx_color_index)1 << yellow_c)
                    | ((gx_color_index)1 << black_c);
-    pcinfo->opmode = GX_CINFO_OPMODE;
+    pcinfo->opmsupported = GX_CINFO_OPMSUPPORTED;
     pcinfo->process_comps = process_comps;
     pcinfo->black_component = black_c;
     return process_comps;
@@ -671,7 +689,7 @@ gx_set_overprint_DeviceCMYK(const gs_color_space * pcs, gs_gstate * pgs)
     if ( !pgs->overprint                      ||
          pgs->overprint_mode != 1             ||
          pcinfo == 0                          ||
-         pcinfo->opmode == GX_CINFO_OPMODE_NOT  )
+         pcinfo->opmsupported == GX_CINFO_OPMSUPPORTED_NOT)
         return gx_spot_colors_set_overprint(pcs, pgs);
     /* Share code with CMYK ICC case */
     return gx_set_overprint_cmyk(pcs, pgs);
@@ -695,7 +713,6 @@ gx_set_overprint_DeviceCMYK(const gs_color_space * pcs, gs_gstate * pgs)
 int gx_set_overprint_cmyk(const gs_color_space * pcs, gs_gstate * pgs)
 {
     gx_device *             dev = pgs->device;
-    gx_device_color_info *  pcinfo = (dev == 0 ? 0 : &dev->color_info);
     gx_color_index          drawn_comps = 0;
     gs_overprint_params_t   params = { 0 };
     gx_device_color        *pdc;
@@ -717,11 +734,7 @@ int gx_set_overprint_cmyk(const gs_color_space * pcs, gs_gstate * pgs)
         gsicc_extract_profile(dev->graphics_type_tag, dev_profile, &(output_profile),
                               &render_cond);
 
-        /* check if color model behavior must be determined */
-        if (pcinfo->opmode == GX_CINFO_OPMODE_UNKNOWN)
-            drawn_comps = check_cmyk_color_model_comps(dev);
-        else
-            drawn_comps = pcinfo->process_comps;
+        drawn_comps = gx_get_process_comps(dev);
     }
 
     if_debug1m(gs_debug_flag_overprint, pgs->memory,
@@ -1035,8 +1048,13 @@ ENUM_PTRS_BEGIN_PROC(color_space_enum_ptrs)
         return ENUM_OBJ(pcs->pclient_color_space_data);
     if (index == 2)
         return ENUM_OBJ(pcs->icc_equivalent);
-    if (index == 3)
-        return ENUM_OBJ(pcs->params.device_n.devn_process_space);
+    if (index == 3) {
+        if (gs_color_space_get_index(pcs) == gs_color_space_index_DeviceN)
+            return ENUM_OBJ(pcs->params.device_n.devn_process_space);
+        else
+            return ENUM_OBJ(NULL);
+    }
+
     return ENUM_USING(*pcs->type->stype, vptr, size, index - 4);
     ENUM_PTRS_END_PROC
 }
@@ -1046,7 +1064,8 @@ RELOC_PTRS_WITH(color_space_reloc_ptrs, gs_color_space *pcs)
     RELOC_VAR(pcs->base_space);
     RELOC_VAR(pcs->pclient_color_space_data);
     RELOC_VAR(pcs->icc_equivalent);
-    RELOC_VAR(pcs->params.device_n.devn_process_space);
+    if (gs_color_space_get_index(pcs) == gs_color_space_index_DeviceN)
+        RELOC_VAR(pcs->params.device_n.devn_process_space);
     RELOC_USING(*pcs->type->stype, vptr, size);
 }
 RELOC_PTRS_END

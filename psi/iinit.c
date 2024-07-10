@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -363,7 +363,7 @@ obj_init(i_ctx_t **pi_ctx_p, gs_dual_memory_t *idmem)
 
     /* Create the error name table */
     {
-        int n = countof(gs_error_names) - 1;
+        int n = countof(gs_error_names);
         int i;
         ref era;
 
@@ -395,8 +395,12 @@ zop_init(i_ctx_t *i_ctx_p)
         if (def->proc != 0) {
             code = def->proc(i_ctx_p);
             if (code < 0) {
+#ifdef DEBUG
                 lprintf2("op_init proc "PRI_INTPTR" returned error %d!\n",
                          (intptr_t)def->proc, code);
+#else
+                lprintf("op_init proc returned error !\n");
+#endif
                 return code;
             }
         }
@@ -405,7 +409,7 @@ zop_init(i_ctx_t *i_ctx_p)
     /* Initialize the predefined names other than operators. */
     /* Do this here in case op_init changed any of them. */
     {
-        ref vcr, vpr, vpf, vre, vrd;
+        ref vcr, vpr, vpf, vre, vrd, vres;
 
         make_const_string(&vcr, a_readonly | avm_foreign,
                           strlen(gs_copyright), (const byte *)gs_copyright);
@@ -414,13 +418,17 @@ zop_init(i_ctx_t *i_ctx_p)
         make_const_string(&vpf, a_readonly | avm_foreign,
                           strlen(gs_productfamily),
                           (const byte *)gs_productfamily);
+        make_const_string(&vres, a_readonly | avm_foreign,
+                          strlen(GS_STRINGIZE(GS_DOT_VERSION)),
+                          (const byte *)GS_STRINGIZE(GS_DOT_VERSION));
         make_int(&vre, gs_revision);
         make_int(&vrd, gs_revisiondate);
         if ((code = i_initial_enter_name(i_ctx_p, "copyright", &vcr)) < 0 ||
             (code = i_initial_enter_name(i_ctx_p, "product", &vpr)) < 0 ||
             (code = i_initial_enter_name(i_ctx_p, "productfamily", &vpf)) < 0 ||
             (code = i_initial_enter_name(i_ctx_p, "revision", &vre)) < 0 ||
-            (code = i_initial_enter_name(i_ctx_p, "revisiondate", &vrd)) < 0)
+            (code = i_initial_enter_name(i_ctx_p, "revisiondate", &vrd)) < 0 ||
+            (code = i_initial_enter_name(i_ctx_p, ".revisionstring", &vres)) < 0)
             return code;
     }
 

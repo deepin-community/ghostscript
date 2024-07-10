@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -243,6 +243,8 @@ static const gs_param_item_t psdf_param_items[] = {
     pi("MaxSubsetPct", gs_param_type_int, MaxSubsetPct),
     pi("SubsetFonts", gs_param_type_bool, SubsetFonts),
     pi("PassThroughJPEGImages", gs_param_type_bool, PassThroughJPEGImages),
+    pi("PassThroughJPXImages", gs_param_type_bool, PassThroughJPXImages),
+    pi("PSPageOptionsWrap", gs_param_type_bool, PSPageOptionsWrap),
 
 #undef pi
     gs_param_item_end
@@ -498,6 +500,12 @@ gdev_psdf_get_param(gx_device *dev, char *Param, void *list)
         return(psdf_write_string_param(plist, "sRGBProfile",
                                         &pdev->params.sRGBProfile));
     }
+    if (strcmp(Param, ".AlwaysOutline") == 0) {
+        return(psdf_get_embed_param(plist, ".AlwaysOutline", &pdev->params.AlwaysOutline));
+    }
+    if (strcmp(Param, ".NeverOutline") == 0) {
+        return(psdf_get_embed_param(plist, ".NeverOutline", &pdev->params.NeverOutline));
+    }
     if (strcmp(Param, ".AlwaysEmbed") == 0) {
         return(psdf_get_embed_param(plist, ".AlwaysEmbed", &pdev->params.AlwaysEmbed));
     }
@@ -594,6 +602,16 @@ gdev_psdf_get_params(gx_device * dev, gs_param_list * plist)
     /* Mono sampled image parameters */
 
     code = psdf_get_image_params(plist, &Mono_names, &pdev->params.MonoImage);
+    if (code < 0)
+        return code;
+
+    /* Font outlining parameters */
+
+    code = psdf_get_embed_param(plist, ".AlwaysOutline", &pdev->params.AlwaysOutline);
+    if (code < 0)
+        return code;
+
+    code = psdf_get_embed_param(plist, ".NeverOutline", &pdev->params.NeverOutline);
     if (code < 0)
         return code;
 
@@ -905,12 +923,12 @@ psdf_put_image_params(const gx_device_psdf * pdev, gs_param_list * plist,
      * Since this procedure can be called before the device is open,
      * we must use pdev->memory rather than pdev->v_memory.
      */
-    gs_memory_t *mem = pdev->memory;
+    gs_memory_t *mem = gs_memory_stable(pdev->memory);
     gs_param_name pname;
     /* Skip AutoFilter for mono images. */
     const gs_param_item_t *items =
         (pnames->items[0].key == 0 ? pnames->items + 1 : pnames->items);
-    int code = gs_param_read_items(plist, params, items);
+    int code = gs_param_read_items(plist, params, items, mem);
     if (code < 0)
         ecode = code;
 
@@ -1116,6 +1134,8 @@ gdev_psdf_put_params(gx_device * dev, gs_param_list * plist)
         params.ColorImage.ACSDict = params.ColorImage.Dict = 0;
         params.GrayImage.ACSDict = params.GrayImage.Dict = 0;
         params.MonoImage.ACSDict = params.MonoImage.Dict = 0;
+        params.AlwaysOutline.data = params.NeverOutline.data = NULL;
+        params.AlwaysOutline.size = params.NeverOutline.size = 0;
         params.AlwaysEmbed.data = params.NeverEmbed.data = 0;
         params.AlwaysEmbed.size = params.AlwaysEmbed.persistent = params.NeverEmbed.size = params.NeverEmbed.persistent = 0;
         params.PSPageOptions.data = NULL;
@@ -1124,7 +1144,7 @@ gdev_psdf_put_params(gx_device * dev, gs_param_list * plist)
 
     /* General parameters. */
 
-    code = gs_param_read_items(plist, &params, psdf_param_items);
+    code = gs_param_read_items(plist, &params, psdf_param_items, NULL);
     if (code < 0)
         return code;
 
@@ -1222,6 +1242,18 @@ gdev_psdf_put_params(gx_device * dev, gs_param_list * plist)
         goto exit;
     }
 
+    /* Font outlining parameters */
+
+    ecode = psdf_put_embed_param(plist, "~AlwaysOutline", ".AlwaysOutline",
+                                 &params.AlwaysOutline, mem, ecode);
+    ecode = psdf_put_embed_param(plist, "~NeverOutline", ".NeverOutline",
+                                 &params.NeverOutline, mem, ecode);
+
+    if (ecode < 0) {
+        code = ecode;
+        goto exit;
+    }
+
     /* Font embedding parameters */
 
     ecode = psdf_put_embed_param(plist, "~AlwaysEmbed", ".AlwaysEmbed",
@@ -1244,6 +1276,8 @@ gdev_psdf_put_params(gx_device * dev, gs_param_list * plist)
     if (code < 0)
         goto exit;
 
+    params.PSPageOptions.size = 0;
+    params.PSPageOptions.data = NULL;
     code = psdf_read_copy_param_string_array(pdev->memory, plist, "PSPageOptions", &params.PSPageOptions);
     if (code < 0)
         goto exit;
@@ -1253,13 +1287,17 @@ gdev_psdf_put_params(gx_device * dev, gs_param_list * plist)
 exit:
     if (!(pdev->params.LockDistillerParams && params.LockDistillerParams)) {
         /* Only update the device paramters if there was no error */
-        /* If we have any copied param_string_arrays, start by freeing them */
-        if (pdev->params.PSPageOptions.size && params.PSPageOptions.size) {
-            int ix;
+        /* Do not permit changes to pdev->Params.PSPageOptions, it doesn't make any sense */
+        if (pdev->params.PSPageOptions.size != 0) {
+            if (params.PSPageOptions.size != 0 && params.PSPageOptions.data != pdev->params.PSPageOptions.data) {
+                int ix;
 
-            for (ix = 0; ix < pdev->params.PSPageOptions.size;ix++)
-                gs_free_object(mem->non_gc_memory, (byte *)pdev->params.PSPageOptions.data[ix].data, "freeing old string array copy");
-            gs_free_object(mem->non_gc_memory, (byte *)pdev->params.PSPageOptions.data, "freeing old string array");
+                for (ix = 0; ix < pdev->params.PSPageOptions.size;ix++)
+                    gs_free_object(mem->non_gc_memory, (byte *)params.PSPageOptions.data[ix].data, "freeing old string array copy");
+                gs_free_object(mem->non_gc_memory, (byte *)params.PSPageOptions.data, "freeing old string array");
+            }
+            params.PSPageOptions.data = pdev->params.PSPageOptions.data;
+            params.PSPageOptions.size = pdev->params.PSPageOptions.size;
         }
         pdev->params = params;
     } else {
@@ -1272,9 +1310,11 @@ exit:
         if (params.PSPageOptions.data != NULL) {
             int ix;
 
-            for (ix = 0; ix < pdev->params.PSPageOptions.size;ix++)
-                gs_free_object(mem->non_gc_memory, (byte *)pdev->params.PSPageOptions.data[ix].data, "freeing dummy PSPageOptions");
-            gs_free_object(mem->non_gc_memory, (byte *)pdev->params.PSPageOptions.data, "freeing dummy PSPageOptions");
+            if (params.PSPageOptions.size != 0 && params.PSPageOptions.data != pdev->params.PSPageOptions.data) {
+                for (ix = 0; ix < params.PSPageOptions.size;ix++)
+                    gs_free_object(mem->non_gc_memory, (byte *)params.PSPageOptions.data[ix].data, "freeing dummy PSPageOptions");
+                gs_free_object(mem->non_gc_memory, (byte *)params.PSPageOptions.data, "freeing dummy PSPageOptions");
+            }
             params.PSPageOptions.data = NULL;
             params.PSPageOptions.size = 0;
         }

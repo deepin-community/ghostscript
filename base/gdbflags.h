@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Debugging flag definitions */
@@ -32,7 +32,7 @@ FLAG(epo_details, 5, 0, "Erasepage Optimization tracing"),
 FLAG(epo_install_only, 6, 0, "Erasepage Optimization install only (for debugging subclass)"),
 FLAG(init_details, 7, 0, "Language initialisation (detail)"),
 FLAG(overprint, 8, 0, "Overprint"),
-UNUSED(9)
+FLAG(clist_color, 9, 0, "Clist color"),
 UNUSED(10)
 UNUSED(11)
 UNUSED(12)

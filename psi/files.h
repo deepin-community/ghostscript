@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Definitions for interpreter support for file objects */
@@ -103,7 +103,7 @@ typedef struct gs_file_path_s *gs_file_path_ptr;
 
 /* Procedures exported by zfile.c. */
         /* for imainarg.c */
-gp_file *lib_fopen(const gs_file_path_ptr pfpath, const gs_memory_t *mem, const char *);
+stream *lib_sopen(const gs_file_path_ptr pfpath, const gs_memory_t *mem, const char *);
 
         /* for imain.c */
 int

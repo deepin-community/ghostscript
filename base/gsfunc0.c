@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -1493,7 +1493,7 @@ gs_function_Sd_init(gs_function_t ** ppfn,
         gs_function_Sd_t *pfn =
             gs_alloc_struct(mem, gs_function_Sd_t, &st_function_Sd,
                             "gs_function_Sd_init");
-        int bps, sa, ss, i, order;
+        int bps, sa, ss, i, order, was;
 
         if (pfn == 0)
             return_error(gs_error_VMerror);
@@ -1520,7 +1520,11 @@ gs_function_Sd_init(gs_function_t ** ppfn,
             order = pfn->params.Order;
             for (i = 0; i < pfn->params.m; i++) {
                 pfn->params.array_step[i] = sa * order;
+                was = sa;
                 sa = (pfn->params.Size[i] * order - (order - 1)) * sa;
+                /* If the calculation of sa went backwards then we overflowed! */
+                if (was > sa)
+                    return_error(gs_error_VMerror);
                 pfn->params.stream_step[i] = ss;
                 ss = pfn->params.Size[i] * ss;
             }

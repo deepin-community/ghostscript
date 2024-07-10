@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -204,6 +204,7 @@ typedef enum {
     t_device,			/* @ +   value.pdevice */
     t_oparray,			/* @! #  value.const_refs, uses size */
                                 /*         for index */
+    t_pdfctx,           /* @ value.pstruct */
     t_next_index		/*** first available index ***/
 } ref_type;
 
@@ -247,11 +248,12 @@ extern const byte ref_type_properties[1 << 6];	/* r_type_bits */
   _REF_TYPE_USES_ACCESS | _REF_TYPE_USES_SIZE, /* t_string */\
   _REF_TYPE_USES_ACCESS,		/* t_device */\
   _REF_TYPE_USES_SIZE,		/* t_oparray */\
+  0,                        /* t_pdfctx */\
     /*\
      * The remaining types are the extended pseudo-types used by the\
      * interpreter for operators.  We need to fill up the table.\
      */\
-  _REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE, /*24*/\
+  _REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE, /*24*/\
   _REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE, /*28*/\
   _REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE, /*32*/\
   _REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE,_REF_TYPE_USES_SIZE, /*36*/\
@@ -280,7 +282,7 @@ extern const byte ref_type_properties[1 << 6];	/* r_type_bits */
   "STRC","ASTR",\
   "int ","real","font","mark","name","null",\
   "oper","save","str ",\
-  "devc","opry"
+  "devc","opry","pdfctx"
 /*
  * Define the type names for the type operator.
  */
@@ -290,7 +292,7 @@ extern const byte ref_type_properties[1 << 6];	/* r_type_bits */
   0,0,\
   "integertype","realtype","fonttype","marktype","nametype","nulltype",\
   "operatortype","savetype","stringtype",\
-  "devicetype","operatortype"
+  "devicetype","operatortype","pdfctxtype"
 /*
  * Define the type names for obj_cvp (the == operator).  We only need these
  * for types that obj_cvp and obj_cvs don't handle specially.
@@ -301,7 +303,7 @@ extern const byte ref_type_properties[1 << 6];	/* r_type_bits */
   0,0,0,0,\
   "-fontID-","-mark-",0,\
   0,0,"-save-","-string-",\
-  "-device-",0
+  "-device-",0,"-pdfcontext-"
 
 /*
  * The following factors affect the encoding of attributes:
@@ -403,6 +405,10 @@ typedef int (*op_proc_t)(i_ctx_t *i_ctx_p);
 /* real_opproc is a holdover.... */
 #define real_opproc(pref) ((pref)->value.opproc)
 
+typedef struct psi_device_ref_s {
+    struct gx_device_s *device;
+} psi_device_ref;
+
 /* Object reference */
 /*
  * Note that because of the way packed arrays are represented,
@@ -422,7 +428,7 @@ struct ref_s {
 
     struct tas_s tas;
 
-    union v {			/* name the union to keep gdb happy */
+    union ref_value {			/* name the union to keep gdb happy */
         ps_int intval;
         ushort boolval;
         float realval;
@@ -444,7 +450,7 @@ struct ref_s {
         ref_packed *writable_packed;
         op_proc_t opproc;
         struct stream_s *pfile;
-        struct gx_device_s *pdevice;
+        struct psi_device_ref_s *pdevice;
         obj_header_t *pstruct;
         uint64_t dummy; /* force 16-byte ref on 32-bit platforms */
     } value;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -73,10 +73,13 @@ gx_mask_clip_initialize(gx_device_mask_clip * cdev,
         tile_clip_buffer_size / (bits->raster + sizeof(byte *));
 
     if (mem == NULL)
-        gx_device_init_on_stack((gx_device *)cdev, (const gx_device *)proto,
+        gx_device_init_on_stack((gx_device *)cdev,
+                                (const gx_device *)proto,
                                 tdev->memory);
     else
-        gx_device_init((gx_device *)cdev, (const gx_device *)proto, mem, true);
+        (void)gx_device_init((gx_device *)cdev,
+                             (const gx_device *)proto,
+                             mem, true);
     cdev->width = tdev->width;
     cdev->height = tdev->height;
     cdev->color_info = tdev->color_info;
@@ -87,7 +90,7 @@ gx_mask_clip_initialize(gx_device_mask_clip * cdev,
         buffer_height = bits->size.y;
     gs_make_mem_mono_device(&cdev->mdev, 0, 0);
     for (;;) {
-        ulong bitmap_size = max_ulong;
+        size_t bitmap_size = max_ulong;
 
         /* Bug 702124: Allow for the case when size.y == 0 - then
          * buffer_height will be zero, and it's not a VMerror. */

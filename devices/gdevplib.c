@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* PLanar Interlaced Banded device */
@@ -267,87 +267,62 @@ static int plibk_print_page(gx_device_printer * pdev, gp_file * pstream);
 
 /* The device procedures */
 
-/* See gdevprn.h for the template for the following. */
-#define pgpm_procs(p_color_rgb, p_encode_color, p_decode_color) {\
-        plib_open,\
-        NULL, /* get_initial_matrix */ \
-        NULL, /* sync output */ \
-        /* Since the print_page doesn't alter the device, this device can print in the background */\
-        gdev_prn_bg_output_page, \
-        plib_close,\
-        NULL, /* map_rgb_color */ \
-        p_color_rgb, /* map_color_rgb */ \
-        NULL, /* fill_rectangle */ \
-        NULL, /* tile_rectangle */ \
-        NULL, /* copy_mono */ \
-        NULL, /* copy_color */ \
-        NULL, /* draw_line */ \
-        NULL, /* get_bits */ \
-        gdev_prn_get_params, \
-        plib_put_params,\
-        NULL, /* map_cmyk_color */ \
-        NULL, /* get_xfont_procs */ \
-        NULL, /* get_xfont_device */ \
-        NULL, /* map_rgb_alpha_color */ \
-        gx_page_device_get_page_device, \
-        NULL,   /* get_alpha_bits */\
-        NULL,   /* copy_alpha */\
-        NULL,   /* get_band */\
-        NULL,   /* copy_rop */\
-        NULL,   /* fill_path */\
-        NULL,   /* stroke_path */\
-        NULL,   /* fill_mask */\
-        NULL,   /* fill_trapezoid */\
-        NULL,   /* fill_parallelogram */\
-        NULL,   /* fill_triangle */\
-        NULL,   /* draw_thin_line */\
-        NULL,   /* begin_image */\
-        NULL,   /* image_data */\
-        NULL,   /* end_image */\
-        NULL,   /* strip_tile_rectangle */\
-        NULL,   /* strip_copy_rop */\
-        NULL,   /* get_clipping_box */\
-        NULL,   /* begin_typed_image */\
-        NULL,   /* get_bits_rectangle */\
-        NULL,   /* map_color_rgb_alpha */\
-        NULL,   /* create_compositor */\
-        NULL,   /* get_hardware_params */\
-        NULL,   /* text_begin */\
-        NULL,   /* finish_copydevice */\
-        NULL,   /* begin_transparency_group */\
-        NULL,   /* end_transparency_group */\
-        NULL,   /* begin_transparency_mask */\
-        NULL,   /* end_transparency_mask */\
-        NULL,   /* discard_transparency_layer */\
-        NULL,   /* get_color_mapping_procs */\
-        NULL,   /* get_color_comp_index */\
-        p_encode_color, /* encode_color */\
-        p_decode_color, /* decode_color */\
-        NULL,   /* pattern_manage */\
-        NULL,   /* fill_rectangle_hl_color */\
-        NULL,   /* include_color_space */\
-        NULL,   /* fill_linear_color_scanline */\
-        NULL,   /* fill_linear_color_trapezoid */\
-        NULL,   /* fill_linear_color_triangle */\
-        NULL,	/* update spot */\
-        NULL,   /* DevN params */\
-        NULL,   /* fill page */\
-        NULL,   /* push_transparency_state */\
-        NULL,   /* pop_transparency_state */\
-        NULL,   /* put_image */\
-        NULL    /* dev_spec_op */\
+static void
+plib_base_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, open_device, plib_open);
+    set_dev_proc(dev, close_device, plib_close);
+    set_dev_proc(dev, put_params, plib_put_params);
 }
 
-static const gx_device_procs plibm_procs =
-  pgpm_procs(NULL, gdev_prn_map_rgb_color, gdev_prn_map_color_rgb);
-static const gx_device_procs plibg_procs =
-  pgpm_procs(NULL, plibg_encode_color, plibg_decode_color);
-static const gx_device_procs plib_procs =
-  pgpm_procs(NULL, gx_default_rgb_map_rgb_color, plib_decode_color);
-static const gx_device_procs plibc_procs =
-  pgpm_procs(plibc_map_color_rgb, plibc_encode_color, plibc_decode_color);
-static const gx_device_procs plibk_procs =
-  pgpm_procs(plibc_map_color_rgb, plibc_encode_color, plibc_decode_color);
+static void
+plibm_initialize_device_procs(gx_device *dev)
+{
+    plib_base_initialize_device_procs(dev);
+
+    set_dev_proc(dev, encode_color, gdev_prn_map_rgb_color);
+    set_dev_proc(dev, decode_color, gdev_prn_map_color_rgb);
+}
+
+static void
+plibg_initialize_device_procs(gx_device *dev)
+{
+    plib_base_initialize_device_procs(dev);
+
+    set_dev_proc(dev, encode_color, plibg_encode_color);
+    set_dev_proc(dev, decode_color, plibg_decode_color);
+}
+
+static void
+plib_initialize_device_procs(gx_device *dev)
+{
+    plib_base_initialize_device_procs(dev);
+
+    set_dev_proc(dev, encode_color, gx_default_rgb_map_rgb_color);
+    set_dev_proc(dev, decode_color, plib_decode_color);
+}
+
+static void
+plibc_initialize_device_procs(gx_device *dev)
+{
+    plib_base_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_color_rgb, plibc_map_color_rgb);
+    set_dev_proc(dev, encode_color, plibc_encode_color);
+    set_dev_proc(dev, decode_color, plibc_decode_color);
+}
+
+static void
+plibk_initialize_device_procs(gx_device *dev)
+{
+    plib_base_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_color_rgb, plibc_map_color_rgb);
+    set_dev_proc(dev, encode_color, plibc_encode_color);
+    set_dev_proc(dev, decode_color, plibc_decode_color);
+}
 
 /* Macro for generating device descriptors. */
 /* Ideally we'd use something like:
@@ -361,8 +336,8 @@ static const gx_device_procs plibk_procs =
  * But that doesn't let us override the band space params. So we have to do
  * it the large way.
  */
-#define plib_prn_device(procs, dev_name, num_comp, depth, max_gray, max_rgb, print_page) \
-{       std_device_full_body_type(gx_device_plib, &procs, dev_name, &st_device_printer,\
+#define plib_prn_device(init, dev_name, num_comp, depth, max_gray, max_rgb, print_page) \
+{       std_device_full_body_type(gx_device_plib, init, dev_name, &st_device_printer,\
           (int)((float)(DEFAULT_WIDTH_10THS) * (X_DPI) / 10 + 0.5),\
           (int)((float)(DEFAULT_HEIGHT_10THS) * (Y_DPI) / 10 + 0.5),\
           X_DPI, Y_DPI,\
@@ -375,15 +350,20 @@ static const gx_device_procs plibk_procs =
 
 /* The device descriptors themselves */
 const gx_device_plib gs_plib_device =
-  plib_prn_device(plib_procs, "plib", 3, 24, 255, 255, plib_print_page);
+  plib_prn_device(plib_initialize_device_procs, "plib",
+                  3, 24, 255, 255, plib_print_page);
 const gx_device_plib gs_plibg_device =
-  plib_prn_device(plibg_procs, "plibg", 1, 8, 255, 0, plibg_print_page);
+  plib_prn_device(plibg_initialize_device_procs, "plibg",
+                  1, 8, 255, 0, plibg_print_page);
 const gx_device_plib gs_plibm_device =
-  plib_prn_device(plibm_procs, "plibm", 1, 1, 1, 0, plibm_print_page);
+  plib_prn_device(plibm_initialize_device_procs, "plibm",
+                  1, 1, 1, 0, plibm_print_page);
 const gx_device_plib gs_plibk_device =
-  plib_prn_device(plibk_procs, "plibk", 4, 4, 1, 1, plibk_print_page);
+  plib_prn_device(plibk_initialize_device_procs, "plibk",
+                  4, 4, 1, 1, plibk_print_page);
 const gx_device_plib gs_plibc_device =
-  plib_prn_device(plibc_procs, "plibc", 4, 32, 255, 255, plibc_print_page);
+  plib_prn_device(plibc_initialize_device_procs, "plibc",
+                  4, 32, 255, 255, plibc_print_page);
 
 /* ------ Initialization ------ */
 
@@ -597,8 +577,8 @@ plib_setup_buf_device(gx_device *bdev, byte *buffer, int bytes_per_line,
          */
         line_ptrs = (byte **)
             gs_alloc_byte_array(mdev->memory,
-                                (mdev->is_planar ?
-                                 full_height * mdev->color_info.num_components :
+                                (mdev->num_planar_planes ?
+                                 full_height * mdev->num_planar_planes :
                                  setup_height),
                                 sizeof(byte *), "setup_buf_device");
         if (line_ptrs == 0)
@@ -606,11 +586,11 @@ plib_setup_buf_device(gx_device *bdev, byte *buffer, int bytes_per_line,
         mdev->line_pointer_memory = mdev->memory;
         mdev->foreign_line_pointers = false;
         mdev->line_ptrs = line_ptrs;
-        mdev->raster = bandBufferStride * (mdev->is_planar ? mdev->color_info.num_components : 1);
+        mdev->raster = bandBufferStride * (mdev->num_planar_planes ? mdev->num_planar_planes : 1);
     }
     mdev->height = full_height;
     code = set_line_ptrs(mdev,
-                         bandBufferBase + bandBufferStride*(mdev->is_planar ? mdev->color_info.num_components : 1)*y,
+                         bandBufferBase + bandBufferStride*(mdev->num_planar_planes ? mdev->num_planar_planes : 1)*y,
                          bandBufferStride,
                          line_ptrs,
                          setup_height);
@@ -621,7 +601,7 @@ plib_setup_buf_device(gx_device *bdev, byte *buffer, int bytes_per_line,
 
 static int
 plib_get_bits_rectangle_mem(gx_device *pdev, const gs_int_rect *prect,
-                            gs_get_bits_params_t *params, gs_int_rect **pprect)
+                            gs_get_bits_params_t *params)
 {
     gx_device_memory *mdev = (gx_device_memory *)pdev;
     int x = prect->p.x, y = prect->p.y, h = prect->q.y - y;
@@ -643,7 +623,7 @@ plib_get_bits_rectangle_mem(gx_device *pdev, const gs_int_rect *prect,
         if (code >= 0)
             return code;
     }
-    return mem_get_bits_rectangle(pdev, prect, params, pprect);
+    return mem_get_bits_rectangle(pdev, prect, params);
 }
 
 static int
@@ -686,7 +666,7 @@ plib_open(gx_device * pdev)
     bdev->printer_procs.buf_procs.create_buf_device = plib_create_buf_device;
     bdev->printer_procs.buf_procs.setup_buf_device = plib_setup_buf_device;
     bdev->printer_procs.buf_procs.size_buf_device = plib_size_buf_device;
-    pdev->is_planar = 1;
+    pdev->num_planar_planes = 1;
 
     bdev->space_params.banding_type = BandingAlways;
 
@@ -754,7 +734,7 @@ plibg_encode_color(gx_device * pdev, const gx_color_value cv[])
 /* Map a gray value back to an RGB color. */
 static int
 plibg_decode_color(gx_device * dev, gx_color_index color,
-                   gx_color_value prgb[3])
+                   gx_color_value prgb[])
 {
     gx_color_value gray =
     color * gx_max_color_value / dev->color_info.max_gray;
@@ -768,7 +748,7 @@ plibg_decode_color(gx_device * dev, gx_color_index color,
 /* Map an rgb color tuple back to an RGB color. */
 static int
 plib_decode_color(gx_device * dev, gx_color_index color,
-                  gx_color_value prgb[3])
+                  gx_color_value prgb[])
 {
     uint bitspercolor = dev->color_info.depth / 3;
     uint colormask = (1 << bitspercolor) - 1;
@@ -786,7 +766,7 @@ plib_decode_color(gx_device * dev, gx_color_index color,
 /* Map a cmyk color tuple back to CMYK colorants. */
 static int
 plibc_decode_color(gx_device * dev, gx_color_index color,
-                   gx_color_value prgb[4])
+                   gx_color_value prgb[])
 {
     uint bitspercolor = dev->color_info.depth / 4;
     uint colormask = (1 << bitspercolor) - 1;
@@ -891,7 +871,7 @@ plib_print_page_loop(gx_device_printer * pdev, int log2bits, int numComps,
     dump_start(pdev->width, pdev->height, numComps, log2bits, pstream);
 #endif
     for (lnum = 0; lnum < pdev->height; lnum += bandHeight) {
-        gs_int_rect *unread, rect;
+        gs_int_rect rect;
         gs_get_bits_params_t params;
 
         rect.p.x = 0;
@@ -909,7 +889,7 @@ plib_print_page_loop(gx_device_printer * pdev, int log2bits, int numComps,
                          GB_COLORS_NATIVE |
                          GB_ALPHA_NONE;
         params.x_offset = 0;
-        code = (*dev_proc(pdev, get_bits_rectangle))((gx_device *)pdev, &rect, &params,&unread);
+        code = (*dev_proc(pdev, get_bits_rectangle))((gx_device *)pdev, &rect, &params);
         if (code < 0)
             break;
 #ifdef DEBUG_DUMP

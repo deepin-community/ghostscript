@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -24,6 +24,7 @@
 #include "gsstruct.h"		/* for st_bytes */
 #include "gsmalloc.h"
 #include "gsmemret.h"		/* retrying wrapper */
+#include "gp.h"
 
 /* ------ Heap allocator ------ */
 
@@ -419,7 +420,7 @@ gs_heap_resize_string(gs_memory_t * mem, byte * data, size_t old_num, size_t new
                       client_name_t cname)
 {
     if (gs_heap_object_type(mem, data) != &st_bytes)
-        lprintf2("%s: resizing non-string "PRI_INTPTR"!\n",
+        if_debug2m('a', mem, "%s: resizing non-string "PRI_INTPTR"!\n",
                  client_name_string(cname), (intptr_t)data);
     return gs_heap_resize_object(mem, data, new_num, cname);
 }
@@ -464,6 +465,7 @@ gs_heap_status(gs_memory_t * mem, gs_memory_status_t * pstat)
     pstat->allocated = mmem->used + avail_snapshot;
     pstat->used = mmem->used;
     pstat->max_used = mmem->max_used;
+    pstat->limit = mmem->limit;
     pstat->is_thread_safe = true;	/* this allocator has a mutex (monitor) and IS thread safe */
     if (mmem->monitor)
         gx_monitor_leave(mmem->monitor);	/* Done with exclusive access */

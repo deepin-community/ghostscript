@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2023 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 # of the license contained in the file LICENSE in this distribution.
 #
 # Refer to licensing information at http://www.artifex.com or contact
-# Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-# CA 94945, U.S.A., +1(415)492-9861, for further information.
+# Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+# CA 94129, USA, for further information.
 #
 #
 # makefile for freetype as part of the monolithic gs build.
@@ -33,17 +33,15 @@ FTO_=$(O_)$(FTOBJ)
 # Define our local compiler alias
 # we must define FT2_BUILD_LIBRARY to get internal declarations
 # If GS is using the system zlib, freetype should also do so,
-# FT_CONFIG_SYSTEM_ZLIB is set by the top makefile.
-FTCC=$(CC) $(I_)$(FTGEN)$(_I) $(I_)$(FTSRCDIR)$(D)include$(_I) \
+FTCC=$(CC) $(I_)$(FTGEN)$(_I) $(I_)$(FTSRCDIR)$(D)include$(_I) $(FT_CFLAGS) \
      $(D_)FT_CONFIG_OPTIONS_H=\"$(FTCONFH)\"$(_D) $(D_)FT2_BUILD_LIBRARY$(_D) \
-     $(D_)DARWIN_NO_CARBON$(_D) $(FT_CONFIG_SYSTEM_ZLIB) $(CCFLAGS)
+     $(D_)DARWIN_NO_CARBON$(_D) $(D_)FT_CONFIG_OPTION_SYSTEM_ZLIB$(_D) $(CCFLAGS)
 
 # Define the name of this makefile.
 FT_MAK=$(GLSRC)freetype.mak $(TOP_MAKEFILES)
 
 # file complements for each component
 ft_autofit=\
-	$(FTOBJ)afangles.$(OBJ) \
 	$(FTOBJ)afcjk.$(OBJ) \
 	$(FTOBJ)afdummy.$(OBJ) \
 	$(FTOBJ)afglobal.$(OBJ) \
@@ -52,7 +50,6 @@ ft_autofit=\
 	$(FTOBJ)aflatin.$(OBJ) \
 	$(FTOBJ)afloader.$(OBJ) \
 	$(FTOBJ)afmodule.$(OBJ) \
-	$(FTOBJ)afwarp.$(OBJ) \
 	$(FTOBJ)afblue.$(OBJ) \
 	$(FTOBJ)afranges.$(OBJ) \
 	$(FTOBJ)afshaper.$(OBJ)
@@ -210,6 +207,15 @@ ft_type42=\
 
 ft_winfonts=$(FTOBJ)winfnt.$(OBJ)
 
+ft_sdf=\
+	$(FTOBJ)ftbsdf.$(OBJ) \
+	$(FTOBJ)ftsdf.$(OBJ) \
+	$(FTOBJ)ftsdfcommon.$(OBJ) \
+	$(FTOBJ)ftsdfrend.$(OBJ) \
+
+ft_svg=\
+	$(FTOBJ)ftsvg.$(OBJ)
+
 # instantiate the requested build option (shared or compiled in)
 $(FTGEN)freetype.dev : $(FTGEN)freetype_$(SHARE_FT).dev $(FT_MAK) $(GENFTCONFH) $(MAKEDIRS)
 	$(CP_) $(FTGEN)freetype_$(SHARE_FT).dev $(FTGEN)freetype.dev
@@ -224,7 +230,7 @@ $(FTGEN)freetype_0.dev : $(FT_MAK) $(ECHOGS_XE) \
     $(ft_autofit) $(ft_base) $(ft_bdf) $(ft_cache) $(ft_cff) $(ft_cid) \
     $(ft_gzip) $(ft_lzw) $(ft_pcf) $(ft_pfr) $(ft_psaux) $(ft_pshinter) \
     $(ft_psnames) $(ft_raster) $(ft_smooth) $(ft_sfnt) $(ft_truetype) \
-    $(ft_type1) $(ft_type42) $(ft_winfonts) $(GENFTCONFH) $(MAKEDIRS)
+    $(ft_type1) $(ft_type42) $(ft_winfonts) $(ft_sdf) $(ft_svg) $(GENFTCONFH) $(MAKEDIRS)
 	$(SETMOD) $(FTGEN)freetype_0 $(ft_autofit)
 	$(ADDMOD) $(FTGEN)freetype_0 $(ft_base)
 	$(ADDMOD) $(FTGEN)freetype_0 $(ft_bdf)
@@ -245,6 +251,8 @@ $(FTGEN)freetype_0.dev : $(FT_MAK) $(ECHOGS_XE) \
 	$(ADDMOD) $(FTGEN)freetype_0 $(ft_type1)
 	$(ADDMOD) $(FTGEN)freetype_0 $(ft_type42)
 	$(ADDMOD) $(FTGEN)freetype_0 $(ft_winfonts)
+	$(ADDMOD) $(FTGEN)freetype_0 $(ft_sdf)
+	$(ADDMOD) $(FTGEN)freetype_0 $(ft_svg)
 
 
 # custom build rules for each source file
@@ -647,3 +655,18 @@ $(FTOBJ)t42drivr.$(OBJ) : $(FTSRC)type42$(D)t42drivr.c $(FT_MAK) $(GENFTCONFH) $
 
 $(FTOBJ)winfnt.$(OBJ) : $(FTSRC)winfonts$(D)winfnt.c $(FT_MAK) $(GENFTCONFH) $(MAKEDIRS)
 	$(FTCC) $(FTO_)winfnt.$(OBJ) $(C_) $(FTSRC)winfonts$(D)winfnt.c
+
+$(FTOBJ)ftbsdf.$(OBJ) : $(FTSRC)sdf$(D)ftbsdf.c $(FT_MAK) $(GENFTCONFH) $(MAKEDIRS)
+	$(FTCC) $(FTO_)ftbsdf.$(OBJ) $(C_) $(FTSRC)sdf$(D)ftbsdf.c
+
+$(FTOBJ)ftsdf.$(OBJ) : $(FTSRC)sdf$(D)ftsdf.c $(FT_MAK) $(GENFTCONFH) $(MAKEDIRS)
+	$(FTCC) $(FTO_)ftsdf.$(OBJ) $(C_) $(FTSRC)sdf$(D)ftsdf.c
+
+$(FTOBJ)ftsdfcommon.$(OBJ) : $(FTSRC)sdf$(D)ftsdfcommon.c $(FT_MAK) $(GENFTCONFH) $(MAKEDIRS)
+	$(FTCC) $(FTO_)ftsdfcommon.$(OBJ) $(C_) $(FTSRC)sdf$(D)ftsdfcommon.c
+
+$(FTOBJ)ftsdfrend.$(OBJ) : $(FTSRC)sdf$(D)ftsdfrend.c $(FT_MAK) $(GENFTCONFH) $(MAKEDIRS)
+	$(FTCC) $(FTO_)ftsdfrend.$(OBJ) $(C_) $(FTSRC)sdf$(D)ftsdfrend.c
+
+$(FTOBJ)ftsvg.$(OBJ) : $(FTSRC)svg$(D)ftsvg.c $(FT_MAK) $(GENFTCONFH) $(MAKEDIRS)
+	$(FTCC) $(FTO_)ftsvg.$(OBJ) $(C_) $(FTSRC)svg$(D)ftsvg.c

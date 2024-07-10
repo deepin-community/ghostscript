@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* prevent gp.h redefining sprintf */
@@ -759,10 +759,10 @@ int wmain(int argc, wchar_t *argv[], wchar_t *envp[]) {
     if (nargv == NULL)
         goto err;
     for (i=0; i < argc; i++) {
-        nargv[i] = malloc(wchar_to_utf8(NULL, argv[i]));
+        nargv[i] = malloc(gp_uint16_to_utf8(NULL, argv[i]));
         if (nargv[i] == NULL)
             goto err;
-        (void)wchar_to_utf8(nargv[i], argv[i]);
+        (void)gp_uint16_to_utf8(nargv[i], argv[i]);
     }
     code = main_utf8(argc, nargv);
 

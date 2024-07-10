@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -60,7 +60,9 @@
 #include "winrtsup.h"
 
 /* Library routines not declared in a standard header */
+#if _MSC_VER < 1400 /* Earlier than VS2005 */
 extern char *getenv(const char *);
+#endif
 
 /* limits */
 #define MAXSTR 255
@@ -252,10 +254,10 @@ gp_printfile(const gs_memory_t *mem, const char *filename, const char *pmport)
         int l;
 
         GetProfileStringW(L"windows", L"device", L"",  wbuf, sizeof(wbuf));
-        l = wchar_to_utf8(NULL, wbuf);
+        l = gp_uint16_to_utf8(NULL, wbuf);
         if (l < 0 || l > sizeof(buf))
             return_error(gs_error_undefinedfilename);
-        wchar_to_utf8(buf, wbuf);
+        gp_uint16_to_utf8(buf, wbuf);
         if ((p = strchr(buf, ',')) != NULL)
             *p = '\0';
         return gp_printfile_win32(mem, filename, buf);
@@ -298,7 +300,7 @@ get_queues(void)
         char buf[256];
 
         free(enumbuffer);
-        gs_sprintf(buf, "EnumPrinters() failed, error code = %d", GetLastError());
+        gs_snprintf(buf, sizeof(buf), "EnumPrinters() failed, error code = %d", GetLastError());
         MessageBox((HWND) NULL, buf, szAppName, MB_OK | MB_ICONSTOP);
         return NULL;
     }
@@ -364,9 +366,9 @@ BOOL gp_OpenPrinter(char *port, LPHANDLE printer)
     return FALSE;
 #else
     BOOL opened;
-    wchar_t *uni = malloc(utf8_to_wchar(NULL, port) * sizeof(wchar_t));
+    wchar_t *uni = malloc(gp_utf8_to_uint16(NULL, port) * sizeof(wchar_t));
     if (uni)
-        utf8_to_wchar(uni, port);
+        gp_utf8_to_uint16(uni, port);
     opened = OpenPrinterW(uni, printer, NULL);
     free(uni);
     return opened;
@@ -401,7 +403,7 @@ gp_printfile_win32(const gs_memory_t *mem, const char *filename, char *port)
     if (!gp_OpenPrinter(port, &printer)) {
         char buf[256];
 
-        gs_sprintf(buf, "OpenPrinter() failed for \042%s\042, error code = %d", port, GetLastError());
+        gs_snprintf(buf, sizeof(buf), "OpenPrinter() failed for \042%s\042, error code = %d", port, GetLastError());
         MessageBox((HWND) NULL, buf, szAppName, MB_OK | MB_ICONSTOP);
         free(buffer);
         return FALSE;
@@ -414,7 +416,7 @@ gp_printfile_win32(const gs_memory_t *mem, const char *filename, char *port)
     if (!StartDocPrinter(printer, 1, (LPBYTE) & di)) {
         char buf[256];
 
-        gs_sprintf(buf, "StartDocPrinter() failed, error code = %d", GetLastError());
+        gs_snprintf(buf, sizeof(buf), "StartDocPrinter() failed, error code = %d", GetLastError());
         MessageBox((HWND) NULL, buf, szAppName, MB_OK | MB_ICONSTOP);
         AbortPrinter(printer);
         free(buffer);
@@ -435,7 +437,7 @@ gp_printfile_win32(const gs_memory_t *mem, const char *filename, char *port)
     if (!EndDocPrinter(printer)) {
         char buf[256];
 
-        gs_sprintf(buf, "EndDocPrinter() failed, error code = %d", GetLastError());
+        gs_snprintf(buf, sizeof(buf), "EndDocPrinter() failed, error code = %d", GetLastError());
         MessageBox((HWND) NULL, buf, szAppName, MB_OK | MB_ICONSTOP);
         AbortPrinter(printer);
         return FALSE;
@@ -443,7 +445,7 @@ gp_printfile_win32(const gs_memory_t *mem, const char *filename, char *port)
     if (!ClosePrinter(printer)) {
         char buf[256];
 
-        gs_sprintf(buf, "ClosePrinter() failed, error code = %d", GetLastError());
+        gs_snprintf(buf, sizeof(buf), "ClosePrinter() failed, error code = %d", GetLastError());
         MessageBox((HWND) NULL, buf, szAppName, MB_OK | MB_ICONSTOP);
         return FALSE;
     }
@@ -513,9 +515,9 @@ FILE *mswin_popen(const char *cmd, const char *mode)
     siStartInfo.hStdError = hChildStderrWr;
 
     if (handle == 0) {
-        command = (wchar_t *)malloc(sizeof(wchar_t)*utf8_to_wchar(NULL, cmd));
+        command = (wchar_t *)malloc(sizeof(wchar_t)*gp_utf8_to_uint16(NULL, cmd));
         if (command)
-            utf8_to_wchar(command, cmd);
+            gp_utf8_to_uint16(command, cmd);
         else
             handle = -1;
     }
@@ -599,7 +601,7 @@ gp_open_scratch_file_impl(const gs_memory_t *mem,
 #else
             GetTempPathW(_MAX_PATH, wTempDir);
 #endif
-            l = wchar_to_utf8(sTempDir, wTempDir);
+            l = gp_uint16_to_utf8(sTempDir, wTempDir);
         } else
             l = strlen(sTempDir);
     } else {
@@ -612,14 +614,14 @@ gp_open_scratch_file_impl(const gs_memory_t *mem,
         sTempDir[l-1] = '\\';		/* What Windoze prefers */
 
     if (l <= _MAX_PATH) {
-        utf8_to_wchar(wTempDir, sTempDir);
-        utf8_to_wchar(wPrefix, prefix);
+        gp_utf8_to_uint16(wTempDir, sTempDir);
+        gp_utf8_to_uint16(wPrefix, prefix);
 #ifdef METRO
         n = GetTempFileNameWRT(wTempDir, wPrefix, wTempFileName);
 #else
         GetTempFileNameW(wTempDir, wPrefix, 0, wTempFileName);
 #endif
-        n = wchar_to_utf8(sTempFileName, wTempFileName);
+        n = gp_uint16_to_utf8(sTempFileName, wTempFileName);
         if (n == 0) {
             /* If 'prefix' is not a directory, it is a path prefix. */
             int l = strlen(sTempDir), i;
@@ -634,22 +636,22 @@ gp_open_scratch_file_impl(const gs_memory_t *mem,
                 }
             }
             if (i > 0) {
-                utf8_to_wchar(wPrefix, sTempDir + i);
+                gp_utf8_to_uint16(wPrefix, sTempDir + i);
 #ifdef METRO
                 GetTempFileNameWRT(wTempDir, wPrefix, wTempFileName);
 #else
                 GetTempFileNameW(wTempDir, wPrefix, 0, wTempFileName);
 #endif
-                n = wchar_to_utf8(sTempFileName, wTempFileName);
+                n = gp_uint16_to_utf8(sTempFileName, wTempFileName);
             }
         }
         if (n != 0) {
-            int len = utf8_to_wchar(NULL, sTempFileName);
+            int len = gp_utf8_to_uint16(NULL, sTempFileName);
             wchar_t *uni = (len > 0 ? malloc(sizeof(wchar_t)*len) : NULL);
             if (uni == NULL)
                 hfile = INVALID_HANDLE_VALUE;
             else {
-                utf8_to_wchar(uni, sTempFileName);
+                gp_utf8_to_uint16(uni, sTempFileName);
 #ifdef METRO
                 hfile = CreateFile2(uni,
                                     GENERIC_READ | GENERIC_WRITE | DELETE,
@@ -694,7 +696,7 @@ gp_open_scratch_file_impl(const gs_memory_t *mem,
 
 int gp_stat_impl(const gs_memory_t *mem, const char *path, struct _stat64 *buf)
 {
-    int len = utf8_to_wchar(NULL, path);
+    int len = gp_utf8_to_uint16(NULL, path);
     wchar_t *uni;
     int ret;
 
@@ -703,7 +705,7 @@ int gp_stat_impl(const gs_memory_t *mem, const char *path, struct _stat64 *buf)
     uni = malloc(len*sizeof(wchar_t));
     if (uni == NULL)
         return -1;
-    utf8_to_wchar(uni, path);
+    gp_utf8_to_uint16(uni, path);
     ret = _wstat64(uni, buf);
     free(uni);
     return ret;

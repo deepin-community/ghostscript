@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -43,7 +43,9 @@ static int double_unary(i_ctx_t *, double (*)(double));
 #define dbegin_unary()\
         os_ptr op = osp;\
         double num;\
-        int code = double_params_result(op, 1, &num);\
+        int code;\
+        check_op(2);\
+        code = double_params_result(op, 1, &num);\
 \
         if ( code < 0 )\
           return code
@@ -51,7 +53,9 @@ static int double_unary(i_ctx_t *, double (*)(double));
 #define dbegin_binary()\
         os_ptr op = osp;\
         double num[2];\
-        int code = double_params_result(op, 2, num);\
+        int code;\
+        check_op(3);\
+        code = double_params_result(op, 2, num);\
 \
         if ( code < 0 )\
           return code
@@ -161,12 +165,34 @@ darc(i_ctx_t *i_ctx_p, double (*afunc)(double))
 static int
 zdarccos(i_ctx_t *i_ctx_p)
 {
+    os_ptr op = osp;
+    double num;
+    int code;
+
+    check_op(2);
+    code = real_param(op, &num);
+    if (code < 0)
+        return code;
+    if (num < -1 || num > 1)
+        return_error(gs_error_rangecheck);
+
     return darc(i_ctx_p, acos);
 }
 /* <dnum> <dresult> .darcsin <dresult> */
 static int
 zdarcsin(i_ctx_t *i_ctx_p)
 {
+    os_ptr op = osp;
+    double num;
+    int code;
+
+    check_op(2);
+    code = real_param(op, &num);
+    if (code < 0)
+        return code;
+    if (num < -1 || num > 1)
+        return_error(gs_error_rangecheck);
+
     return darc(i_ctx_p, asin);
 }
 
@@ -245,8 +271,10 @@ dcompare(i_ctx_t *i_ctx_p, int mask)
 {
     os_ptr op = osp;
     double num[2];
-    int code = double_params(op, 2, num);
+    int code;
 
+    check_op(2);
+    code = double_params(op, 2, num);
     if (code < 0)
         return code;
     make_bool(op - 1,
@@ -310,20 +338,22 @@ static int
 zcvsd(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
-    int code = double_params_result(op, 0, NULL);
+    int code;
     double num;
     char dot, buf[MAX_CHARS + 2];
     char *str = buf;
     uint len;
     char end;
 
+    chgeck_op(2);
+    code = double_params_result(op, 0, NULL);
     if (code < 0)
         return code;
     check_read_type(op[-1], t_string);
     len = r_size(op - 1);
     if (len > MAX_CHARS)
         return_error(gs_error_limitcheck);
-    gs_sprintf(buf, "%f", 1.5);
+    gs_snprintf(buf, sizeof(buf), "%f", 1.5);
     dot = buf[1]; /* locale-dependent */
     memcpy(str, op[-1].value.bytes, len);
     /*
@@ -360,8 +390,10 @@ zdcvi(i_ctx_t *i_ctx_p)
     static const double min_int_real = (alt_min_long * 1.0 - 1);
     static const double max_int_real = (alt_max_long * 1.0 + 1);
     double num;
-    int code = double_params(op, 1, &num);
+    int code;
 
+    check_op(1);
+    code = double_params(op, 1, &num);
     if (code < 0)
         return code;
 
@@ -383,7 +415,10 @@ zdcvr(i_ctx_t *i_ctx_p)
 #undef b30
 #undef max_mag
     double num;
-    int code = double_params(op, 1, &num);
+    int code;
+
+    check_op(1);
+    code = double_params(op, 1, &num);
 
     if (code < 0)
         return code;
@@ -399,14 +434,16 @@ zdcvs(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
     double num;
-    int code = double_params(op - 1, 1, &num);
+    int code;
     char dot, str[MAX_CHARS + 1];
     int len;
 
+    check_op(2);
+    code = double_params(op - 1, 1, &num);
     if (code < 0)
         return code;
     check_write_type(*op, t_string);
-    gs_sprintf(str, "%f", 1.5);
+    gs_snprintf(str, sizeof(str), "%f", 1.5);
     dot = str[1]; /* locale-dependent */
     /*
      * To get fully accurate output results for IEEE double-
@@ -420,10 +457,10 @@ zdcvs(i_ctx_t *i_ctx_p)
     {
         double scanned;
 
-        gs_sprintf(str, "%g", num);
+        gs_snprintf(str, sizeof(str), "%g", num);
         sscanf(str, "%lf", &scanned);
         if (scanned != num)
-            gs_sprintf(str, "%.16g", num);
+            gs_snprintf(str, sizeof(str), "%.16g", num);
     }
     len = strlen(str);
     if (len > r_size(op))

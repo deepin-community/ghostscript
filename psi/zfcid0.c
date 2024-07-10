@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -404,6 +404,7 @@ zbuildfont9(i_ctx_t *i_ctx_p)
     gs_font_cid0 *pfcid;
     uint i;
 
+    check_op(2);
     /*
      * If the CIDFont's data have been loaded into VM, GlyphData will be
      * a string or an array of strings; if they are loaded incrementally
@@ -545,10 +546,12 @@ ztype9mapcid(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     gs_font *pfont;
     gs_font_cid0 *pfcid;
-    int code = font_param(op - 1, &pfont);
+    int code;
     gs_glyph_data_t gdata;
     int fidx;
 
+    check_op(2);
+    code = font_param(op - 1, &pfont);
     if (code < 0)
         return code;
     if (pfont->FontType != ft_CID_encrypted)

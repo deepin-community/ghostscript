@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -35,12 +35,14 @@ static int cshow_restore_font(i_ctx_t *);
 static int
 zcshow(i_ctx_t *i_ctx_p)
 {
+    es_ptr ep = esp;        /* Save in case of error */
     os_ptr op = osp;
     os_ptr proc_op = op - 1;
     os_ptr str_op = op;
     gs_text_enum_t *penum;
     int code;
 
+    check_op(2);
     /*
      * Even though this is not documented anywhere by Adobe,
      * some Adobe interpreters apparently allow the string and
@@ -64,8 +66,17 @@ zcshow(i_ctx_t *i_ctx_p)
         return code;
     }
     sslot = *proc_op;		/* save kerning proc */
-    pop(2);
-    return cshow_continue(i_ctx_p);
+    ref_stack_pop(&o_stack, 2);
+    code = cshow_continue(i_ctx_p);
+    if (code < 0) {
+        /* We must restore the exec stack pointer back to the point where we entered, in case
+         * we 'retry' the operation (eg having increased the operand stack).
+         * We'll rely on gc to handle the enumerator.
+         *  Bug 706868 (fix from zchar.c: Bug #700618)
+         */
+        esp = ep;
+    }
+    return code;
 }
 static int
 cshow_continue(i_ctx_t *i_ctx_p)

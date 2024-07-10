@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -457,6 +457,7 @@ pxBeginPage(px_args_t * par, px_state_t * pxs)
         int iv;
         bool bv;
         int ecode = 0;
+        int page_spot_colors = 0;
 
         fa.data = fv;
         fa.persistent = false;
@@ -464,6 +465,13 @@ pxBeginPage(px_args_t * par, px_state_t * pxs)
         gs_c_param_list_write(&list, mem);
         iv = pxs->orientation;  /* might not be an int */
         ecode = param_write_int(plist, "Orientation", &iv);
+        ecode = px_put1(dev, &list, ecode);
+        if (ecode < 0)
+            return ecode;
+
+        /* PXL never has spot colors on the page */
+        gs_c_param_list_write(&list, mem);
+        ecode = param_write_int(plist, "PageSpotColors", &(page_spot_colors));
         ecode = px_put1(dev, &list, ecode);
         if (ecode < 0)
             return ecode;
@@ -538,6 +546,11 @@ pxBeginPage(px_args_t * par, px_state_t * pxs)
         }
 #undef plist
     }
+    if (!dev->is_open) {
+        code = gs_opendevice(dev);
+        if (code < 0)
+            return code;
+    }
     {
         code = px_initgraphics(pxs);
         if (code < 0) return code;
@@ -599,10 +612,9 @@ pxBeginPage(px_args_t * par, px_state_t * pxs)
                                  * Set the default halftone method.  We have to do this here,
                                  * rather than earlier, so that the origin is set correctly.
                                  */
-        px_args_t args;
+        px_args_t args = { 0 };
         px_value_t device_matrix;
 
-        memset(args.pv, 0, sizeof(args.pv));
         args.pv[1] = &device_matrix;    /* DeviceMatrix */
         device_matrix.type = pxd_scalar | pxd_ubyte;
         device_matrix.value.i = eDeviceBest;

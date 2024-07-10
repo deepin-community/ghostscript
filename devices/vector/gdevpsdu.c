@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -468,23 +468,14 @@ psdf_end_binary(psdf_binary_writer * pbw)
 /* ---------------- Overprint, Get Bits ---------------- */
 
 /*
- * High level devices cannot perform get_bits or get_bits_rectangle
+ * High level devices cannot perform get_bits_rectangle
  * operations, for obvious reasons.
  */
-int
-psdf_get_bits(gx_device * dev, int y, byte * data, byte ** actual_data)
-{
-    emprintf(dev->memory,
-                  "Can't set GraphicsAlphaBits or TextAlphaBits with a vector device.\n");
-    return_error(gs_error_unregistered);
-}
-
 int
 psdf_get_bits_rectangle(
     gx_device *             dev,
     const gs_int_rect *     prect,
-    gs_get_bits_params_t *  params,
-    gs_int_rect **          unread )
+    gs_get_bits_params_t *  params )
 {
     emprintf(dev->memory,
                   "Can't set GraphicsAlphaBits or TextAlphaBits with a vector device.\n");
@@ -499,7 +490,7 @@ psdf_get_bits_rectangle(
  * compositor.
  */
 int
-psdf_create_compositor(
+psdf_composite(
     gx_device *             dev,
     gx_device **            pcdev,
     const gs_composite_t *  pct,
@@ -511,5 +502,5 @@ psdf_create_compositor(
         *pcdev = dev;
         return 0;
     }
-    return gx_default_create_compositor(dev, pcdev, pct, pgs, mem, cdev);
+    return gx_default_composite(dev, pcdev, pct, pgs, mem, cdev);
 }

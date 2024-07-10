@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -27,13 +27,14 @@
 /* Define some stdint.h types. The jbig2dec headers and ttf bytecode
  * interpreter require these and they're generally useful to have around
  * now that there's a standard.
+
  */
 
 /* Some systems are guaranteed to have stdint.h
  * but don't use the autoconf detection
  */
 #ifndef HAVE_STDINT_H
-# ifdef __MACOS__
+# if defined(__MACOS__) || (defined(__APPLE__) && defined(__MACH__))
 #   define HAVE_STDINT_H
 # endif
 #endif
@@ -126,6 +127,25 @@ typedef unsigned long long uint64_t;
 
 #  define STDINT_TYPES_DEFINED
 #endif /* STDINT_TYPES_DEFINED */
+
+
+/* We really want our offset type to be 64 bit for large file support
+ * but this allows a particular port to specficy a prefered data type size
+ */
+#ifdef ARCH_SIZEOF_GS_OFFSET_T
+# if ARCH_SIZEOF_GS_OFFSET_T == 8
+typedef int64_t gs_offset_t;off64_t
+# elif ARCH_SIZEOF_GS_OFFSET_T == 4
+typedef int32_t gs_offset_t;
+# else
+UNSUPPORTED
+# endif
+#else
+# define ARCH_SIZEOF_GS_OFFSET_T 8
+typedef int64_t gs_offset_t;
+#endif
+
+typedef int64_t off64_t;
 
 #if defined(HAVE_INTTYPES_H) && HAVE_INTTYPES_H == 1
 # include <inttypes.h>
@@ -246,6 +266,12 @@ typedef unsigned long long uint64_t;
 #  define PRI_INTPTR "0x%" PRIx32
 # else
 #  define PRI_INTPTR "0x%" PRIx64
+# endif
+
+# if ARCH_SIZEOF_GS_OFFSET_T == 4
+#  define PRIdOFFSET PRId32
+# else
+#  define PRIdOFFSET PRId64
 # endif
 
 #endif /* stdint__INCLUDED */

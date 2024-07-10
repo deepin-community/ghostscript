@@ -1,6 +1,7 @@
 Description: Check multiarch paths
 Author: Jonas Smedegaard <dr@jones.dk>
-Last-Update: 2011-09-19
+Forwarded: not-needed
+Last-Update: 2023-09-13
 ---
 This patch header follows DEP-3: https://dep.debian.net/deps/dep3/
 --- a/base/unix-aux.mak

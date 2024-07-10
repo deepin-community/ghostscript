@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -49,6 +49,7 @@
   BEGIN\
     if ( pcis->init_done < 0 )\
       { ipsp->ip = cip, ipsp->dstate = state;\
+        ipsp->ip_end = endp;\
         return type2_sbw(pcis, csp, cstack, ipsp, explicit_width);\
       }\
   END
@@ -130,7 +131,7 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
     cs_ptr csp;
 #define clear CLEAR_CSTACK(cstack, csp)
     ip_state_t *ipsp = &pcis->ipstack[pcis->ips_count - 1];
-    register const byte *cip;
+    register const byte *cip, *endp = NULL;
     register crypt_state state;
     register int c;
     cs_ptr ap;
@@ -176,9 +177,15 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
     cip = pgd->bits.data;
     if (cip == 0)
         return (gs_note_error(gs_error_invalidfont));
+    endp = cip + pgd->bits.size;
     goto call;
     for (;;) {
-        uint c0 = *cip++;
+        uint c0;
+
+        if (endp != NULL && cip > endp)
+            return_error(gs_error_invalidfont);
+
+        c0 = *cip++;
 
         charstring_next(c0, state, c, encrypted);
         if (c >= c_num1) {
@@ -223,6 +230,7 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                 return_error(gs_error_invalidfont);
             case c_callsubr:
                 if (CS_CHECK_CSTACK_BOUNDS(csp, cstack)) {
+                    CS_CHECK_IPSTACK(&(ipsp[1]), pcis->ipstack);
                     c = fixed2int_var(*csp) + pdata->subroutineNumberBias;
                     code = pdata->procs.subr_data
                         (pfont, c, false, &ipsp[1].cs_data);
@@ -241,6 +249,7 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
   cont:         if (ipsp < pcis->ipstack || ipsp->ip == 0)
                     return (gs_note_error(gs_error_invalidfont));
                 cip = ipsp->ip;
+                endp = ipsp->ip_end;
                 state = ipsp->dstate;
                 continue;
             case c_undoc15:
@@ -465,6 +474,7 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                     }
                     if_debug0m('1', pfont->memory, "\n");
                     ipsp->ip = cip;
+                    ipsp->ip_end = endp;
                     ipsp->dstate = state;
                     if (c == c2_cntrmask) {
                         /****** NYI ******/
@@ -493,7 +503,10 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                     if (code < 0)
                         return code;
                 }
-                code = t1_hinter__rlineto(h, ap[0], ap[1]);
+                if (ap + 1 <= csp)
+                    code = t1_hinter__rlineto(h, ap[0], ap[1]);
+                else
+                    return_error(gs_error_invalidfont);
                 goto cc;
             case c2_rlinecurve:
                 for (ap = cstack; ap + 7 <= csp; ap += 2) {
@@ -501,8 +514,11 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                     if (code < 0)
                         return code;
                 }
-                code = t1_hinter__rcurveto(h, ap[0], ap[1], ap[2], ap[3],
+                if (ap + 5 <= csp)
+                    code = t1_hinter__rcurveto(h, ap[0], ap[1], ap[2], ap[3],
                                         ap[4], ap[5]);
+                else
+                    return_error(gs_error_invalidfont);
   move:
   cc:
                 if (code < 0)
@@ -556,6 +572,7 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                 continue;
             case c2_callgsubr:
                 if (CS_CHECK_CSTACK_BOUNDS(csp, cstack)) {
+                    CS_CHECK_IPSTACK(&(ipsp[1]), pcis->ipstack);
                     c = fixed2int_var(*csp) + pdata->gsubrNumberBias;
                     code = pdata->procs.subr_data
                         (pfont, c, true, &ipsp[1].cs_data);
@@ -573,8 +590,10 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                     }
                     --csp;
                     ipsp->ip = cip, ipsp->dstate = state;
+                    ipsp->ip_end = endp;
                     ++ipsp;
                     cip = ipsp->cs_data.bits.data;
+                    endp = cip + ipsp->cs_data.bits.size;
   call:
                     state = crypt_charstring_seed;
                     if (encrypted) {
@@ -619,6 +638,8 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                         --csp;
                         break;
                     case ce2_not:
+                        if (!CS_CHECK_CSTACK_BOUNDS(csp, cstack))
+                            return_error(gs_error_invalidfont);
                         *csp = (*csp ? 0 : fixed_1);
                         break;
                     case ce2_store:
@@ -643,6 +664,8 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                         csp -= 4;
                         break;
                     case ce2_abs:
+                        if (!CS_CHECK_CSTACK_BOUNDS(csp, cstack))
+                            return_error(gs_error_invalidfont);
                         if (*csp < 0)
                             *csp = -*csp;
                         break;
@@ -688,6 +711,8 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                         csp -= 3;
                         break;
                     case ce2_neg:
+                        if (!CS_CHECK_CSTACK_BOUNDS(csp, cstack))
+                            return_error(gs_error_invalidfont);
                         *csp = -*csp;
                         break;
                     case ce2_eq:
@@ -750,10 +775,14 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                         --csp;
                         break;
                     case ce2_sqrt:
+                        if (!CS_CHECK_CSTACK_BOUNDS(csp, cstack))
+                            return_error(gs_error_invalidfont);
                         if (*csp >= 0)
                             *csp = float2fixed(sqrt(fixed2float(*csp)));
                         break;
                     case ce2_dup:
+                        if (!CS_CHECK_CSTACK_BOUNDS(csp, cstack))
+                            return_error(gs_error_invalidfont);
                         CS_CHECK_PUSH(csp, cstack);
                         csp[1] = *csp;
                         ++csp;
@@ -768,10 +797,11 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                         }
                         break;
                     case ce2_index:
-                        if (!CS_CHECK_CSTACK_BOUNDS(&csp[-1], cstack))
+                        if (!CS_CHECK_CSTACK_BOUNDS(&csp[-1], cstack) ||
+                            !CS_CHECK_CSTACK_BOUNDS(&csp[0], cstack) ||
+                            !CS_CHECK_CSTACK_BOUNDS(&csp[-1 - fixed2int_var(csp[-1])], cstack))
                             return_error(gs_error_invalidfont);
-                        *csp =
-                            (*csp < 0 ? csp[-1] : csp[-1 - fixed2int_var(csp[-1])]);
+                        *csp = (*csp < 0 ? csp[-1] : csp[-1 - fixed2int_var(csp[-1])]);
                         break;
                     case ce2_roll:
                         if (!CS_CHECK_CSTACK_BOUNDS(&csp[-1], cstack))
@@ -799,7 +829,7 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                         }
                         break;
                     case ce2_hflex:
-                        if (!CS_CHECK_CSTACK_BOUNDS(&csp[-5], cstack))
+                        if (!CS_CHECK_CSTACK_BOUNDS(&csp[-6], cstack))
                             return_error(gs_error_invalidfont);
                         CS_CHECK_PUSHN(csp, cstack, 6);
                         csp[6] = fixed_half;	/* fd/100 */
@@ -817,7 +847,7 @@ gs_type2_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
                         *csp /= 100;	/* fd/100 */
                         goto flex;
                     case ce2_hflex1:
-                        if (!CS_CHECK_CSTACK_BOUNDS(&csp[-3], cstack))
+                        if (!CS_CHECK_CSTACK_BOUNDS(&csp[-8], cstack))
                             return_error(gs_error_invalidfont);
                         CS_CHECK_PUSHN(csp, cstack, 4);
                         csp[4] = fixed_half;	/* fd/100 */

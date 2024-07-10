@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -148,59 +148,63 @@ gx_install_CIE(gs_color_space * pcs, gs_gstate * pgs)
 
 /* Free params for a CIE color space */
 static void
-gx_final_CIEDEFG(const gs_color_space * pcs)
+gx_final_CIEDEFG(gs_color_space * pcs)
 {
-    gs_color_space *pcs_noconst = (gs_color_space *)pcs;
-
     if (pcs->icc_equivalent != NULL) {
-        rc_decrement(pcs_noconst->icc_equivalent, "gx_final_CIEDEFG");
+        rc_decrement(pcs->icc_equivalent, "gx_final_CIEDEFG");
+        pcs->icc_equivalent = NULL;
     }
     if (pcs->cmm_icc_profile_data != NULL) {
-        gsicc_adjust_profile_rc(pcs_noconst->cmm_icc_profile_data, -1, "gx_final_CIEDEFG");
+        gsicc_adjust_profile_rc(pcs->cmm_icc_profile_data, -1, "gx_final_CIEDEFG");
+        pcs->cmm_icc_profile_data = NULL;
     }
-    rc_decrement(pcs_noconst->params.defg, "gx_final_CIEDEFG");
+    rc_decrement(pcs->params.defg, "gx_final_CIEDEFG");
+    pcs->params.defg = NULL;
 }
 
 static void
-gx_final_CIEDEF(const gs_color_space * pcs)
+gx_final_CIEDEF(gs_color_space * pcs)
 {
-    gs_color_space *pcs_noconst = (gs_color_space *)pcs;
-
     if (pcs->icc_equivalent != NULL) {
-        rc_decrement(pcs_noconst->icc_equivalent,"gx_final_CIEDEF");
+        rc_decrement(pcs->icc_equivalent,"gx_final_CIEDEF");
+        pcs->icc_equivalent = NULL;
     }
     if (pcs->cmm_icc_profile_data != NULL) {
-        gsicc_adjust_profile_rc(pcs_noconst->cmm_icc_profile_data, -1, "gx_final_CIEDEF");
+        gsicc_adjust_profile_rc(pcs->cmm_icc_profile_data, -1, "gx_final_CIEDEF");
+        pcs->cmm_icc_profile_data = NULL;
     }
-    rc_decrement(pcs_noconst->params.def, "gx_final_CIEDEF");
+    rc_decrement(pcs->params.def, "gx_final_CIEDEF");
+    pcs->params.def = NULL;
 }
 
 static void
-gx_final_CIEABC(const gs_color_space * pcs)
+gx_final_CIEABC(gs_color_space * pcs)
 {
-    gs_color_space *pcs_noconst = (gs_color_space *)pcs;
-
     if (pcs->icc_equivalent != NULL) {
-        rc_decrement(pcs_noconst->icc_equivalent,"gx_final_CIEABC");
+        rc_decrement(pcs->icc_equivalent,"gx_final_CIEABC");
+        pcs->icc_equivalent = NULL;
     }
     if (pcs->cmm_icc_profile_data != NULL) {
-        gsicc_adjust_profile_rc(pcs_noconst->cmm_icc_profile_data, -1, "gx_final_CIEABC");
+        gsicc_adjust_profile_rc(pcs->cmm_icc_profile_data, -1, "gx_final_CIEABC");
+        pcs->cmm_icc_profile_data = NULL;
     }
-    rc_decrement(pcs_noconst->params.abc, "gx_final_CIEABC");
+    rc_decrement(pcs->params.abc, "gx_final_CIEABC");
+    pcs->params.abc = NULL;
 }
 
 static void
-gx_final_CIEA(const gs_color_space * pcs)
+gx_final_CIEA(gs_color_space * pcs)
 {
-    gs_color_space *pcs_noconst = (gs_color_space *)pcs;
-
     if (pcs->icc_equivalent != NULL) {
-        rc_decrement(pcs_noconst->icc_equivalent,"gx_final_CIEA");
+        rc_decrement(pcs->icc_equivalent,"gx_final_CIEA");
+        pcs->icc_equivalent = NULL;
     }
     if (pcs->cmm_icc_profile_data != NULL) {
-        gsicc_adjust_profile_rc(pcs_noconst->cmm_icc_profile_data, -1, "gx_final_CIEA");
+        gsicc_adjust_profile_rc(pcs->cmm_icc_profile_data, -1, "gx_final_CIEA");
+        pcs->cmm_icc_profile_data = NULL;
     }
-    rc_decrement(pcs_noconst->params.a, "gx_adjust_cspace_CIEA");
+    rc_decrement(pcs->params.a, "gx_adjust_cspace_CIEA");
+    pcs->params.a = NULL;
 }
 
 /* ---------------- Procedures ---------------- */

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -95,6 +95,7 @@ zbuildpattern1(i_ctx_t *i_ctx_p)
     gs_client_color cc_instance;
     ref *pPaintProc;
 
+    check_op(2);
     code = read_matrix(imemory, op, &mat);
     if (code < 0)
         return code;
@@ -184,6 +185,7 @@ const op_def zpcolor_l2_op_defs[] =
 
 /* Render the pattern by calling the PaintProc. */
 static int pattern_paint_cleanup(i_ctx_t *);
+static int pattern_paint_cleanup_core(i_ctx_t *, bool);
 static int
 zPaintProc(const gs_client_color * pcc, gs_gstate * pgs)
 {
@@ -207,7 +209,7 @@ pattern_paint_prepare(i_ctx_t *i_ctx_p)
     ref *ppp;
     bool internal_accum = true;
 
-    check_estack(6);
+    check_estack(8);
     if (pgs->have_pattern_streams) {
         code = dev_proc(cdev, dev_spec_op)(cdev, gxdso_pattern_can_accum,
                                 pinst, pinst->id);
@@ -244,7 +246,7 @@ pattern_paint_prepare(i_ctx_t *i_ctx_p)
         gs_setdevice_no_init(pgs, (gx_device *)pdev);
         if (pinst->templat.uses_transparency) {
             if_debug0m('v', imemory, "   pushing the pdf14 compositor device into this graphics state\n");
-            if ((code = gs_push_pdf14trans_device(pgs, true, true, 0, 0)) < 0)  /* FIXME: do we need spot_color_count ??? */
+            if ((code = gs_push_pdf14trans_device(pgs, true, true, 0, 0)) < 0)  /* spot color count found from pdf14 target */
                 return code;
         } else { /* not transparent */
             if (pinst->templat.PaintType == 1 && !(pinst->is_clist)
@@ -312,6 +314,10 @@ pattern_paint_prepare(i_ctx_t *i_ctx_p)
     ++esp;
     make_istruct(esp, 0, pdev);
     ++esp;
+    make_int(esp, imemory_save_level(iimemory));
+    ++esp;
+    make_int(esp, imemory_space(iimemory));
+    ++esp;
     /* Save operator stack depth in case PaintProc leaves junk on ostack. */
     make_int(esp, ref_stack_count(&o_stack));
     push_op_estack(pattern_paint_finish);
@@ -325,11 +331,17 @@ static int
 pattern_paint_finish(i_ctx_t *i_ctx_p)
 {
     int o_stack_adjust = ref_stack_count(&o_stack) - esp->value.intval;
-    gx_device_forward *pdev = r_ptr(esp - 1, gx_device_forward);
+    gx_device_forward *pdev = r_ptr(esp - 3, gx_device_forward);
     gs_pattern1_instance_t *pinst =
         (gs_pattern1_instance_t *)gs_currentcolor(igs->saved)->pattern;
     gx_device_pattern_accum const *padev = (const gx_device_pattern_accum *) pdev;
-    gs_pattern1_instance_t *pinst2 = r_ptr(esp - 2, gs_pattern1_instance_t);
+    gs_pattern1_instance_t *pinst2 = r_ptr(esp - 4, gs_pattern1_instance_t);
+    int orig_save_level = (esp - 2)->value.intval;
+    uint vmspace = (uint)(esp - 1)->value.intval;
+
+    if (vmspace !=  imemory_space(iimemory) || orig_save_level != imemory_save_level(iimemory_local)) {
+        return_error(gs_error_undefinedresult);
+    }
 
     if (pdev != NULL) {
         gx_color_tile *ctile;
@@ -379,7 +391,7 @@ pattern_paint_finish(i_ctx_t *i_ctx_p)
                 }
             }
         }
-        code = gx_pattern_cache_add_entry(igs, pdev, &ctile, igs);
+        code = gx_pattern_cache_add_entry(igs, pdev, &ctile);
         if (code < 0)
             return code;
     }
@@ -387,10 +399,13 @@ pattern_paint_finish(i_ctx_t *i_ctx_p)
 #if 0
         dmlprintf1(imemory, "PaintProc left %d extra on operator stack!\n", o_stack_adjust);
 #endif
+        /* Take care here: if anything is added after this that may access the op stack,
+           this needs to be ref_stack_pop() rather than pop().
+         */
         pop(o_stack_adjust);
     }
-    esp -= 5;
-    pattern_paint_cleanup(i_ctx_p);
+    esp -= 7;
+    pattern_paint_cleanup_core(i_ctx_p, 0);
     return o_pop_estack;
 }
 /* Clean up after rendering a pattern.  Note that iff the rendering */
@@ -398,11 +413,23 @@ pattern_paint_finish(i_ctx_t *i_ctx_p)
 static int
 pattern_paint_cleanup(i_ctx_t *i_ctx_p)
 {
+    return pattern_paint_cleanup_core(i_ctx_p, 1);
+}
+
+static int
+pattern_paint_cleanup_core(i_ctx_t *i_ctx_p, bool is_error)
+{
     gx_device_pattern_accum *const pdev =
         r_ptr(esp + 4, gx_device_pattern_accum);
         gs_pattern1_instance_t *pinst = (gs_pattern1_instance_t *)gs_currentcolor(igs->saved)->pattern;
     gs_pattern1_instance_t *pinst2 = r_ptr(esp + 3, gs_pattern1_instance_t);
     int code, i, ecode=0;
+    int orig_save_level = (esp + 5)->value.intval;
+    uint vmspace = (uint)(esp + 6)->value.intval;
+
+    if (vmspace !=  imemory_space(iimemory) || orig_save_level != imemory_save_level(iimemory_local)) {
+        return_error(gs_error_undefinedresult);
+    }
     /* If the PaintProc does one or more gsaves, then encounters an error, we can get
      * here with the graphics state stack not how we expect.
      * Hence we stored a reference to the pattern instance on the exec stack, and that
@@ -423,6 +450,16 @@ pattern_paint_cleanup(i_ctx_t *i_ctx_p)
     if (pdev != NULL) {
         /* grestore will free the device, so close it first. */
         (*dev_proc(pdev, close_device)) ((gx_device *) pdev);
+        /* The accumulator device is allocated in "system" memory
+           but the target device may be allocated in the prevailing
+           VM mode (local/global) of the input file, and thus potentially
+           subject to save/restore - which may cause bad things if the
+           accumator hangs around until the end of job restore, which can
+           happen in the even of an error during the PaintProc, so
+           null that pointer for that case.
+         */
+        if (is_error)
+            pdev->target = NULL;
     }
     if (pdev == NULL) {
         gx_device *cdev = r_ptr(esp + 2, gx_device);

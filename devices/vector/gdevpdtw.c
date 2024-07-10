@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -78,9 +78,13 @@ pdf_different_encoding_element(const pdf_font_resource_t *pdfont, int ch, int en
 
         if (code < 0)
             return code; /* Must not happen */
-        if (glyph1 != GS_NO_GLYPH)
-            if (!strings_equal(&str, &pdfont->u.simple.Encoding[ch].str))
+        if (glyph1 != GS_NO_GLYPH) {
+            gs_const_string str2;
+            str2.data = pdfont->u.simple.Encoding[ch].data;
+            str2.size = pdfont->u.simple.Encoding[ch].size;
+            if (!strings_equal(&str, &str2))
                 return 1;
+        }
     }
     return 0;
 }
@@ -120,7 +124,7 @@ pdf_simple_font_needs_ToUnicode(const pdf_font_resource_t *pdfont)
         */
         return true;
     if (!pdfont->TwoByteToUnicode)
-        return true;
+        return false;
 
     for (ch = 0; ch < 256; ++ch) {
         pdf_encoding_element_t *pet = &pdfont->u.simple.Encoding[ch];
@@ -129,9 +133,9 @@ pdf_simple_font_needs_ToUnicode(const pdf_font_resource_t *pdfont)
         if (glyph == GS_NO_GLYPH)
             continue;
         if (glyph < gs_c_min_std_encoding_glyph || glyph >= GS_MIN_CID_GLYPH) {
-            if (pet->str.size == 0)
+            if (pet->size == 0)
                 return true;
-            glyph = gs_c_name_glyph(pet->str.data, pet->str.size);
+            glyph = gs_c_name_glyph(pet->data, pet->size);
             if (glyph == GS_NO_GLYPH)
                 return true;
         }
@@ -176,12 +180,12 @@ pdf_write_encoding(gx_device_pdf *pdev, const pdf_font_resource_t *pdfont, long 
              * Enforce writing differences against that.
              */
             if (pdfont->used[ch >> 3] & 0x80 >> (ch & 7))
-                if (pdfont->u.simple.Encoding[ch].str.size)
+                if (pdfont->u.simple.Encoding[ch].size)
                     code = 1;
         }
         if (code) {
-            const byte *d = pdfont->u.simple.Encoding[ch].str.data;
-            int i, l = pdfont->u.simple.Encoding[ch].str.size;
+            const byte *d = pdfont->u.simple.Encoding[ch].data;
+            int i, l = pdfont->u.simple.Encoding[ch].size;
 
             if (pdev->HavePDFWidths) {
                 for (i = 0; i + sl < l; i++)
@@ -239,8 +243,7 @@ pdf_write_simple_contents(gx_device_pdf *pdev,
     if (code < 0)
         return code;
     pprints1(s, "/Subtype/%s>>\n",
-             (pdfont->FontType == ft_TrueType ? "TrueType" :
-              pdfont->u.simple.s.type1.is_MM_instance ? "MMType1" : "Type1"));
+             (pdfont->FontType == ft_TrueType ? "TrueType" : "Type1"));
     pdf_end_separate(pdev, resourceFont);
     if (diff_id) {
         mark_font_descriptor_symbolic(pdfont);
@@ -882,7 +885,7 @@ pdf_write_OneByteIdentityH(gx_device_pdf *pdev)
     code = cos_dict_put_string_copy(pcd, "/CMapName", "/OneByteIdentityH");
     if (code < 0)
         return code;
-    gs_sprintf(buf, "%ld 0 R", pdev->IdentityCIDSystemInfo_id);
+    gs_snprintf(buf, sizeof(buf), "%ld 0 R", pdev->IdentityCIDSystemInfo_id);
     code = cos_dict_put_string_copy(pcd, "/CIDSystemInfo", buf);
     if (code < 0)
         return code;

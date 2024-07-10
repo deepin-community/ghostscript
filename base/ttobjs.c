@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -303,6 +303,9 @@ static int free_aux(ttfMemory *mem, void *ptr)
    if (n_points < 100)
        n_points = 100; /* Bug 689907 */
 
+   exec->n_contours = exec->n_points = 0;
+   exec->twilight.n_points = 0;
+
    if ( ALLOC_ARRAY( exec->callStack, exec->callSize, callSize, TCallRecord ) ||
         /* reserve interpreter call stack */
 
@@ -325,18 +328,19 @@ static int free_aux(ttfMemory *mem, void *ptr)
 
         ALLOC_ARRAY( exec->pts.contours, exec->n_contours, face->maxContours, UShort )
         /* reserve contours array */
-      )
-     goto Fail_Memory;
+      ) {
+       goto Fail_Memory;
+   }
 
-     SETMAX(exec->callSize, callSize);
-     SETMAX(exec->stackSize, stackSize);
-     SETMAX(exec->twilight.n_points, n_twilight);
-     SETMAX(exec->maxGlyphSize, maxp->maxSizeOfInstructions);
-     SETMAX(exec->n_contours, face->maxContours);
-     SETMAX(exec->n_points, n_points);
-     exec->lock++;
+   SETMAX(exec->callSize, callSize);
+   SETMAX(exec->stackSize, stackSize);
+   SETMAX(exec->twilight.n_points, n_twilight);
+   SETMAX(exec->maxGlyphSize, maxp->maxSizeOfInstructions);
+   SETMAX(exec->n_contours, face->maxContours);
+   SETMAX(exec->n_points, n_points);
+   exec->lock++;
 
-     return TT_Err_Ok;
+   return TT_Err_Ok;
 
   Fail_Memory:
     /* Context_Destroy( exec ); Don't release buffers because the context is shared. */

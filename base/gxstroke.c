@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -22,6 +22,7 @@
 #include "gserrors.h"
 #include "gsdcolor.h"
 #include "gsptype1.h"
+#include "gsptype2.h"
 #include "gxfixed.h"
 #include "gxfarith.h"
 #include "gxmatrix.h"
@@ -35,6 +36,7 @@
 #include "gzcpath.h"
 #include "gxpaint.h"
 #include "gsstate.h"            /* for gs_currentcpsimode */
+#include "gzacpath.h"
 
 /* RJW: There appears to be a difference in the xps and postscript models
  * (at least in as far as Microsofts implementation of xps and Acrobats of
@@ -329,15 +331,88 @@ static int cap_points(gs_line_cap, const_ep_ptr,
                        gs_fixed_point * /*[3] */ );
 static int join_under_pie(gx_path *, pl_ptr, pl_ptr, bool);
 
+int
+gx_default_stroke_path_shading_or_pattern(gx_device        * pdev,
+                                    const gs_gstate        * pgs_orig,
+                                          gx_path          * ppath,
+                                    const gx_stroke_params * params,
+                                    const gx_drawing_color * pdevc,
+                                    const gx_clip_path     * pcpath)
+{
+    gs_gstate *pgs = (gs_gstate *)pgs_orig; /* Nasty cast away const! */
+    gs_logical_operation_t save_lop = gs_current_logical_op_inline(pgs);
+    gx_device_cpath_accum adev;
+    gx_device_color devc;
+    gx_clip_path stroke_as_clip_path;
+    int code;
+    gs_fixed_rect dev_clip_rect = { {min_fixed, min_fixed}, {max_fixed, max_fixed}};
+
+    /* We want to make a image of the stroke as a clip path, so
+     * create an empty structure on the stack. */
+    code = gx_cpath_init_local_shared_nested(&stroke_as_clip_path, NULL, pdev->memory, 1);
+    if (code < 0)
+        return code;
+    /* Now we make an accumulator device that will fill that out. */
+    gx_cpath_accum_begin(&adev, stroke_as_clip_path.path.memory, false);
+    (*dev_proc(pdev, get_clipping_box))(pdev, &dev_clip_rect);
+    gx_cpath_accum_set_cbox(&adev, &dev_clip_rect);
+    set_nonclient_dev_color(&devc, 0);	/* arbitrary, but not transparent */
+    gs_set_logical_op_inline(pgs, lop_default);
+    /* Stroke the path to the accumulator. */
+    code = gx_stroke_path_only(ppath, NULL, (gx_device *)&adev, pgs, params,
+                               &devc, pcpath);
+    /* Now extract the accumulated path into stroke_as_clip_path. */
+    if (code < 0 || (code = gx_cpath_accum_end(&adev, &stroke_as_clip_path)) < 0)
+        gx_cpath_accum_discard(&adev);
+    gs_set_logical_op_inline(pgs, save_lop);
+    if (code >= 0)
+    {
+        /* Now, fill a rectangle with the original color through that
+         * clip path. */
+        gs_fixed_rect clip_box, shading_box;
+        gs_int_rect cb;
+        gx_device_clip cdev;
+
+        gx_cpath_outer_box(&stroke_as_clip_path, &clip_box);
+        /* This is horrid. If the pdevc is a shading color, then the
+         * fill_rectangle routine requires us to have intersected it
+         * with the shading rectangle first. If we don't do this,
+         * ps3fts/470-01.ps goes wrong. */
+        if (gx_dc_is_pattern2_color(pdevc) &&
+            gx_dc_pattern2_get_bbox(pdevc, &shading_box) > 0)
+        {
+            rect_intersect(clip_box, shading_box);
+        }
+        cb.p.x = fixed2int_pixround(clip_box.p.x);
+        cb.p.y = fixed2int_pixround(clip_box.p.y);
+        cb.q.x = fixed2int_pixround(clip_box.q.x);
+        cb.q.y = fixed2int_pixround(clip_box.q.y);
+        gx_make_clip_device_on_stack(&cdev, &stroke_as_clip_path, pdev);
+        code = pdevc->type->fill_rectangle(pdevc,
+                        cb.p.x, cb.p.y, cb.q.x - cb.p.x, cb.q.y - cb.p.y,
+                        (gx_device *)&cdev, pgs->log_op, NULL);
+    }
+    gx_cpath_free(&stroke_as_clip_path, "gx_default_stroke_path_shading_or_pattern");
+
+    return code;
+}
+
 /* Define the default implementation of the device stroke_path procedure. */
 int
 gx_default_stroke_path(gx_device * dev, const gs_gstate * pgs,
                        gx_path * ppath, const gx_stroke_params * params,
-                       const gx_drawing_color * pdcolor,
+                       const gx_drawing_color * pdevc,
                        const gx_clip_path * pcpath)
 {
-    return gx_stroke_path_only(ppath, (gx_path *) 0, dev, pgs, params,
-                               pdcolor, pcpath);
+    if (gx_dc_is_pattern2_color(pdevc) ||
+        pdevc->type == &gx_dc_type_data_ht_colored ||
+        (gx_dc_is_pattern1_color(pdevc) &&
+         gx_pattern_tile_is_clist(pdevc->colors.pattern.p_tile)))
+        return gx_default_stroke_path_shading_or_pattern(dev, pgs, ppath, params,
+                                                         pdevc, pcpath);
+    else
+        return gx_stroke_path_only(ppath, (gx_path *) 0, dev, pgs, params,
+                                   pdevc, pcpath);
 }
 
 /* Fill a partial stroked path.  Free variables: */
@@ -422,9 +497,13 @@ gx_join_path_and_reverse(gx_path * path, gx_path * rpath)
  * what is wanted.
  */
 static int
-gx_stroke_path_only_aux(gx_path * ppath, gx_path * to_path, gx_device * pdev,
-               const gs_gstate * pgs, const gx_stroke_params * params,
-                 const gx_device_color * pdevc, const gx_clip_path * pcpath)
+gx_stroke_path_only_aux(gx_path          *ppath, /* lgtm[cpp/use-of-goto] */
+                        gx_path          *to_path,
+                        gx_device        *pdev,
+                  const gs_gstate        *pgs,
+                  const gx_stroke_params *params,
+                  const gx_device_color  *pdevc,
+                  const gx_clip_path     *pcpath)
 {
     bool CPSI_mode = gs_currentcpsimode(pgs->memory);
     bool traditional = CPSI_mode | params->traditional;
@@ -482,7 +561,7 @@ gx_stroke_path_only_aux(gx_path * ppath, gx_path * to_path, gx_device * pdev,
     double device_dot_length = pgs_lp->dot_length * fixed_1;
     const subpath *psub;
     gs_matrix initial_matrix;
-    bool initial_matrix_reflected;
+    bool initial_matrix_reflected, flattened_path = false;
     note_flags flags;
 
     (*dev_proc(pdev, get_initial_matrix)) (pdev, &initial_matrix);
@@ -665,6 +744,7 @@ gx_stroke_path_only_aux(gx_path * ppath, gx_path * to_path, gx_device * pdev,
             )
             return code;
         spath = &fpath;
+        flattened_path = true;
     }
     if (dash_count) {
         float max_dash_len = 0;
@@ -1061,7 +1141,8 @@ gx_stroke_path_only_aux(gx_path * ppath, gx_path * to_path, gx_device * pdev,
   exf:
     if (dash_count)
         gx_path_free(&dpath, "gx_stroke_path exit(dash path)");
-    if (ppath->curve_count)
+    /* If we flattened the path then we set spath to &fpath. If we flattned the path then now we need to free fpath */
+    if(flattened_path)
         gx_path_free(&fpath, "gx_stroke_path exit(flattened path)");
     return code;
 }
@@ -1397,7 +1478,7 @@ line_intersect(
     double f1;
     double max_result = any_abs(denom) * (double)max_fixed;
 
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef DEBUG
     if (gs_debug_c('O')) {
         dlprintf4("[o]Intersect %f,%f(%f/%f)",
                   fixed2float(pp1->x), fixed2float(pp1->y),
@@ -1740,7 +1821,7 @@ check_miter(const gx_line_params * pgs_lp, pl_ptr plp, pl_ptr nplp,
          * we actually have to do the test backwards.
          */
         ccw0 = v1 * u2 < v2 * u1;
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef DEBUG
         {
             double a1 = atan2(u1, v1), a2 = atan2(u2, v2), dif = a1 - a2;
 
@@ -1763,7 +1844,7 @@ check_miter(const gx_line_params * pgs_lp, pl_ptr plp, pl_ptr nplp,
      */
     if (!ccw0)          /* have plp - nplp, want vice versa */
         num = -num;
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef DEBUG
     if (gs_debug_c('O')) {
         dlprintf4("[o]Miter check: u1/v1=%f/%f, u2/v2=%f/%f,\n",
                   u1, v1, u2, v2);
@@ -2193,7 +2274,7 @@ stroke_add_compat(gx_path * ppath, gx_path *rpath, bool ensure_closed,
        and another one for line join or for the ending cap.
        Note CPSI creates negative contours. */
     const gx_line_params *pgs_lp = gs_currentlineparams_inline(pgs);
-    gs_fixed_point points[5];
+    gs_fixed_point points[6];
     int npoints;
     bool const moveto_first = true; /* Keeping this code closer to "stroke_add". */
     int code;
@@ -2511,7 +2592,7 @@ compute_caps(pl_ptr plp)
     plp->o.ce.x = plp->o.p.x - wx2, plp->o.ce.y = plp->o.p.y - wy2;
     plp->e.co.x = plp->e.p.x - wx2, plp->e.co.y = plp->e.p.y - wy2;
     plp->e.ce.x = plp->e.p.x + wx2, plp->e.ce.y = plp->e.p.y + wy2;
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef DEBUG
     if (gs_debug_c('O')) {
         dlprintf4("[o]Stroke o=(%f,%f) e=(%f,%f)\n",
                   fixed2float(plp->o.p.x), fixed2float(plp->o.p.y),
@@ -2652,7 +2733,9 @@ add_pie_join(gx_path * ppath, pl_ptr plp, pl_ptr nplp, bool reflected,
     r = (double)(nplp->width.x) /* x2 */ * (plp->width.y) /* y1 */;
 
     if (l == r) {
-        if (cap)
+        /* Colinear. Suppress drawing a cap unless the path reverses direction. */
+        if (cap &&
+            ((double)(plp->width.x) * (nplp->width.x) + (double)(nplp->width.y) * (plp->width.y)) < 0)
             return add_pie_cap(ppath, &plp->e);
         else
             return gx_path_add_line(ppath, plp->e.ce.x, plp->e.ce.y);

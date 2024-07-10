@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -348,8 +348,10 @@ pdf_begin_write_image(gx_device_pdf * pdev, pdf_image_writer * piw,
     }
     pdev->strm = pdev->streams.strm;
     pdev->strm = cos_write_stream_alloc(data, pdev, "pdf_begin_write_image");
-    if (pdev->strm == 0)
+    if (pdev->strm == 0) {
+        pdev->strm = save_strm;
         return_error(gs_error_VMerror);
+    }
     if (!mask)
         piw->data = data;
     piw->height = h;
@@ -411,6 +413,27 @@ pdf_begin_image_data(gx_device_pdf * pdev, pdf_image_writer * piw,
     }
     if (pdev->JPEG_PassThrough) {
         CHECK(cos_dict_put_c_strings(pcd, "/Filter", "/DCTDecode"));
+    }
+    if (pdev->JPX_PassThrough) {
+        CHECK(cos_dict_put_c_strings(pcd, "/Filter", "/JPXDecode"));
+    }
+    if (pdev->PendingOC != 0) {
+        char str[256];
+        gs_param_string param;
+        cos_object_t *pco = NULL;
+
+        gs_snprintf(str, sizeof(str), "{Obj%dG0}", pdev->PendingOC);
+        param.data = (const byte *)str;
+        param.size = strlen(str);
+        code = pdf_refer_named(pdev, &param, &pco);
+        if(code < 0)
+            return code;
+
+        gs_snprintf(str, sizeof(str), "%ld 0 R", pco->id);
+        if (piw->pres != NULL && piw->pres->object != NULL)
+            code = cos_dict_put_string_copy((cos_dict_t *)piw->pres->object, "/OC", str);
+
+        pdev->PendingOC = 0;
     }
     return code;
 }
@@ -519,7 +542,7 @@ smask_image_check(gx_device_pdf * pdev, pdf_resource_t *pres0, pdf_resource_t *p
                 if (p > v->contents.chars.data + v->contents.chars.size)
                     return 0;
                 ix *= 10;
-                ix += (*p) - 0x30;
+                ix += (*p++) - 0x30;
             }
             if (ix != pdev->image_mask_id)
                 return 0;

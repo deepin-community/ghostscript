@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Portable Bit/Gray/PixMap drivers */
@@ -110,10 +110,10 @@ typedef struct gx_device_pbm_s gx_device_pbm;
 }
 
 /* For all but PBM, we need our own color mapping and alpha procedures. */
-static dev_proc_map_rgb_color(pgm_map_rgb_color);
-static dev_proc_map_rgb_color(ppm_map_rgb_color);
-static dev_proc_map_color_rgb(pgm_map_color_rgb);
-static dev_proc_map_color_rgb(ppm_map_color_rgb);
+static dev_proc_encode_color(pgm_encode_color);
+static dev_proc_encode_color(pnm_encode_color);
+static dev_proc_decode_color(pgm_decode_color);
+static dev_proc_decode_color(ppm_decode_color);
 static dev_proc_map_cmyk_color(pkm_map_cmyk_color);
 static dev_proc_map_color_rgb(pkm_map_color_rgb);
 static dev_proc_get_params(ppm_get_params);
@@ -140,96 +140,153 @@ static dev_proc_print_page(pnmcmyk_print_page);
 
 /* The device procedures */
 
-/* See gdevprn.h for the template for the following. */
-#define pgpm_procs(p_open, p_get_params, p_map_rgb_color, p_map_color_rgb, p_map_cmyk_color) {\
-        p_open, NULL, NULL, ppm_output_page, gdev_prn_close,\
-        p_map_rgb_color, p_map_color_rgb, NULL, NULL, NULL, NULL, NULL, NULL,\
-        p_get_params, ppm_put_params,\
-        p_map_cmyk_color, NULL, NULL, NULL, gx_page_device_get_page_device\
+static void
+pbm_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
+
+    set_dev_proc(dev, encode_color, gx_default_b_w_mono_encode_color);
+    set_dev_proc(dev, decode_color, gx_default_b_w_mono_decode_color);
+    set_dev_proc(dev, put_params, ppm_put_params);
+    set_dev_proc(dev, output_page, ppm_output_page);
 }
 
-static const gx_device_procs pbm_procs =
-    pgpm_procs(gdev_prn_open, gdev_prn_get_params,
-               gdev_prn_map_rgb_color, gdev_prn_map_color_rgb, NULL);
-static const gx_device_procs pgm_procs =
-    pgpm_procs(ppm_open, gdev_prn_get_params,
-               pgm_map_rgb_color, pgm_map_color_rgb, NULL);
-static const gx_device_procs ppm_procs =
-    pgpm_procs(ppm_open, ppm_get_params,
-               gx_default_rgb_map_rgb_color, ppm_map_color_rgb, NULL);
-static const gx_device_procs pnm_procs =
-    pgpm_procs(ppm_open, ppm_get_params,
-               ppm_map_rgb_color, ppm_map_color_rgb, NULL);
-static const gx_device_procs pkm_procs =
-    pgpm_procs(ppm_open, ppm_get_params,
-               NULL, cmyk_1bit_map_color_rgb, cmyk_1bit_map_cmyk_color);
-static const gx_device_procs pam_procs =
-    pgpm_procs(ppm_open, ppm_get_params,
-               NULL, cmyk_8bit_map_color_rgb, cmyk_8bit_map_cmyk_color);
-static const gx_device_procs pnmcmyk_procs =
-    pgpm_procs(pnmcmyk_open, ppm_get_params,
-               NULL, cmyk_8bit_map_color_rgb, cmyk_8bit_map_cmyk_color);
+static void
+ppm_initialize_device_procs(gx_device *dev)
+{
+    pbm_initialize_device_procs(dev);
+
+    set_dev_proc(dev, get_params, ppm_get_params);
+    set_dev_proc(dev, map_rgb_color, gx_default_rgb_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, ppm_decode_color);
+    set_dev_proc(dev, encode_color, gx_default_rgb_map_rgb_color);
+    set_dev_proc(dev, decode_color, ppm_decode_color);
+    set_dev_proc(dev, open_device, ppm_open);
+}
+
+static void
+pgm_initialize_device_procs(gx_device *dev)
+{
+    pbm_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, pgm_encode_color);
+    set_dev_proc(dev, map_color_rgb, pgm_decode_color);
+    set_dev_proc(dev, encode_color, pgm_encode_color);
+    set_dev_proc(dev, decode_color, pgm_decode_color);
+    set_dev_proc(dev, open_device, ppm_open);
+}
+
+static void
+pnm_initialize_device_procs(gx_device *dev)
+{
+    ppm_initialize_device_procs(dev);
+
+    set_dev_proc(dev, encode_color, pnm_encode_color);
+    set_dev_proc(dev, decode_color, ppm_decode_color);
+}
+
+static void
+pkm_initialize_device_procs(gx_device *dev)
+{
+    ppm_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, NULL);
+    set_dev_proc(dev, decode_color, cmyk_1bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, cmyk_1bit_map_cmyk_color);
+}
+
+static void
+pam32_initialize_device_procs(gx_device *dev)
+{
+    ppm_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, NULL);
+    set_dev_proc(dev, map_color_rgb, cmyk_8bit_map_color_rgb);
+    set_dev_proc(dev, map_cmyk_color, cmyk_8bit_map_cmyk_color);
+    set_dev_proc(dev, decode_color, cmyk_8bit_map_color_cmyk);
+    set_dev_proc(dev, encode_color, cmyk_8bit_map_cmyk_color);
+}
+
+static void
+pam4_initialize_device_procs(gx_device *dev)
+{
+    ppm_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, NULL);
+    set_dev_proc(dev, map_color_rgb, NULL);
+    set_dev_proc(dev, map_cmyk_color, cmyk_1bit_map_cmyk_color);
+    set_dev_proc(dev, decode_color, cmyk_1bit_map_color_cmyk);
+    set_dev_proc(dev, encode_color, cmyk_1bit_map_cmyk_color);
+}
+
+static void
+pnmcmyk_initialize_device_procs(gx_device *dev)
+{
+    pam32_initialize_device_procs(dev);
+
+    set_dev_proc(dev, open_device, pnmcmyk_open);
+}
 
 /* The device descriptors themselves */
 const gx_device_pbm gs_pbm_device =
-pbm_prn_device(pbm_procs, "pbm", '1', 0, 1, 1, 1, 0, 0,
+pbm_prn_device(pbm_initialize_device_procs, "pbm", '1', 0, 1, 1, 1, 0, 0,
                X_DPI, Y_DPI, pbm_print_page);
 const gx_device_pbm gs_pbmraw_device =
-pbm_prn_device(pbm_procs, "pbmraw", '4', 1, 1, 1, 1, 1, 0,
+pbm_prn_device(pbm_initialize_device_procs, "pbmraw", '4', 1, 1, 1, 1, 1, 0,
                X_DPI, Y_DPI, pbm_print_page);
 const gx_device_pbm gs_pgm_device =
-pbm_prn_device(pgm_procs, "pgm", '2', 0, 1, 8, 255, 0, 0,
+pbm_prn_device(pgm_initialize_device_procs, "pgm", '2', 0, 1, 8, 255, 0, 0,
                X_DPI, Y_DPI, pgm_print_page);
 const gx_device_pbm gs_pgmraw_device =
-pbm_prn_device(pgm_procs, "pgmraw", '5', 1, 1, 8, 255, 0, 0,
+pbm_prn_device(pgm_initialize_device_procs, "pgmraw", '5', 1, 1, 8, 255, 0, 0,
                X_DPI, Y_DPI, pgm_print_page);
 const gx_device_pbm gs_pgnm_device =
-pbm_prn_device(pgm_procs, "pgnm", '2', 0, 1, 8, 255, 0, 1,
+pbm_prn_device(pgm_initialize_device_procs, "pgnm", '2', 0, 1, 8, 255, 0, 1,
                X_DPI, Y_DPI, pgm_print_page);
 const gx_device_pbm gs_pgnmraw_device =
-pbm_prn_device(pgm_procs, "pgnmraw", '5', 1, 1, 8, 255, 0, 1,
+pbm_prn_device(pgm_initialize_device_procs, "pgnmraw", '5', 1, 1, 8, 255, 0, 1,
                X_DPI, Y_DPI, pgm_print_page);
 const gx_device_pbm gs_ppm_device =
-pbm_prn_device(ppm_procs, "ppm", '3', 0, 3, 24, 255, 255, 0,
+pbm_prn_device(ppm_initialize_device_procs, "ppm", '3', 0, 3, 24, 255, 255, 0,
                X_DPI, Y_DPI, ppm_print_page);
 const gx_device_pbm gs_ppmraw_device =
-pbm_prn_device(ppm_procs, "ppmraw", '6', 1, 3, 24, 255, 255, 0,
+pbm_prn_device(ppm_initialize_device_procs, "ppmraw", '6', 1, 3, 24, 255, 255, 0,
                X_DPI, Y_DPI, ppm_print_page);
 const gx_device_pbm gs_pnm_device =
-pbm_prn_device(pnm_procs, "pnm", '3', 0, 3, 24, 255, 255, 1,
+pbm_prn_device(pnm_initialize_device_procs, "pnm", '3', 0, 3, 24, 255, 255, 1,
                X_DPI, Y_DPI, ppm_print_page);
 const gx_device_pbm gs_pnmraw_device =
-pbm_prn_device(pnm_procs, "pnmraw", '6', 1, 3, 24, 255, 255, 1,
+pbm_prn_device(pnm_initialize_device_procs, "pnmraw", '6', 1, 3, 24, 255, 255, 1,
                X_DPI, Y_DPI, ppm_print_page);
 const gx_device_pbm gs_pkm_device =
-pbm_prn_device(pkm_procs, "pkm", '3', 0, 4, 4, 1, 1, 0,
+pbm_prn_device(pkm_initialize_device_procs, "pkm", '3', 0, 4, 4, 1, 1, 0,
                X_DPI, Y_DPI, pkm_print_page);
 const gx_device_pbm gs_pkmraw_device =
-pbm_prn_device(pkm_procs, "pkmraw", '6', 1, 4, 4, 1, 1, 0,
+pbm_prn_device(pkm_initialize_device_procs, "pkmraw", '6', 1, 4, 4, 1, 1, 0,
                X_DPI, Y_DPI, pkm_print_page);
 const gx_device_pbm gs_pksm_device =
-pbm_prn_device(pkm_procs, "pksm", '1', 0, 4, 4, 1, 1, 0,
+pbm_prn_device(pkm_initialize_device_procs, "pksm", '1', 0, 4, 4, 1, 1, 0,
                X_DPI, Y_DPI, psm_print_page);
 const gx_device_pbm gs_pksmraw_device =
-pbm_prn_device(pkm_procs, "pksmraw", '4', 1, 4, 4, 1, 1, 0,
+pbm_prn_device(pkm_initialize_device_procs, "pksmraw", '4', 1, 4, 4, 1, 1, 0,
                X_DPI, Y_DPI, psm_print_page);
 const gx_device_pbm gs_pamcmyk32_device =
-pbm_prn_device(pam_procs, "pamcmyk32", '7', 1, 4, 32, 255, 255, 0,
+pbm_prn_device(pam32_initialize_device_procs, "pamcmyk32", '7', 1, 4, 32, 255, 255, 0,
                X_DPI, Y_DPI, pam_print_page);
 const gx_device_pbm gs_pnmcmyk_device =
-pbm_prn_device(pnmcmyk_procs, "pnmcmyk", '7', 1, 4, 32, 255, 255, 0, /* optimize false since this relies on GrayDetection */
+pbm_prn_device(pnmcmyk_initialize_device_procs, "pnmcmyk", '7', 1, 4, 32, 255, 255, 0, /* optimize false since this relies on GrayDetection */
                X_DPI, Y_DPI, pnmcmyk_print_page);	/* May output PGM, magic = 5 */
 const gx_device_pbm gs_pamcmyk4_device =
-pbm_prn_device(pam_procs, "pamcmyk4", '7', 1, 4, 4, 1, 1, 0,
+pbm_prn_device(pam4_initialize_device_procs, "pamcmyk4", '7', 1, 4, 4, 1, 1, 0,
                X_DPI, Y_DPI, pam4_print_page);
 /* Also keep the old device name so anyone using it won't be surprised */
 const gx_device_pbm gs_pam_device =
-pbm_prn_device(pam_procs, "pam", '7', 1, 4, 32, 255, 255, 0,
+pbm_prn_device(pam32_initialize_device_procs, "pam", '7', 1, 4, 32, 255, 255, 0,
                X_DPI, Y_DPI, pam_print_page);
 
 /* Plan 9 bitmaps default to 100 dpi. */
 const gx_device_pbm gs_plan9bm_device =
-pbm_prn_device(pbm_procs, "plan9bm", '9', 1, 1, 1, 1, 1, 1,
+pbm_prn_device(pbm_initialize_device_procs, "plan9bm", '9', 1, 1, 1, 1, 1, 1,
                100, 100, pbm_print_page);
 
 /* ------ Initialization ------ */
@@ -253,7 +310,7 @@ ppm_set_dev_procs(gx_device * pdev)
         if (bdev->color_info.depth == 4) {
             set_dev_proc(pdev, map_color_rgb, cmyk_1bit_map_color_rgb);
             set_dev_proc(pdev, map_cmyk_color, cmyk_1bit_map_cmyk_color);
-        } else if (bdev->magic == 7) {
+        } else if (bdev->magic == '7') {
             set_dev_proc(pdev, map_color_rgb, cmyk_8bit_map_color_rgb);
             set_dev_proc(pdev, map_cmyk_color, cmyk_8bit_map_cmyk_color);
         } else {
@@ -279,7 +336,7 @@ ppm_open(gx_device * pdev)
     pdev->log2_align_mod = 6;
 #endif
 
-    code = gdev_prn_open_planar(pdev, bdev->UsePlanarBuffer);
+    code = gdev_prn_open_planar(pdev, bdev->UsePlanarBuffer ? pdev->color_info.num_components : 0);
     while (pdev->child)
         pdev = pdev->child;
 
@@ -327,22 +384,10 @@ ppm_output_page(gx_device * pdev, int num_copies, int flush)
 /* Map an RGB color to a PGM gray value. */
 /* Keep track of whether the image is black-and-white or gray. */
 static gx_color_index
-pgm_map_rgb_color(gx_device * pdev, const gx_color_value cv[])
-{                               /* We round the value rather than truncating it. */
+pgm_encode_color(gx_device * pdev, const gx_color_value cv[])
+{
     gx_color_value gray;
-    /* TO_DO_DEVICEN  - Kludge to emulate pre DeviceN math errors */
-#if 1
-    gx_color_value r, g, b;
-
-    r = cv[0]; g = cv[0]; b = cv[0];
-    gray = ((r * (ulong) lum_red_weight) +
-     (g * (ulong) lum_green_weight) +
-     (b * (ulong) lum_blue_weight) +
-     (lum_all_weights / 2)) / lum_all_weights
-    * pdev->color_info.max_gray / gx_max_color_value;
-#else       /* Should be ... */
     gray = cv[0] * pdev->color_info.max_gray / gx_max_color_value;
-#endif
 
     if (!(gray == 0 || gray == pdev->color_info.max_gray)) {
         gx_device_pbm * const bdev = (gx_device_pbm *)pdev;
@@ -354,15 +399,13 @@ pgm_map_rgb_color(gx_device * pdev, const gx_color_value cv[])
 
 /* Map a PGM gray value back to an RGB color. */
 static int
-pgm_map_color_rgb(gx_device * dev, gx_color_index color,
-                  gx_color_value prgb[3])
+pgm_decode_color(gx_device * dev, gx_color_index color,
+                  gx_color_value *pgray)
 {
     gx_color_value gray =
     color * gx_max_color_value / dev->color_info.max_gray;
 
-    prgb[0] = gray;
-    prgb[1] = gray;
-    prgb[2] = gray;
+    pgray[0] = gray;
     return 0;
 }
 
@@ -394,7 +437,7 @@ gx_old_default_rgb_map_rgb_color(gx_device * dev,
 /* Map an RGB color to a PPM color tuple. */
 /* Keep track of whether the image is black-and-white, gray, or colored. */
 static gx_color_index
-ppm_map_rgb_color(gx_device * pdev, const gx_color_value cv[])
+pnm_encode_color(gx_device * pdev, const gx_color_value cv[])
 {
     gx_device_pbm * const bdev = (gx_device_pbm *)pdev;
     gx_color_index color =
@@ -412,8 +455,8 @@ ppm_map_rgb_color(gx_device * pdev, const gx_color_value cv[])
 
 /* Map a PPM color tuple back to an RGB color. */
 static int
-ppm_map_color_rgb(gx_device * dev, gx_color_index color,
-                  gx_color_value prgb[3])
+ppm_decode_color(gx_device * dev, gx_color_index color,
+                 gx_color_value prgb[])
 {
     uint bitspercolor = dev->color_info.depth / 3;
     uint colormask = (1 << bitspercolor) - 1;

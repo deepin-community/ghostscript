@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -80,6 +80,7 @@ gs_setblackgeneration_remap(gs_gstate * pgs, gs_mapping_proc proc, bool remap)
                       "gs_setblackgeneration");
     pgs->black_generation->proc = proc;
     pgs->black_generation->id = gs_next_ids(pgs->memory, 1);
+    memset(pgs->black_generation->values, 0x00, 256 * sizeof(frac));
     if (remap) {
         load_transfer_map(pgs, pgs->black_generation, 0.0);
         gx_unset_dev_color(pgs);
@@ -110,6 +111,7 @@ gs_setundercolorremoval_remap(gs_gstate * pgs, gs_mapping_proc proc, bool remap)
                       "gs_setundercolorremoval");
     pgs->undercolor_removal->proc = proc;
     pgs->undercolor_removal->id = gs_next_ids(pgs->memory, 1);
+    memset(pgs->undercolor_removal->values, 0x00, 256 * sizeof(frac));
     if (remap) {
         load_transfer_map(pgs, pgs->undercolor_removal, -1.0);
         gx_unset_dev_color(pgs);
@@ -148,6 +150,10 @@ gs_setcolortransfer_remap(gs_gstate * pgs, gs_mapping_proc red_proc,
                       pgs->memory, goto fblue, "gs_setcolortransfer");
     ptran->gray->proc = gray_proc;
     ptran->gray->id = new_ids;
+    memset(ptran->gray->values, 0x00, 256 * sizeof(frac));
+    memset(ptran->red->values, 0x00, 256 * sizeof(frac));
+    memset(ptran->green->values, 0x00, 256 * sizeof(frac));
+    memset(ptran->blue->values, 0x00, 256 * sizeof(frac));
     ptran->red->proc = red_proc;
     ptran->red->id = new_ids + 1;
     ptran->green->proc = green_proc;

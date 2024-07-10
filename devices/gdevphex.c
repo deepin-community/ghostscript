@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -1007,19 +1007,19 @@ static	const HFUNCS	htable[ MAXHTONE ] = {
 *	The definition is based on GS macros, the only real stuff that we
 *	define here are the photoex_ functions.
 */
-static	const gx_device_procs photoex_device_procs = prn_color_params_procs_enc_dec(
+static void
+photoex_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
 
-        photoex_open,					/* Opens the device						*/
-/* Since the print_page doesn't alter the device, this device can print in the background */
-        gdev_prn_bg_output_page,
-        gdev_prn_close,
-        photoex_map_rgb_color,			/* Maps an RGB pixel to device colour	*/
-        photoex_map_color_rgb,			/* Maps device colour back to RGB		*/
-        photoex_get_params,				/* Gets device parameters				*/
-        photoex_put_params,				/* Puts device parameters				*/
-        photoex_encode_color,
-        photoex_decode_color
-);
+    set_dev_proc(dev, open_device, photoex_open);
+    set_dev_proc(dev, map_rgb_color, photoex_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, photoex_map_color_rgb);
+    set_dev_proc(dev, get_params, photoex_get_params);
+    set_dev_proc(dev, put_params, photoex_put_params);
+    set_dev_proc(dev, encode_color, photoex_encode_color);
+    set_dev_proc(dev, decode_color, photoex_decode_color);
+}
 
 /*
 *	Device descriptor structure - this is what GhostScript looks
@@ -1034,7 +1034,7 @@ gx_photoex_device far_data gs_photoex_device = {
         prn_device_body(
 
                 gx_photoex_device,			/* Device struct type					*/
-                photoex_device_procs, 		/* Procedure table						*/
+                photoex_initialize_device_procs, 	/* Initialize proc						*/
                 "photoex",					/* Name of the device					*/
                 DEFAULT_WIDTH_10THS,		/* Default width						*/
                 DEFAULT_HEIGHT_10THS,		/* Default height						*/

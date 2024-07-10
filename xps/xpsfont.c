@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -72,6 +72,8 @@ xps_new_font(xps_context_t *ctx, byte *buf, int buflen, int index)
     font->gsubrs = 0;
     font->subrs = 0;
     font->charstrings = 0;
+    font->names = NULL;
+    font->max_name_index = font->next_name_index = 0;
 
     if (memcmp(font->data, "OTTO", 4) == 0)
         code = xps_init_postscript_font(ctx, font);
@@ -105,6 +107,14 @@ xps_free_font(xps_context_t *ctx, xps_font_t *font)
 {
     if (font == NULL)
         return;
+    if (font->names != NULL) {
+        int i = 0;
+        for (i = 0;i < font->next_name_index; i++)
+            gs_free_object(font->font->memory, font->names[i], "freeing names table");
+        gs_free_object(font->font->memory, font->names, "free names table");
+        font->names = NULL;
+        font->max_name_index = font->next_name_index = 0;
+    }
     if (font->font)
     {
         gs_font_finalize(ctx->memory, font->font);
@@ -132,22 +142,44 @@ xps_find_sfnt_table(xps_font_t *font, const char *name, int *lengthp)
     if (!memcmp(font->data, "ttcf", 4))
     {
         int nfonts = u32(font->data + 8);
+
+        /* check if the buffer contains enough data to contain nfonts subfonts */
+        int min_len = 12 + nfonts * 4;
+        if (min_len < 0 || font->length < min_len)
+        {
+            gs_warn("font data length too small");
+            return -1;
+        }
+
         if (font->subfontid < 0 || font->subfontid >= nfonts)
         {
             gs_warn("Invalid subfont ID");
             return -1;
         }
         offset = u32(font->data + 12 + font->subfontid * 4);
+        if (offset < 0)
+        {
+            gs_warn("subfont table offset negative");
+            return -1;
+        }
     }
     else
     {
         offset = 0;
     }
 
-    ntables = u16(font->data + offset + 4);
-    if (font->length < offset + 12 + ntables * 16)
+    if (font->length < offset + 6)
+    {
+        gs_warn("subfont length insufficient for ntables read");
         return -1;
 
+    }
+    ntables = u16(font->data + offset + 4);
+    if (font->length < offset + 12 + ntables * 16)
+    {
+        gs_warn("subfont length insufficient for entry reads");
+        return -1;
+    }
     for (i = 0; i < ntables; i++)
     {
         byte *entry = font->data + offset + 12 + i * 16;

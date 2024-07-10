@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -38,9 +38,6 @@
   void proc(frac, frac, frac, frac, gx_device_color *,\
             const gs_gstate *, gx_device *, gs_color_select_t,\
             const gs_color_space *)
-#define cmap_proc_rgb_alpha(proc)\
-  void proc(frac, frac, frac, frac, gx_device_color *,\
-               const gs_gstate *, gx_device *, gs_color_select_t)
 #define cmap_proc_separation(proc)\
   void proc(frac, gx_device_color *, const gs_gstate *,\
                gx_device *, gs_color_select_t, const gs_color_space *)
@@ -55,17 +52,17 @@
  * device color model. Any unused component will be mapped to 0.
  */
 #define cm_map_proc_gray(proc) \
-    void proc (gx_device * dev, frac gray, \
+    void proc (const gx_device * dev, frac gray, \
               frac * out)
 
 #define cm_map_proc_rgb(proc) \
-    void proc (gx_device * dev, \
+    void proc (const gx_device * dev, \
               const gs_gstate *pgs, \
               frac r, frac g, frac b, \
               frac * out)
 
 #define cm_map_proc_cmyk(proc) \
-    void proc (gx_device * dev, \
+    void proc (const gx_device * dev, \
               frac c, frac m, frac y, frac k, \
               frac * out)
 
@@ -110,7 +107,6 @@ struct gx_color_map_procs_s {
     cmap_proc_gray((*map_gray));
     cmap_proc_rgb((*map_rgb));
     cmap_proc_cmyk((*map_cmyk));
-    cmap_proc_rgb_alpha((*map_rgb_alpha));
     cmap_proc_separation((*map_separation));
     cmap_proc_devicen((*map_devicen));
     cmap_proc_is_halftoned((*is_halftoned));
@@ -142,8 +138,6 @@ void gx_set_cmap_procs(gs_gstate *, const gx_device *);
   ((pgs)->cmap_procs->map_rgb)(cr, cg, cb, pdc, pgs, dev, select)
 #define gx_remap_concrete_cmyk(cc, cm, cy, ck, pdc, pgs, dev, select, pcs)\
   ((pgs)->cmap_procs->map_cmyk)(cc, cm, cy, ck, pdc, pgs, dev, select, pcs)
-#define gx_remap_concrete_rgb_alpha(cr, cg, cb, ca, pdc, pgs, dev, select)\
-  ((pgs)->cmap_procs->map_rgb_alpha)(cr, cg, cb, ca, pdc, pgs, dev, select)
 #define gx_remap_concrete_separation(pcc, pdc, pgs, dev, select, pcs)\
   ((pgs)->cmap_procs->map_separation)(pcc, pdc, pgs, dev, select, pcs)
 #define gx_remap_concrete_devicen(pcc, pdc, pgs, dev, select, pcs)\
@@ -158,7 +152,7 @@ void gx_set_cmap_procs(gs_gstate *, const gx_device *);
   color model.
  */
 #define dev_t_proc_get_color_mapping_procs(proc, dev_t) \
-    const gx_cm_color_map_procs * (proc)(const dev_t * dev)
+    const gx_cm_color_map_procs * (proc)(const dev_t * dev, const gx_device **)
 
 #define dev_proc_get_color_mapping_procs(proc) \
     dev_t_proc_get_color_mapping_procs(proc, gx_device)
@@ -262,8 +256,6 @@ frac gx_unit_frac(float fvalue);
    images */
 bool gx_device_uses_std_cmap_procs(gx_device * dev,
                                    const gs_gstate * pgs);
-bool fwd_uses_fwd_cmap_procs(gx_device * dev);
-const gx_cm_color_map_procs* fwd_get_target_cmap_procs(gx_device * dev);
 void cmap_transfer_halftone(gx_color_value *pconc, gx_device_color * pdc,
      const gs_gstate * pgs, gx_device * dev, bool has_transfer,
      bool has_halftone, gs_color_select_t select);
@@ -289,5 +281,9 @@ struct gx_cmapper_s {
 void gx_get_cmapper(gx_cmapper_t *cmapper, const gs_gstate *pgs,
                     gx_device *dev, bool has_transfer, bool has_halftone,
                     gs_color_select_t select);
+
+/* Return the dev_ht[] selected by the pgs->device->graphics_tag	*/
+/* or the  pgs->dev_ht[HT_OBJTYPE_DEFAULT]				*/
+gx_device_halftone *gx_select_dev_ht(const gs_gstate *pgs);
 
 #endif /* gxcmap_INCLUDED */

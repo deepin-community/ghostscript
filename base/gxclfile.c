@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -234,7 +234,7 @@ typedef struct
 static void
 file_to_fake_path(clist_file_ptr file, char fname[gp_file_name_sizeof])
 {
-    gs_sprintf(fname, ENC_FILE_STR, file);
+    gs_snprintf(fname, gp_file_name_sizeof, ENC_FILE_STR, file);
 }
 
 static clist_file_ptr
@@ -532,7 +532,10 @@ clist_fseek(clist_file_ptr cf, int64_t offset, int mode, const char *ignore_fnam
         res = gp_fseek(ifile->f, offset, mode);
     }
     /* NB: if gp_can_share_fdesc, we don't actually seek */
-    if (res >= 0) {
+    /* The following lgtm tag is required because on some platforms
+     * !gp_can_share_fdesc() is always true, so the value of res is
+     * known. On other platforms though, this is NOT true. */
+    if (res >= 0) { /* lgtm [cpp/constant-comparison] */
         /* Update the ifile->pos */
         switch (mode) {
             case SEEK_SET:
@@ -566,9 +569,10 @@ init_proc(gs_gxclfile_init);
 int
 gs_gxclfile_init(gs_memory_t *mem)
 {
+    gs_lib_ctx_core_t *core = mem->gs_lib_ctx->core;
 #ifdef PACIFY_VALGRIND
-    VALGRIND_HG_DISABLE_CHECKING(&clist_io_procs_file_global, sizeof(clist_io_procs_file_global));
+    VALGRIND_HG_DISABLE_CHECKING(&core->clist_io_procs_file, sizeof(core->clist_io_procs_file));
 #endif
-    clist_io_procs_file_global = &clist_io_procs_file;
+    core->clist_io_procs_file = &clist_io_procs_file;
     return 0;
 }

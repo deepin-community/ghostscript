@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -85,5 +85,6 @@ gs_glyph zfont_encode_char(gs_font *pfont, gs_char chr, gs_glyph_space_t ignored
 int gs_font_map_glyph_to_unicode(gs_font *font, gs_glyph glyph, int ch, unsigned short *unicode_return, unsigned int length);
 const ref *zfont_get_to_unicode_map(gs_font_dir *dir);
 void get_GlyphNames2Unicode(i_ctx_t *i_ctx_p, gs_font *pfont, ref *pdref);
+void get_zfont_glyph_name(int (**proc)(gs_font *font, gs_glyph glyph, gs_const_string *pstr) );
 
 #endif /* bfont_INCLUDED */

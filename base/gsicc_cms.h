@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -41,7 +41,7 @@ int gsicc_mcm_begin_monitor(gsicc_link_cache_t *cache, gx_device *dev);
 gsicc_link_t* gsicc_rcm_get_link(const gs_gstate *pgs, gx_device *dev,
                                  gsicc_colorbuffer_t data_cs);
 gsicc_link_t* gsicc_nocm_get_link(const gs_gstate *pgs, gx_device *dev,
-                                  gs_color_space_index src_index );
+                                  int num_input );
 gcmmhprofile_t gscms_get_profile_handle_mem(unsigned char *buffer,
                                             unsigned int input_size,
                                             gs_memory_t *mem);
@@ -62,6 +62,8 @@ gsicc_colorbuffer_t gscms_get_profile_data_space(gcmmhprofile_t profile,
                                                  gs_memory_t *memory);
 int gscms_transform_color(gx_device *dev, gsicc_link_t *icclink, void *inputcolor,
                           void *outputcolor, int num_bytes);
+int gscms_transform_color_const(const gx_device *dev, gsicc_link_t *icclink, void *inputcolor,
+                          void *outputcolor, int num_bytes);
 gcmmhlink_t gscms_get_link(gcmmhprofile_t lcms_srchandle,
                            gcmmhprofile_t lcms_deshandle,
                            gsicc_rendering_param_t *rendering_params,
@@ -74,8 +76,8 @@ gcmmhlink_t gscms_get_link_proof_devlink(gcmmhprofile_t lcms_srchandle,
                                          gsicc_rendering_param_t *rendering_params,
                                          bool src_dev_link, int cmm_flags,
                                          gs_memory_t *memory);
-int gscms_create(gs_memory_t *memory);
-void gscms_destroy(gs_memory_t *memory);
+void *gscms_create(gs_memory_t *memory);
+void gscms_destroy(void *);
 void gscms_release_link(gsicc_link_t *icclink);
 void gscms_release_profile(void *profile, gs_memory_t *memory);
 int gscms_transform_named_color(gsicc_link_t *icclink,  float tint_value,

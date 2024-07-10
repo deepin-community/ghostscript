@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /*
@@ -24,7 +24,8 @@
 /* The device descriptor */
 static dev_proc_print_page(m8510_print_page);
 const gx_device_printer far_data gs_m8510_device =
-        prn_device(prn_bg_procs, "m8510",	/* The print_page proc is compatible with allowing bg printing */
+        /* The print_page proc is compatible with allowing bg printing */
+        prn_device(gdev_prn_initialize_device_procs_mono_bg, "m8510",
                 85,				/* width_10ths, 8.5" */
                 110,				/* height_10ths, 11" */
                 160,				/* x_dpi */
@@ -133,7 +134,7 @@ m8510_output_run(gx_device_printer *pdev,
         /* Transfer the line of data. */
         count = out_end - out;
         if (count > 0) {
-                gs_sprintf(tmp, "\033g%03d", count/8);
+                gs_snprintf(tmp, sizeof(tmp), "\033g%03d", count/8);
                 gp_fwrite(tmp, 1, 5, prn_stream);
                 gp_fwrite(out, 1, count, prn_stream);
                 gp_fwrite("\r", 1, 1, prn_stream);

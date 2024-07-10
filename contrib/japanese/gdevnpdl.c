@@ -118,12 +118,19 @@ static dev_proc_print_page_copies(npdl_print_page_copies);
 static dev_proc_put_params(npdl_put_params);
 static dev_proc_image_out(npdl_image_out);
 
-static gx_device_procs npdl_prn_procs =
-prn_params_procs(npdl_open, gdev_prn_output_page, npdl_close,
-                 lprn_get_params, npdl_put_params);
+static void
+npdl_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
+
+    set_dev_proc(dev, open_device, npdl_open);
+    set_dev_proc(dev, close_device, npdl_close);
+    set_dev_proc(dev, get_params, lprn_get_params);
+    set_dev_proc(dev, put_params, npdl_put_params);
+}
 
 gx_device_lprn far_data gs_npdl_device =
-lprn_duplex_device(gx_device_lprn, npdl_prn_procs, "npdl",
+lprn_duplex_device(gx_device_lprn, npdl_initialize_device_procs, "npdl",
             X_DPI, Y_DPI,	/* default resolution */
             0.0, 0.0, 0.0, 0.0,	/* margins */
             1, npdl_print_page_copies, npdl_image_out);
@@ -593,31 +600,32 @@ npdl_print_page_copies(gx_device_printer * pdev, gp_file * prn_stream, int num_c
         /* Check paper size */
         switch (npdl_get_paper_size((gx_device *) pdev)) {
             case PAPER_SIZE_POSTCARD:
-                gs_sprintf(paper_command, "PC");
+                gs_snprintf(paper_command, sizeof(paper_command), "PC");
                 break;
             case PAPER_SIZE_A5:
-                gs_sprintf(paper_command, "A5");
+                gs_snprintf(paper_command, sizeof(paper_command), "A5");
                 break;
+            default:
             case PAPER_SIZE_A4:
-                gs_sprintf(paper_command, "A4");
+                gs_snprintf(paper_command, sizeof(paper_command), "A4");
                 break;
             case PAPER_SIZE_A3:
-                gs_sprintf(paper_command, "A3");
+                gs_snprintf(paper_command, sizeof(paper_command), "A3");
                 break;
             case PAPER_SIZE_B5:
-                gs_sprintf(paper_command, "B5");
+                gs_snprintf(paper_command, sizeof(paper_command), "B5");
                 break;
             case PAPER_SIZE_B4:
-                gs_sprintf(paper_command, "B4");
+                gs_snprintf(paper_command, sizeof(paper_command), "B4");
                 break;
             case PAPER_SIZE_LETTER:
-                gs_sprintf(paper_command, "LT");
+                gs_snprintf(paper_command, sizeof(paper_command), "LT");
                 break;
             case PAPER_SIZE_ENV4:
-                gs_sprintf(paper_command, "ENV4");
+                gs_snprintf(paper_command, sizeof(paper_command), "ENV4");
                 break;
             case PAPER_SIZE_BPOSTCARD:
-                gs_sprintf(paper_command, "UPPC");
+                gs_snprintf(paper_command, sizeof(paper_command), "UPPC");
                 break;
         }
 

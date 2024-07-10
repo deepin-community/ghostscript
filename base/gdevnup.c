@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Device to implement N-up printing */
@@ -86,92 +86,30 @@ static dev_proc_dev_spec_op(nup_dev_spec_op);
 #define MAX_COORD (max_int_in_fixed - 1000)
 #define MAX_RESOLUTION 4000
 
+static void
+nup_initialize_device_procs(gx_device *dev)
+{
+    default_subclass_initialize_device_procs(dev);
+
+    set_dev_proc(dev, get_initial_matrix, nup_get_initial_matrix);
+    set_dev_proc(dev, output_page, nup_output_page);
+    set_dev_proc(dev, close_device, nup_close_device);
+    set_dev_proc(dev, put_params, nup_put_params); /* to catch PageSize changes */
+    set_dev_proc(dev, fillpage, nup_fillpage);
+    set_dev_proc(dev, dev_spec_op, nup_dev_spec_op);
+}
+
 const
 gx_device_nup gs_nup_device =
 {
     /*
      * Define the device as 8-bit gray scale to avoid computing halftones.
      */
-    std_device_dci_type_body(gx_device_nup, 0, "N-up", &st_nup_device,
+    std_device_dci_type_body_sc(gx_device_nup, nup_initialize_device_procs,
+                        "N-up", &st_nup_device,
                         MAX_COORD, MAX_COORD,
                         MAX_RESOLUTION, MAX_RESOLUTION,
-                        1, 8, 255, 0, 256, 1),
-    {default_subclass_open_device,
-     nup_get_initial_matrix,
-     default_subclass_sync_output,			/* sync_output */
-     nup_output_page,
-     nup_close_device,
-     default_subclass_map_rgb_color,
-     default_subclass_map_color_rgb,
-     default_subclass_fill_rectangle,
-     default_subclass_tile_rectangle,			/* tile_rectangle */
-     default_subclass_copy_mono,
-     default_subclass_copy_color,
-     default_subclass_draw_line,			/* draw_line */
-     default_subclass_get_bits,				/* get_bits */
-     default_subclass_get_params,
-     nup_put_params,					/* to catch PageSize changes */
-     default_subclass_map_cmyk_color,
-     default_subclass_get_xfont_procs,			/* get_xfont_procs */
-     default_subclass_get_xfont_device,			/* get_xfont_device */
-     default_subclass_map_rgb_alpha_color,
-     default_subclass_get_page_device,
-     default_subclass_get_alpha_bits,			/* get_alpha_bits */
-     default_subclass_copy_alpha,
-     default_subclass_get_band,				/* get_band */
-     default_subclass_copy_rop,				/* copy_rop */
-     default_subclass_fill_path,
-     default_subclass_stroke_path,
-     default_subclass_fill_mask,
-     default_subclass_fill_trapezoid,
-     default_subclass_fill_parallelogram,
-     default_subclass_fill_triangle,
-     default_subclass_draw_thin_line,
-     default_subclass_begin_image,
-     default_subclass_image_data,			/* image_data */
-     default_subclass_end_image,			/* end_image */
-     default_subclass_strip_tile_rectangle,
-     default_subclass_strip_copy_rop,
-     default_subclass_get_clipping_box,			/* get_clipping_box */
-     default_subclass_begin_typed_image,
-     default_subclass_get_bits_rectangle,		/* get_bits_rectangle */
-     default_subclass_map_color_rgb_alpha,
-     default_subclass_create_compositor,
-     default_subclass_get_hardware_params,		/* get_hardware_params */
-     default_subclass_text_begin,
-     default_subclass_finish_copydevice,		/* finish_copydevice */
-     default_subclass_begin_transparency_group,		/* begin_transparency_group */
-     default_subclass_end_transparency_group,		/* end_transparency_group */
-     default_subclass_begin_transparency_mask,		/* begin_transparency_mask */
-     default_subclass_end_transparency_mask,		/* end_transparency_mask */
-     default_subclass_discard_transparency_layer,	/* discard_transparency_layer */
-     default_subclass_get_color_mapping_procs,		/* get_color_mapping_procs */
-     default_subclass_get_color_comp_index,		/* get_color_comp_index */
-     default_subclass_encode_color,			/* encode_color */
-     default_subclass_decode_color,			/* decode_color */
-     default_subclass_pattern_manage,			/* pattern_manage */
-     default_subclass_fill_rectangle_hl_color,		/* fill_rectangle_hl_color */
-     default_subclass_include_color_space,		/* include_color_space */
-     default_subclass_fill_linear_color_scanline,	/* fill_linear_color_scanline */
-     default_subclass_fill_linear_color_trapezoid,	/* fill_linear_color_trapezoid */
-     default_subclass_fill_linear_color_triangle,	/* fill_linear_color_triangle */
-     default_subclass_update_spot_equivalent_colors,	/* update_spot_equivalent_colors */
-     default_subclass_ret_devn_params,			/* ret_devn_params */
-     nup_fillpage,					/* fillpage */
-     default_subclass_push_transparency_state,		/* push_transparency_state */
-     default_subclass_pop_transparency_state,		/* pop_transparency_state */
-     default_subclass_put_image,			/* put_image */
-     nup_dev_spec_op,                      		/* for GetParam of PdfmarkCapable */
-     default_subclass_copy_planes,                      /* copy_planes */
-     default_subclass_get_profile,                      /* get_profile */
-     default_subclass_set_graphics_type_tag,		/* set_graphics_type_tag */
-     default_subclass_strip_copy_rop2,
-     default_subclass_strip_tile_rect_devn,
-     default_subclass_copy_alpha_hl_color,
-     default_subclass_process_page,
-     default_subclass_transform_pixel_region,
-     default_subclass_fill_stroke_path,
-    }
+                        1, 8, 255, 0, 256, 1, NULL, NULL, NULL)
 };
 
 #undef MAX_COORD
@@ -291,7 +229,7 @@ nup_set_children_MediaSize(gx_device *dev, float PageW, float PageH)
 }
 
 static int
-nup_flush_nest_to_output(gx_device *dev, Nup_device_subclass_data *pNup_data, bool flush)
+nup_flush_nest_to_output(gx_device *dev, Nup_device_subclass_data *pNup_data)
 {
     int code = 0;
 
@@ -315,7 +253,7 @@ nup_close_device(gx_device *dev)
         return code;
 
     if (pNup_data->PageCount > 0)
-        acode = nup_flush_nest_to_output(dev, pNup_data, true);
+        acode = nup_flush_nest_to_output(dev, pNup_data);
 
     /* Reset the Nup control data */
     /* NB: the data will be freed from non_gc_memory by the finalize function */
@@ -327,34 +265,6 @@ nup_close_device(gx_device *dev)
     return min(code, acode);
 }
 
-    /*
-     * Template:
-     *   BEGIN_ARRAY_PARAM(param_read_xxx_array, "pname", pxxa, size, pxxe) {
-     *     ... check value if desired ...
-     *     if (success)
-     *       break;
-     *     ... set ecode ...
-     *   } END_ARRAY_PARAM(pxxa, pxxe);
-     */
-
-#define BEGIN_ARRAY_PARAM(pread, pname, pa, psize, e)\
-    BEGIN\
-    switch (code = pread(plist, (param_name = pname), &(pa))) {\
-      case 0:\
-        if ((pa).size != psize) {\
-          ecode = gs_note_error(gs_error_rangecheck);\
-          (pa).data = 0;	/* mark as not filled */\
-        } else
-#define END_ARRAY_PARAM(pa, e)\
-        goto e;\
-      default:\
-        ecode = code;\
-e:	param_signal_error(plist, param_name, ecode);\
-      case 1:\
-        (pa).data = 0;		/* mark as not filled */\
-    }\
-    END
-
 /* Read .MediaSize or, if supported as a synonym, PageSize. */
 static int
 param_MediaSize(gs_param_list * plist, gs_param_name pname,
@@ -364,26 +274,176 @@ param_MediaSize(gs_param_list * plist, gs_param_name pname,
     int ecode = 0;
     int code;
 
-    BEGIN_ARRAY_PARAM(param_read_float_array, pname, *pa, 2, mse) {
-        float width_new = pa->data[0] * res[0] / 72;
-        float height_new = pa->data[1] * res[1] / 72;
+    switch (code = param_read_float_array(plist, (param_name = pname), pa)) {
+    case 0:
+        if (pa->size != 2) {
+          ecode = gs_note_error(gs_error_rangecheck);
+          pa->data = 0;	/* mark as not filled */
+        } else {
+            float width_new = pa->data[0] * res[0] / 72;
+            float height_new = pa->data[1] * res[1] / 72;
 
-        if (width_new < 0 || height_new < 0)
-            ecode = gs_note_error(gs_error_rangecheck);
+            if (width_new < 0 || height_new < 0)
+                ecode = gs_note_error(gs_error_rangecheck);
 #define max_coord (max_fixed / fixed_1)
 #if max_coord < max_int
-        else if (width_new > (long)max_coord || height_new > (long)max_coord)
-            ecode = gs_note_error(gs_error_limitcheck);
+            else if (width_new > (long)max_coord || height_new > (long)max_coord)
+                ecode = gs_note_error(gs_error_limitcheck);
 #endif
 #undef max_coord
-        else
-            break;
-    } END_ARRAY_PARAM(*pa, mse);
+            else
+                break;
+        }
+        goto err;
+    default:
+        ecode = code;
+err:	param_signal_error(plist, param_name, ecode);
+        /* fall through */
+    case 1:
+        pa->data = 0;		/* mark as not filled */
+    }
     return ecode;
 }
 
+/* Horrible hacked version of param_list_copy from gsparamx.c.
+ * Copy one parameter list to another, recursively if necessary,
+ * rewriting PageUsesTransparency to be true if it occurs. */
 static int
-nup_put_params(gx_device *dev, gs_param_list * plist)
+copy_and_modify_sub(gs_param_list *plto, gs_param_list *plfrom, int *present)
+{
+    gs_param_enumerator_t key_enum;
+    gs_param_key_t key;
+    bool copy_persists;
+    int code;
+
+    if (present)
+        *present = 0;
+    if (plfrom == NULL)
+        return 0;
+
+    /* If plfrom and plto use different allocators, we must copy
+     * aggregate values even if they are "persistent". */
+    copy_persists = plto->memory == plfrom->memory;
+
+    param_init_enumerator(&key_enum);
+    while ((code = param_get_next_key(plfrom, &key_enum, &key)) == 0) {
+        char string_key[256];	/* big enough for any reasonable key */
+        gs_param_typed_value value;
+        gs_param_collection_type_t coll_type;
+        gs_param_typed_value copy;
+
+        if (key.size > sizeof(string_key) - 1) {
+            code = gs_note_error(gs_error_rangecheck);
+            break;
+        }
+        memcpy(string_key, key.data, key.size);
+        string_key[key.size] = 0;
+        if ((code = param_read_typed(plfrom, string_key, &value)) != 0) {
+            code = (code > 0 ? gs_note_error(gs_error_unknownerror) : code);
+            break;
+        }
+        /* We used to use 'key.persistent' to determine whether we needed to copy the
+         * key (by setting persistent_keys in the param list to false), but that isn't
+         * correct! We are going to use the heap buffer 'string_key', not the original
+         * key, and since that's on the heap it is NOT persistent....
+         */
+        gs_param_list_set_persistent_keys(plto, false);
+        switch (value.type) {
+        case gs_param_type_dict:
+            coll_type = gs_param_collection_dict_any;
+            goto cc;
+        case gs_param_type_dict_int_keys:
+            coll_type = gs_param_collection_dict_int_keys;
+            goto cc;
+        case gs_param_type_array:
+            coll_type = gs_param_collection_array;
+        cc:
+            copy.value.d.size = value.value.d.size;
+            if (copy.value.d.size == 0)
+                break;
+            if ((code = param_begin_write_collection(plto, string_key,
+                                                     &copy.value.d,
+                                                     coll_type)) < 0 ||
+                (code = copy_and_modify_sub(copy.value.d.list,
+                                            value.value.d.list,
+                                            NULL)) < 0 ||
+                (code = param_end_write_collection(plto, string_key,
+                                                   &copy.value.d)) < 0)
+                break;
+            code = param_end_read_collection(plfrom, string_key,
+                                             &value.value.d);
+            break;
+        case gs_param_type_bool:
+            if (strcmp(string_key, "PageUsesTransparency") == 0 && present != NULL)
+            {
+                value.value.b = 1;
+                *present = 1;
+            }
+            goto ca;
+        case gs_param_type_string:
+            value.value.s.persistent &= copy_persists; goto ca;
+        case gs_param_type_name:
+            value.value.n.persistent &= copy_persists; goto ca;
+        case gs_param_type_int_array:
+            value.value.ia.persistent &= copy_persists; goto ca;
+        case gs_param_type_float_array:
+            value.value.fa.persistent &= copy_persists; goto ca;
+        case gs_param_type_string_array:
+            value.value.sa.persistent &= copy_persists;
+            /* fall through */
+        ca:
+        default:
+            code = param_write_typed(plto, string_key, &value);
+        }
+        if (code < 0)
+            break;
+    }
+    return code;
+}
+
+static int
+param_list_copy_and_modify(gs_param_list *plto, gs_param_list *plfrom)
+{
+    int found_put;
+    int code = copy_and_modify_sub(plto, plfrom, &found_put);
+
+    if (code >= 0 && !found_put) {
+        gs_param_typed_value value;
+        value.type = gs_param_type_bool;
+        value.value.b = 1;
+        code = param_write_typed(plto, "PageUsesTransparency", &value);
+    }
+
+    return code;
+}
+
+static int
+promote_errors(gs_param_list * plist_orig, gs_param_list * plist)
+{
+    gs_param_enumerator_t key_enum;
+    gs_param_key_t key;
+    int code;
+    int error;
+
+    param_init_enumerator(&key_enum);
+    while ((code = param_get_next_key(plist_orig, &key_enum, &key)) == 0) {
+        char string_key[256];	/* big enough for any reasonable key */
+
+        if (key.size > sizeof(string_key) - 1) {
+            code = gs_note_error(gs_error_rangecheck);
+            break;
+        }
+        memcpy(string_key, key.data, key.size);
+        string_key[key.size] = 0;
+        error = param_read_signalled_error(plist, string_key);
+        param_signal_error(plist_orig, string_key, error);
+    }
+
+    return code;
+}
+
+static int
+nup_put_params(gx_device *dev, gs_param_list * plist_orig)
 {
     int code, ecode = 0;
     gs_param_float_array msa;
@@ -392,10 +452,28 @@ nup_put_params(gx_device *dev, gs_param_list * plist)
     gs_param_string nuplist;
     Nup_device_subclass_data* pNup_data = dev->subclass_data;
     gx_device *next_dev;
+    gs_c_param_list *plist_c;
+    gs_param_list *plist;
 
 #if 0000
-gs_param_list_dump(plist);
+gs_param_list_dump(plist_orig);
 #endif
+
+    plist_c = gs_c_param_list_alloc(dev->memory->non_gc_memory, "nup_put_params");
+    plist = (gs_param_list *)plist_c;
+    if (plist == NULL)
+        return_error(gs_error_VMerror);
+    gs_c_param_list_write(plist_c, dev->memory->non_gc_memory);
+    gs_param_list_set_persistent_keys((gs_param_list *)plist_c, false);
+
+    /* Bulk copy the whole list. Can't enumerate and copy without it
+     * becoming an absolute nightmare due to the stupid way we handle
+     * 'collection' objects on writing. */
+    code = param_list_copy_and_modify((gs_param_list *)plist_c, plist_orig);
+    if (code < 0)
+        goto fail;
+
+    gs_c_param_list_read(plist_c);
 
     code = param_read_string(plist, "NupControl", &nuplist);
     if (code < 0)
@@ -406,7 +484,7 @@ gs_param_list_dump(plist);
             (strncmp(dev->NupControl->nupcontrol_str, (const char *)nuplist.data, nuplist.size) != 0))) {
             /* If we have accumulated a nest when the NupControl changes, flush the nest */
             if (pNup_data->PagesPerNest > 1 && pNup_data->PageCount > 0)
-                code = nup_flush_nest_to_output(dev, pNup_data, true);
+                code = nup_flush_nest_to_output(dev, pNup_data);
             if (code < 0)
                 ecode = code;
             /* There was a NupControl, but this one is different -- no longer use the old one */
@@ -416,15 +494,18 @@ gs_param_list_dump(plist);
         if (dev->NupControl == NULL && nuplist.size > 0) {
             dev->NupControl = (gdev_nupcontrol *)gs_alloc_bytes(dev->memory->non_gc_memory,
                                                               sizeof(gdev_nupcontrol), "structure to hold nupcontrol_str");
-            if (dev->NupControl == NULL)
-                return gs_note_error(gs_error_VMerror);
+            if (dev->NupControl == NULL) {
+                code = gs_note_error(gs_error_VMerror);
+                goto fail;
+            }
             dev->NupControl->nupcontrol_str = (void *)gs_alloc_bytes(dev->memory->non_gc_memory,
                                                                      nuplist.size + 1, "nupcontrol string");
             if (dev->NupControl->nupcontrol_str == NULL){
                 gs_free(dev->memory->non_gc_memory, dev->NupControl, 1, sizeof(gdev_nupcontrol),
                         "free structure to hold nupcontrol string");
                 dev->NupControl = 0;
-                return gs_note_error(gs_error_VMerror);
+                code = gs_note_error(gs_error_VMerror);
+                goto fail;
             }
             memset(dev->NupControl->nupcontrol_str, 0x00, nuplist.size + 1);
             memcpy(dev->NupControl->nupcontrol_str, nuplist.data, nuplist.size);
@@ -446,17 +527,21 @@ gs_param_list_dump(plist);
             rc_increment(next_dev->NupControl);
             next_dev = next_dev->parent;
         }
-        if (ecode < 0)
-            return ecode;
+        if (ecode < 0) {
+            code = ecode;
+            goto fail;
+        }
     }
 
     code = ParseNupControl(dev, pNup_data);		/* update the nesting params */
     if (code < 0)
-        return code;
+        goto fail;
 
     /* If nesting is now off, just pass params on to children devices */
-    if (pNup_data->PagesPerNest == 1)
-        return default_subclass_put_params(dev, plist);
+    if (pNup_data->PagesPerNest == 1) {
+        code = default_subclass_put_params(dev, plist);
+        goto fail; /* Not actually failing! */
+    }
 
     /* .MediaSize takes precedence over PageSize, so we read PageSize first. */
     code = param_MediaSize(plist, "PageSize", res, &msa);
@@ -468,34 +553,48 @@ gs_param_list_dump(plist);
     code = param_MediaSize(plist, ".MediaSize", res, &msa);
     if (code < 0)
         ecode = code;
-    else if (msa.data == 0)
+    else if (msa.data == NULL)
         msa.data = data;
-    if (ecode < 0)
-        return ecode;
+    if (ecode < 0) {
+        code = ecode;
+        goto fail;
+    }
 
     /* If there was PageSize or .MediaSize, update the NestedPage size */
-    if (msa.data != 0) {
+    if (msa.data != NULL) {
         Nup_device_subclass_data *pNup_data = dev->subclass_data;
-
-        /* FIXME: Handle changing size (if previous value was non-zero) */
-        if (msa.data[0] != pNup_data->NestedPageW || msa.data[1] != pNup_data->NestedPageH) {
+        /* Use the PostScript tolerance for PageSize "match" of 5 points */
+        if (abs(pNup_data->NestedPageW - msa.data[0]) > 5 ||
+            abs(pNup_data->NestedPageH - msa.data[1]) > 5) {
             /* If needed, flush previous nest before changing */
             if (pNup_data->PageCount > 0 && pNup_data->PagesPerNest > 1) {
-                code = nup_flush_nest_to_output(dev, pNup_data, true);
+                code = nup_flush_nest_to_output(dev, pNup_data);
                 if (code < 0)
-                    return code;
+                    goto fail;
             }
             pNup_data->NestedPageW = msa.data[0];
             pNup_data->NestedPageH = msa.data[1];
             /* And update the Nup parameters based on the updated PageSize */
             code = ParseNupControl(dev, pNup_data);
             if (code < 0)
-                return code;
+                goto fail;
         }
     }
 
     /* now that we've intercepted PageSize and/or MediaSize, pass the rest along */
     code = default_subclass_put_params(dev, plist);
+
+    /* Now promote errors from the copied list to the original list. */
+    {
+        int ecode = promote_errors(plist_orig, plist);
+        if (code == 0)
+            code = ecode;
+    }
+
+fail:
+    gs_c_param_list_release(plist_c);
+    gs_free_object(dev->memory->non_gc_memory, plist_c, "nup_put_params");
+
     return code;
 }
 
@@ -519,11 +618,19 @@ nup_output_page(gx_device *dev, int num_copies, int flush)
     }
 
     /* FIXME: Handle num_copies > 1 */
+
+    /* pNup_data holds the number of 'sub pages' we have produced,
+     * so update that. dev->PageCount holds the number of 'actual'
+     * pages we've output, so only increment that if we really
+     * do an output. */
     pNup_data->PageCount++;
-    dev->PageCount++;
     dev->ShowpageCount = dev->child->ShowpageCount;
-    if (pNup_data->PageCount >= pNup_data->PagesPerNest)
-        code = nup_flush_nest_to_output(dev, pNup_data, flush);
+    if (pNup_data->PageCount >= pNup_data->PagesPerNest) {
+        code = nup_flush_nest_to_output(dev, pNup_data);
+        /* Increment this afterwards, in case the child accesses
+         * the value to fill in a %d in the filename. */
+        dev->PageCount++;
+    }
 
     return code;
 }
@@ -584,10 +691,60 @@ nup_dev_spec_op(gx_device *dev, int dev_spec_op, void *data, int size)
                 if (strcmp(request->Param, "PdfmarkCapable") == 0) {
                     return(param_write_bool(request->list, "PdfmarkCapable", &code));
                 }
+
+                /* The parameter above is a legacy special op used only by the old PostScript-based
+                 * interpreter. By claiming that the device is not capable of pdfmarks this disables
+                 * ALL pdfmarks with the pdfwrite device which means that many features go missing
+                 * including all annotations (eg Link, Stamp, Text, FreeText etc). which is not
+                 * ideal. The new PDF interpreter written in C has finer grained control and uses
+                 * these two parameters to disable CropBox (and other Boxes) being written with a
+                 * pdfmark, and disables Outlines and Dests if the page order is not preserved.
+                 * We may need more of these later.
+                 */
+                code = true;
+                if (strcmp(request->Param, "ModifiesPageSize") == 0) {
+                    return(param_write_bool(request->list, "ModifiesPageSize", &code));
+                }
+                if (strcmp(request->Param, "ModifiesPageOrder") == 0) {
+                    return(param_write_bool(request->list, "ModifiesPageOrder", &code));
+                }
             }
             /* Fall through */
         default:
             break;
     }
     return default_subclass_dev_spec_op(dev, dev_spec_op, data, size);
+}
+
+int gx_device_nup_device_install(gx_device *dev)
+{
+    gs_param_typed_value value;
+    gs_c_param_list *plist_c;
+    int code;
+
+    code = gx_device_subclass(dev, (gx_device *)&gs_nup_device, sizeof(Nup_device_subclass_data));
+    if (code < 0)
+        return code;
+
+    /* Ensure that PageUsesTransparency is set. */
+    plist_c = gs_c_param_list_alloc(dev->memory->non_gc_memory, "nup_open_device");
+    if (plist_c == NULL)
+        return_error(gs_error_VMerror);
+    gs_c_param_list_write(plist_c, dev->memory->non_gc_memory);
+    gs_param_list_set_persistent_keys((gs_param_list *)plist_c, false);
+
+    value.type = gs_param_type_bool;
+    value.value.b = 1;
+    code = param_write_typed((gs_param_list *)plist_c, "PageUsesTransparency", &value);
+    if (code >= 0) {
+        gs_c_param_list_read(plist_c);
+
+        code = default_subclass_put_params(dev, (gs_param_list *)plist_c);
+        if (code >= 0)
+            code = default_subclass_open_device(dev->child);
+    }
+    gs_c_param_list_release(plist_c);
+    gs_free_object(dev->memory->non_gc_memory, plist_c, "nup_open_device");
+
+    return code;
 }

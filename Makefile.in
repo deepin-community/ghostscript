@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2023 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 # of the license contained in the file LICENSE in this distribution.
 #
 # Refer to licensing information at http://www.artifex.com or contact
-# Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-# CA 94945, U.S.A., +1(415)492-9861, for further information.
+# Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+# CA 94129, USA, for further information.
 #
 # makefile template for/from the autoconf build.
 # @configure_input@
@@ -55,6 +55,10 @@ XPSSRCDIR=@srcdir@/xps
 XPSGENDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
 XPSOBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
 
+PDFSRCDIR=@srcdir@/pdf
+PDFGENDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+PDFOBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+
 GPDLSRCDIR=@srcdir@/gpdl
 GPDLGENDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
 GPDLOBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
@@ -62,6 +66,10 @@ GPDLOBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
 URFSRCDIR=@srcdir@/urf
 URFGENDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
 URFOBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+
+SOSRCDIR=@srcdir@/so
+SOGENDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+SOOBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
 
 CONTRIBDIR=@srcdir@/contrib
 
@@ -197,6 +205,12 @@ XPS_SONAME=@XPS_SONAME@
 XPS_SONAME_MAJOR=@XPS_SONAME_MAJOR@
 XPS_SONAME_MAJOR_MINOR=@XPS_SONAME_MAJOR_MINOR@
 
+PDF=@PDF@
+PDF_SO_BASE=@PDF@
+PDF_SONAME=@PDF_SONAME@
+PDF_SONAME_MAJOR=@PDF_SONAME_MAJOR@
+PDF_SONAME_MAJOR_MINOR=@PDF_SONAME_MAJOR_MINOR@
+
 GPDL=@GPDL@
 GPDL_SO_BASE=@GPDL@
 GPDL_SONAME=@GPDL_SONAME@
@@ -208,9 +222,10 @@ XEAUX=@AUXEXEEXT@
 
 PCL_TARGET=@PCL_TARGET@
 XPS_TARGET=@XPS_TARGET@
+PDF_TARGET=@PDF_TARGET@
 GPDL_TARGET=@GPDL_TARGET@
 
-PCL_XPS_PDL_TARGETS=$(PCL_TARGET) $(XPS_TARGET) $(GPDL_TARGET)
+PCL_XPS_PDL_TARGETS=$(PCL_TARGET) $(XPS_TARGET) $(GPDL_TARGET) $(PDF_TARGET)
 
 # Define the directories for debugging and profiling binaries, relative to
 # the standard binaries.
@@ -238,10 +253,9 @@ EXTRACT_DIR=@EXTRACT_DIR@
 FT_BRIDGE=@FT_BRIDGE@
 SHARE_FT=@SHARE_FT@
 FTSRCDIR=@FTSRCDIR@
-FT_CFLAGS=@FT_CFLAGS@ -DSHARE_FT=@SHARE_FT@
+FT_CFLAGS=@FT_CFLAGS@ @FT_HIDDEN_CFLAGS@ -DSHARE_FT=@SHARE_FT@
 FT_LIBS=@FT_LIBS@
 FT_LIB_PATH=@FT_LIB_PATH@
-FT_CONFIG_SYSTEM_ZLIB=@FT_SYS_ZLIB@
 
 # Define whether to compile in UFST.
 # FAPI/UFST depends on UFST_BRIDGE being undefined - hence the construct below.
@@ -338,8 +352,13 @@ URF_INCLUDE=@URF_INCLUDE@
 URF_DEV=@URF_DEV@
 SURFX_H=@SURFX_H@
 
+# Do we have SmartOffice support?
+ENABLE_SO=@ENABLESO@
+GPDL_SO_TOP_OBJ=@GPDL_SO_TOP_OBJ@
+SO_PDFEXPORT_LIB=@SO_PDFEXPORT_LIB@
+
 EXPATSRCDIR=@EXPATDIR@
-EXPAT_CFLAGS=@EXPAT_CFLAGS@
+EXPAT_CFLAGS=@EXPAT_CFLAGS@ @XML_HIDDEN_CFLAGS@
 EXPATGENDIR=$(GLGENDIR)
 EXPATOBJDIR=$(GLOBJDIR)
 EXPATINCDIR = $(EXPATSRCDIR)$(D)lib
@@ -370,6 +389,7 @@ CUPSPDFTORASTER=@CUPSPDFTORASTER@
 SHARE_LCUPS=@SHARELCUPS@
 LCUPS_NAME=cups
 LCUPSSRCDIR=@CUPS_DIR@
+LIBCUPSSRCDIR=@LIB_CUPS_DIR@
 LCUPSBUILDTYPE=@LCUPSBUILDTYPE@
 CUPS_CC=$(CC)
 
@@ -471,11 +491,13 @@ GS_LDFLAGS=$(LDFLAGS)
 PCL_LDFLAGS=$(LDFLAGS)
 XPS_LDFLAGS=$(LDFLAGS)
 PDL_LDFLAGS=$(LDFLAGS)
+PDF_LDFLAGS=$(LDFLAGS)
 
 GS_LDFLAGS_SO=@GS_DYNAMIC_LDFLAGS@
 PCL_LDFLAGS_SO=@PCL_DYNAMIC_LDFLAGS@
 XPS_LDFLAGS_SO=@XPS_DYNAMIC_LDFLAGS@
 PDL_LDFLAGS_SO=@PDL_DYNAMIC_LDFLAGS@
+PDF_LDFLAGS_SO=@PDF_DYNAMIC_LDFLAGS@
 
 # Define any extra libraries to link into the executable.
 # ISC Unix 2.2 wants -linet.
@@ -557,7 +579,7 @@ MKROMFS_FLAGS=@MKROMFS_FLAGS@
 # Choose the language feature(s) to include.  See gs.mak for details.
 
 # if it's included, $(PSD)gs_pdfwr.dev should always be one of the last in the list
-PSI_FEATURE_DEVS=$(PSD)psl3.dev $(PSD)pdf.dev $(PSD)epsf.dev $(PSD)ttfont.dev \
+PSI_FEATURE_DEVS=$(PSD)psl3.dev $(PSD)pdf.dev @GPDF_DEV@ $(PSD)epsf.dev $(PSD)ttfont.dev \
                  @UTF8DEVS@ $(PSD)fapi_ps.dev $(PSD)jpx.dev $(PSD)jbig2.dev $(PSD)gs_pdfwr.dev
 
 
@@ -565,6 +587,8 @@ PCL_FEATURE_DEVS=$(PLOBJDIR)/pl.dev $(PLOBJDIR)/pjl.dev $(PXLOBJDIR)/pxl.dev $(P
              $(PCL5OBJDIR)/hpgl2c.dev
 
 XPS_FEATURE_DEVS=$(XPSOBJDIR)/pl.dev $(XPSOBJDIR)/xps.dev
+
+PDF_FEATURE_DEVS=$(PDFOBJDIR)/pl.dev $(PDFOBJDIR)/gpdf.dev
 
 FEATURE_DEVS=$(GLD)pipe.dev $(GLD)gsnogc.dev $(GLD)htxlib.dev $(GLD)psl3lib.dev $(GLD)psl2lib.dev \
              $(GLD)dps2lib.dev $(GLD)path1lib.dev $(GLD)patlib.dev $(GLD)psl2cs.dev $(GLD)rld.dev $(GLD)gxfapiu$(UFST_BRIDGE).dev\
@@ -636,7 +660,7 @@ DISPLAY_DEV=$(DD)bbox.dev
 #DEVICE_DEVS18=
 #DEVICE_DEVS19=
 #DEVICE_DEVS20=$(DD)cljet5.dev $(DD)cljet5c.dev
-#DEVICE_DEVS21=$(DD)spotcmyk.dev $(DD)devicen.dev $(DD)xcf.dev $(DD)psdcmyk.dev $(DD)psdrgb.dev $(DD)psdcmykog.dev $(DD)fpng.dev
+#DEVICE_DEVS21=$(DD)spotcmyk.dev $(DD)devicen.dev $(DD)xcf.dev $(DD)psdcmyk.dev $(DD)psdrgb.dev $(DD)psdrgbtags.dev $(DD)psdcmykog.dev $(DD)fpng.dev
 DEVICE_DEVS=$(DISPLAY_DEV) @X11_DEVS@
 DEVICE_DEVS1=@F_DEVS@
 DEVICE_DEVS2=@P_DEVS@
@@ -707,6 +731,7 @@ MAKEDIRS=@ORDER_ONLY@ directories
 MAKEDIRSTOP=
 
 OCR_VERSION=@OCR_VERSION@
+OCR_SHARED=@OCR_SHARED@
 LEPTONICADIR=@LEPTONICADIR@
 TESSAVX=@TESS_AVX@
 TESSAVX2=@TESS_AVX2@
@@ -726,6 +751,7 @@ include $(GLSRCDIR)/gs.mak
 # *romfs.mak must precede lib.mak
 include @PLROMFS_MAK@   # plromfs.mak
 include @XPSROMFS_MAK@ # xpsromfs.mak
+include @PDFROMFS_MAK@ # pdfromfs.mak
 
 include $(PSSRCDIR)/psromfs.mak
 include $(GLSRCDIR)/lib.mak
@@ -739,6 +765,8 @@ include @PXL_MAK@ # pxl.mak
 include @XPS_MAK@ # xps.mak
 
 include $(GLSRCDIR)/jpeg.mak
+
+include @PDF_MAK@ # pdf.mak
 
 include @GPDL_MAK@ # gpdl.mak
 

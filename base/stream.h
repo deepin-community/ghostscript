@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -141,6 +141,7 @@ struct stream_s {
 #define s_can_seek(s) (((s)->modes & s_mode_seek) != 0)
     gs_string cbuf_string;	/* cbuf/cbsize if cbuf is a string, */
                                 /* 0/? if not */
+    gs_memory_t *cbuf_string_memory;  /* If != NULL, stream owns the string buffer */
     gs_offset_t position;		/* file position of beginning of */
                                 /* buffer */
     stream_procs procs;
@@ -307,7 +308,7 @@ int spseek(stream *, gs_offset_t);
   register const byte *cp;\
   const byte *ep
 #define s_begin_inline(s, cp, ep)\
-  cp = (s)->cursor.r.ptr, ep = (s)->cursor.r.limit
+  ep = (cp = (s)->cursor.r.ptr) == NULL ? NULL : (s)->cursor.r.limit
 #define s_end_inline(s, cp, ep)\
   (s)->cursor.r.ptr = cp
 #define sbufavailable_inline(s, cp, ep)\
@@ -326,6 +327,7 @@ int spseek(stream *, gs_offset_t);
 /* Allocate a stream or a stream state. */
 stream *s_alloc(gs_memory_t *, client_name_t);
 stream_state *s_alloc_state(gs_memory_t *, gs_memory_type_ptr_t, client_name_t);
+stream *s_alloc_immovable(gs_memory_t *, client_name_t);
 /*
  * Initialize a separately allocated stream or stream state, as if allocated
  * by s_alloc[_state].
@@ -372,9 +374,23 @@ int file_close_finish(stream *);
 int file_close_disable(stream *);
 
 /* Create a stream on a string or a file. */
-void sread_string(stream *, const byte *, uint),
-    sread_string_reusable(stream *, const byte *, uint),
-    swrite_string(stream *, byte *, uint);
+/* String ownership retained by the caller, for example
+   Postscript string objects owned by the Postscript
+   interpreter
+ */
+void sread_string(stream *, const byte *, uint);
+void sread_string_reusable(stream *, const byte *, uint);
+
+/* The string ownership is transferred from caller to stream.
+   string_mem pointer must be allocator used to allocate the
+   "string" buffer.
+ */
+void
+sread_transient_string(stream *s, gs_memory_t *string_mem, const byte *ptr, uint len);
+void
+sread_transient_string_reusable(stream *s, gs_memory_t *string_mem, const byte *ptr, uint len);
+
+void swrite_string(stream *, byte *, uint);
 void sread_file(stream *, gp_file *, byte *, uint),
     swrite_file(stream *, gp_file *, byte *, uint);
 int  sappend_file(stream *, gp_file *, byte *, uint);

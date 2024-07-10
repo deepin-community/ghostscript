@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -144,7 +144,12 @@ param_list_copy(gs_param_list *plto, gs_param_list *plfrom)
             code = (code > 0 ? gs_note_error(gs_error_unknownerror) : code);
             break;
         }
-        gs_param_list_set_persistent_keys(plto, key.persistent);
+        /* We used to use 'key.persistent' to determine whether we needed to copy the
+         * key (by setting persistent_keys in the param list to false), but that isn't
+         * correct! We are going to use the heap buffer 'string_key', not the original
+         * key, and since that's on the heap it is NOT persistent....
+         */
+        gs_param_list_set_persistent_keys(plto, false);
         switch (value.type) {
         case gs_param_type_dict:
             coll_type = gs_param_collection_dict_any;
@@ -156,6 +161,8 @@ param_list_copy(gs_param_list *plto, gs_param_list *plfrom)
             coll_type = gs_param_collection_array;
         cc:
             copy.value.d.size = value.value.d.size;
+            /* FIXME: RJW: I suspect that this will go wrong, if size == 0.
+             * We should probably spot size == 0 and break. */
             if ((code = param_begin_write_collection(plto, string_key,
                                                      &copy.value.d,
                                                      coll_type)) < 0 ||

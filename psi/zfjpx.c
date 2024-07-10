@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -33,6 +33,10 @@
 #include "iname.h"
 #include "gdebug.h"
 
+#include "igstate.h"  /* For igs macro */
+#include "gxdevcli.h" /* for dev_spec_op */
+#include "gxdevsop.h" /* For spec_op enumerated types */
+
 #if defined(USE_OPENJPEG_JP2)
 #  include "sjpx_openjpeg.h"
 #else
@@ -43,6 +47,21 @@
 # define ISTRCMP(ref, string) (memcmp((ref)->value.const_bytes, string, \
         min(strlen(string), r_size(ref))))
 
+static int PS_JPXD_PassThrough(void *d, byte *Buffer, int Size)
+{
+    gx_device *dev = (gx_device *)d;
+
+    if (Buffer == NULL) {
+        if (Size == 0)
+            dev_proc(dev, dev_spec_op)(dev, gxdso_JPX_passthrough_end, NULL, 0);
+        else
+            dev_proc(dev, dev_spec_op)(dev, gxdso_JPX_passthrough_begin, NULL, 0);
+    } else {
+        dev_proc(dev, dev_spec_op)(dev, gxdso_JPX_passthrough_data, Buffer, Size);
+    }
+    return 0;
+}
+
 /* <source> /JPXDecode <file> */
 /* <source> <dict> /JPXDecode <file> */
 static int
@@ -52,6 +71,7 @@ z_jpx_decode(i_ctx_t * i_ctx_p)
     ref *sop = NULL;
     ref *csname = NULL;
     stream_jpxd_state state;
+    gx_device *dev = gs_currentdevice(igs);
 
     /* it's our responsibility to call set_defaults() */
     state.memory = imemory->non_gc_memory;
@@ -78,7 +98,13 @@ z_jpx_decode(i_ctx_t * i_ctx_p)
             if (csname != NULL) {
                 ref sref;
                 /* get a reference to the name's string value */
-                name_string_ref(imemory, csname, &sref);
+                if (r_has_type(csname, t_name))
+                    name_string_ref(imemory, csname, &sref);
+                else if (r_has_type(csname, t_string))
+                    sref = *csname;
+                else
+                    return_error(gs_error_typecheck);
+
                 /* request raw index values if the colorspace is /Indexed */
                 if (!ISTRCMP(&sref, "Indexed"))
                     state.colorspace = gs_jpx_cs_indexed;
@@ -130,6 +156,17 @@ z_jpx_decode(i_ctx_t * i_ctx_p)
                 if_debug0m('w', imemory, "[w] Couldn't read JPX ColorSpace key!\n");
             }
         }
+    }
+
+    if (dev_proc(dev, dev_spec_op)(dev, gxdso_JPX_passthrough_query, NULL, 0) > 0) {
+        state.StartedPassThrough = 0;
+        state.PassThrough = 1;
+        state.PassThroughfn = (PS_JPXD_PassThrough);
+        state.device = (void *)dev;
+    }
+    else {
+        state.PassThrough = 0;
+        state.device = (void *)NULL;
     }
 
     /* we pass npop=0, since we've no arguments left to consume */

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -29,7 +29,6 @@
 #include "strmio.h"
 
 #include "gstiffio.h"
-
 
 #define TIFF_PRINT_BUF_LENGTH 1024
 static const char tifs_msg_truncated[] = "\n*** Previous line has been truncated.\n";
@@ -171,6 +170,12 @@ tiff_from_filep(gx_device_printer *dev,  const char *name, gp_file *filep, int b
     return t;
 }
 
+int tiff_filename_from_tiff(TIFF *t, char **name)
+{
+    *name = (char *)TIFFFileName(t);
+    return 0;
+}
+
 static void
 gs_tifsWarningHandlerEx(thandle_t client_data, const char* module, const char* fmt, va_list ap)
 {
@@ -295,6 +300,8 @@ _TIFFmemcmp(const void* p1, const void* p2, tmsize_t c)
 
 #if !defined(HAVE_SNPRINTF) && !defined(HAVE__SNPRINTF)
 #include "gssprintf.h"
+/* gets rid of compiler warning -- could include tiffiop.h, not sure which is better */
+int _TIFF_snprintf_f(char* buf, size_t size, const char* format, ...);
 int
 _TIFF_snprintf_f(char* buf, size_t size, const char* format, ...)
 {

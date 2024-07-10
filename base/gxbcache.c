@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -146,3 +146,35 @@ gx_bits_cache_free(gx_bits_cache * bc, gx_cached_bits_head * cbh,
     cbh->size = size;		/* gs_alloc_fill may have overwritten */
     cb_head_set_free(cbh);
 }
+
+#ifdef DEBUG
+/* A useful bit of code to dump the contents of the bitmap cache. Not
+ * currently called. Current position is indicated with a '>'. */
+void
+gx_bits_cache_dump(gx_bits_cache * bc)
+{
+    gx_bits_cache_chunk *bck = bc->chunks;
+    gx_bits_cache_chunk *first = bck;
+
+    dlprintf2("%d entries making %d bytes\n", bc->csize, bc->bsize);
+
+    do {
+        gx_cached_bits_head *cbh;
+        uint pos = 0;
+
+        dlprintf2(" chunk of %d bytes (%d allocated)\n", bck->size, bck->allocated);
+
+        cbh = (gx_cached_bits_head *)bck->data;
+        while (pos != bck->size) {
+            dlprintf3(" %csize=%d depth=%d\n",
+                      pos == bc->cnext && bck == bc->chunks ? '>' : ' ',
+                      cbh->size, cbh->depth);
+            pos += cbh->size;
+            cbh = (gx_cached_bits_head *)(((byte *)cbh) + cbh->size);
+        }
+        bck = bck->next;
+    } while (bck != first);
+
+    bck=bck;
+}
+#endif

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -281,7 +281,7 @@ gx_install_Pattern(gs_color_space * pcs, gs_gstate * pgs)
 static int
 gx_set_overprint_Pattern(const gs_color_space * pcs, gs_gstate * pgs)
 {
-    gs_overprint_params_t params;
+    gs_overprint_params_t params = { 0 };
 
     if (!pgs->overprint) {
         params.retain_any_comps = false;
@@ -293,7 +293,7 @@ gx_set_overprint_Pattern(const gs_color_space * pcs, gs_gstate * pgs)
 
 /* Adjust the reference counts for Pattern color spaces or colors. */
 static void
-gx_final_Pattern(const gs_color_space * pcs)
+gx_final_Pattern(gs_color_space * pcs)
 {
     /* {csrc} really do nothing? */
 }
@@ -305,7 +305,7 @@ gx_adjust_color_Pattern(const gs_client_color * pcc,
     gs_pattern_instance_t *pinst = pcc->pattern;
 
     rc_adjust_only(pinst, delta, "gx_adjust_color_Pattern");
-    if (pcs && pcs->params.pattern.has_base_space)
+    if (pcs && pcs->base_space && pcs->params.pattern.has_base_space)
         (pcs->base_space->type->adjust_color_count)
             (pcc, pcs->base_space, delta);
 }

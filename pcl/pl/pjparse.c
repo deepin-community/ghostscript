@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -23,6 +23,7 @@
 #include "scommon.h"
 #include "gdebug.h"
 #include "gp.h"
+#include "gpmisc.h"
 #include "gxiodev.h"
 #include "pjparse.h"
 #include "plfont.h"
@@ -93,6 +94,10 @@ typedef struct pjl_parser_state_s
     char *environment_font_path;        /* if there is an operating sytem env
                                            var it is used instead of the
                                            default pjl fontsource */
+    /* permenant soft font slots - bit n is the n'th font number. */
+    #define MAX_PERMANENT_FONTS 256 /* multiple of 8 */
+    unsigned char permanent_soft_fonts[MAX_PERMANENT_FONTS / 8];
+
     gs_memory_t *mem;
 } pjl_parser_state_t;
 
@@ -250,10 +255,6 @@ static const struct
     px_enumerate_media(PJLMEDIA)
 };
 
-/* permenant soft font slots - bit n is the n'th font number. */
-#define MAX_PERMANENT_FONTS 256 /* multiple of 8 */
-unsigned char pjl_permanent_soft_fonts[MAX_PERMANENT_FONTS / 8];
-
 /* ----- private functions and definitions ------------ */
 
 /* forward declaration */
@@ -326,7 +327,7 @@ pjl_side_effects(pjl_parser_state_t * pst, char *variable, char *value,
         int formlines = pjl_calc_formlines_new_page_size(page_length);
         char text[32];
 
-        gs_sprintf(text, "%d", formlines);
+        gs_snprintf(text, sizeof(text), "%d", formlines);
         pjl_set(pst, (char *)"FORMLINES", text, defaults);
     }
     /* fill in other side effects here */
@@ -542,22 +543,20 @@ pjl_reset_fontsource_fontnumbers(pjl_parser_state_t * pst)
 static void
 pjl_parsed_filename_to_string(char *fnamep, const char *pathname)
 {
-    int i;
-    int size;
+    size_t i, size, prefix_size;
+    const char *prefix;
+    char name[MAXPATHLEN];
+    uint rlen;
 
     *fnamep = 0;                /* in case of bad input */
-    if (pathname == 0 || pathname[0] != '"' || strlen(pathname) < 3)
+    if (pathname == 0 || strlen(pathname) < 4 ||
+        pathname[0] != '"' || pathname[strlen(pathname)-1] != '"')
         return;                 /* bad input pjl file */
 
     if (pathname[1] == '0' && pathname[2] == ':') {
-        /* copy pjl_volume string in. use strlen+1 to ensure that strncpy()
-        appends '\0', to keep coverity quiet. */
-        strncpy(fnamep, PJL_VOLUME_0, strlen(PJL_VOLUME_0)+1);
-        fnamep += strlen(PJL_VOLUME_0);
+        prefix = PJL_VOLUME_0;
     } else if (pathname[1] == '1' && pathname[2] == ':') {
-        /* copy pjl_volume string in */
-        strncpy(fnamep, PJL_VOLUME_1, strlen(PJL_VOLUME_1)+1);
-        fnamep += strlen(PJL_VOLUME_1);
+        prefix = PJL_VOLUME_1;
     } else
         return;                 /* bad input pjl file */
 
@@ -565,23 +564,35 @@ pjl_parsed_filename_to_string(char *fnamep, const char *pathname)
      * remove quotes, use forward slash, copy rest.
      */
     size = strlen(pathname);
+    if (size - 4 > MAXPATHLEN)
+        return;
+    for (i = 3; i < size - 1; i++)
+        name[i - 3] = (pathname[i] == '\\') ? '/' : pathname[i];
+    size -= 4;
 
-    for (i = 3; i < size; i++) {
-        if (pathname[i] == '\\')
-            *fnamep++ = '/';
-        else if (pathname[i] != '"')
-            *fnamep++ = pathname[i];
-        /* else it is a quote skip it */
-    }
-    /* NULL terminate */
-    *fnamep = '\0';
+    /* copy pjl_volume string in. use strlen+1 to ensure that strncpy()
+    appends '\0', to keep coverity quiet. */
+    prefix_size = strlen(prefix);
+    strncpy(fnamep, prefix, prefix_size + 1);
+
+    if (size == 0)
+        return;
+
+    if (name[0] != '/')
+        fnamep[prefix_size++] = '/';
+
+    rlen = MAXPATHLEN - prefix_size;
+    if (gp_file_name_reduce(name, size, fnamep + prefix_size, &rlen) == gp_combine_success)
+        fnamep[prefix_size + rlen] = 0;
+    else
+        fnamep[0] = 0;
 }
 
 /* Verify a file write operation is ok.  The filesystem must be 0: or
    1:, no other pjl files can have pending writes, and the pjl
    disklock state variable must be false */
 static int
-pjl_verify_file_operation(pjl_parser_state_t * pst, char *fname)
+pjl_verify_file_operation(pjl_parser_state_t * pst, char *fname, const char *access)
 {
     /* make sure we are playing in the pjl sandbox */
     if (0 != strncmp(PJL_VOLUME_0, fname, strlen(PJL_VOLUME_0))
@@ -589,6 +600,12 @@ pjl_verify_file_operation(pjl_parser_state_t * pst, char *fname)
         dmprintf1(pst->mem, "illegal path name %s\n", fname);
         return -1;
     }
+
+    if (access != NULL && gp_validate_path(pst->mem, fname, access) != 0) {
+        dmprintf1(pst->mem, "illegal path name %s\n", fname);
+        return -1;
+    }
+
     /* make sure we are not currently writing to a file.
        Simultaneously file writing is not supported */
     if (pst->bytes_to_write || pst->fp)
@@ -623,7 +640,7 @@ pjl_setup_file_for_writing(pjl_parser_state_t * pst, char *pathname, int size,
     char fname[MAXPATHLEN];
 
     pjl_parsed_filename_to_string(fname, pathname);
-    if (pjl_verify_file_operation(pst, fname) < 0)
+    if (pjl_verify_file_operation(pst, fname, NULL) < 0)
         return NULL;
     pjl_warn_exists(pst->mem, fname);
     {
@@ -676,7 +693,7 @@ pjl_fsinit(pjl_parser_state_t * pst, char *pathname)
     char fname[MAXPATHLEN];
 
     pjl_parsed_filename_to_string(fname, pathname);
-    if (pjl_verify_file_operation(pst, fname) < 0)
+    if (pjl_verify_file_operation(pst, fname, "c") < 0)
         return -1;
 #ifdef GS_NO_FILESYSTEM
     return -1;
@@ -696,7 +713,7 @@ pjl_fsmkdir(pjl_parser_state_t * pst, char *pathname)
     char fname[MAXPATHLEN];
 
     pjl_parsed_filename_to_string(fname, pathname);
-    if (pjl_verify_file_operation(pst, fname) < 0)
+    if (pjl_verify_file_operation(pst, fname, "c") < 0)
         return -1;
 #ifdef GS_NO_FILESYSTEM
     return -1;
@@ -769,9 +786,12 @@ static int
 pjl_fsdirlist(pjl_parser_state_t * pst, char *pathname, int entry, int count)
 {
     file_enum *fe;
-    char fontfilename[MAXPATHLEN];
+    char fontfilename[MAXPATHLEN + 2];
 
     pjl_parsed_filename_to_string(fontfilename, pathname);
+    if (pjl_verify_file_operation(pst, fontfilename, NULL) < 0)
+        return -1;
+
     /* if this is a directory add * for the directory listing NB fix */
     strcat(fontfilename, "/*");
     fe = gs_enumerate_files_init(pst->mem, fontfilename, strlen(fontfilename));
@@ -823,7 +843,7 @@ pjl_delete_file(pjl_parser_state_t * pst, char *pathname)
     char fname[MAXPATHLEN];
 
     pjl_parsed_filename_to_string(fname, pathname);
-    if (pjl_verify_file_operation(pst, fname) < 0)
+    if (pjl_verify_file_operation(pst, fname, NULL) < 0)
         return -1;
     return gp_unlink(pst->mem, fname);
 }
@@ -1162,7 +1182,7 @@ pjl_get_named_resource_size(pjl_parser_state_t * pst, char *name)
 /* get the contents of a file on 0: or 1: and return the result in the
    client allocated memory */
 int
-pjl_get_named_resource(pjl_parser_state * pst, char *name, byte * data)
+pjl_get_named_resource(pjl_parser_state * pst, char *name, byte * data, long int datasize)
 {
     long int size;
     int code = 0;
@@ -1174,7 +1194,7 @@ pjl_get_named_resource(pjl_parser_state * pst, char *name, byte * data)
     if (size >= 0)
         size = gp_ftell(fp);
     gp_rewind(fp);
-    if (size < 0 || (size != gp_fread(data, 1, size, fp))) {
+    if (size < 0 || size != datasize || (size != gp_fread(data, 1, size, fp))) {
         code = -1;
     }
     gp_fclose(fp);
@@ -1862,8 +1882,8 @@ pjl_process_init(gs_memory_t * mem)
     {
         int i;
 
-        for (i = 0; i < countof(pjl_permanent_soft_fonts); i++)
-            pjl_permanent_soft_fonts[i] = 0;
+        for (i = 0; i < countof(pjlstate->permanent_soft_fonts); i++)
+            pjlstate->permanent_soft_fonts[i] = 0;
     }
     return (pjl_parser_state *) pjlstate;
 
@@ -1922,10 +1942,10 @@ pjl_register_permanent_soft_font_deletion(pjl_parser_state * pst,
         return 0;
     }
     /* if the font is present. */
-    if ((pjl_permanent_soft_fonts[font_number >> 3]) &
+    if ((pst->permanent_soft_fonts[font_number >> 3]) &
         (128 >> (font_number & 7))) {
         /* set the bit to zero to indicate the fontnumber has been deleted */
-        pjl_permanent_soft_fonts[font_number >> 3] &=
+        pst->permanent_soft_fonts[font_number >> 3] &=
             ~(128 >> (font_number & 7));
         /* if the current font source is 'S' and the current font number
            is the highest number, and *any* soft font was deleted or if
@@ -1942,7 +1962,7 @@ pjl_register_permanent_soft_font_deletion(pjl_parser_state * pst,
             /* check for no more fonts and the highest font number.
                NB should look at longs not bits in the loop */
             for (i = 0; i < MAX_PERMANENT_FONTS; i++)
-                if ((pjl_permanent_soft_fonts[i >> 3]) & (128 >> (i & 7))) {
+                if ((pst->permanent_soft_fonts[i >> 3]) & (128 >> (i & 7))) {
                     empty = false;
                     highest_fontnumber = i;
                 }
@@ -1970,7 +1990,7 @@ pjl_register_permanent_soft_font_addition(pjl_parser_state * pst)
 
     for (font_num = 0; font_num < MAX_PERMANENT_FONTS; font_num++)
         if (!
-            ((pjl_permanent_soft_fonts[font_num >> 3]) &
+            ((pst->permanent_soft_fonts[font_num >> 3]) &
              (128 >> (font_num & 7)))) {
             slot_found = true;
             break;
@@ -1983,6 +2003,6 @@ pjl_register_permanent_soft_font_addition(pjl_parser_state * pst)
         font_num = 0;
     }
     /* set the bit to 1 to indicate the fontnumber has been added */
-    pjl_permanent_soft_fonts[font_num >> 3] |= (128 >> (font_num & 7));
+    pst->permanent_soft_fonts[font_num >> 3] |= (128 >> (font_num & 7));
     return font_num;
 }

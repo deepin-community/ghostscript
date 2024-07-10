@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -101,6 +101,7 @@ zbuildsampledfunction(i_ctx_t *i_ctx_p)
     gs_function_t *pfn;
     gs_function_Sd_params_t params = {0};
 
+    check_op(1);
     check_type(*pdict, t_dictionary);
     /*
      * Check procedure to be sampled.
@@ -489,7 +490,13 @@ sampled_data_continue(i_ctx_t *i_ctx_p)
 
     /*
      * Check to make sure that the procedure produced the correct number of
-     * values.  If not, move the stack back to where it belongs and abort
+     * values.  If not, move the stack back to where it belongs and abort.
+     * There are two forms of "stackunderflow" one is that there are genuinely
+     * too few entries on the stack, the other is that there are too few entries
+     * on this stack block. To establish the difference, we need to return the
+     * stackunderflow error, without meddling with the exec stack, so gs_call_interp()
+     * can try popping a stack block, and letting us retry.
+     * Hence we check overall stack depth, *and* do check_op().
      */
     if (num_out + O_STACK_PAD + penum->o_stack_depth != ref_stack_count(&o_stack)) {
         stack_depth_adjust = ref_stack_count(&o_stack) - penum->o_stack_depth;
@@ -501,16 +508,15 @@ sampled_data_continue(i_ctx_t *i_ctx_p)
              * (unused) stack stack space to allow for this but the function
              * exceeded even that.  Data on the stack may have been lost.
              * The only thing that we can do is move the stack pointer back and
-             * hope.  (We have not seen real Postscript files that have this
-             * problem.)
+             * hope.
              */
             push(-stack_depth_adjust);
-            ifree_object(penum->pfn, "sampled_data_continue(pfn)");
-            ifree_object(penum, "sampled_data_continue((enum)");
             return_error(gs_error_undefinedresult);
         }
     }
-
+    if ( op < osbot + ((num_out) - 1) ) {
+        return_error(gs_error_stackunderflow);
+    }
     /* Save data from the given function */
     data_ptr = cube_ptr_from_index(params, penum->indexes);
     for (i=0; i < num_out; i++) {
@@ -533,15 +539,29 @@ sampled_data_continue(i_ctx_t *i_ctx_p)
         for (j = 0; j < bps; j++)
             data_ptr[bps * i + j] = (byte)(cv >> ((bps - 1 - j) * 8));	/* MSB first */
     }
-    pop(num_out);		    /* Move op to base of result values */
 
+    pop(num_out); /* Move op to base of result values */
+
+    /* From here on, we have to use ref_stack_pop() rather than pop()
+       so that it handles stack extension blocks properly, before calling
+       sampled_data_sample() which also uses the op stack.
+     */
     /* Check if we are done collecting data. */
-
     if (increment_cube_indexes(params, penum->indexes)) {
+        int to_pop;
         if (stack_depth_adjust == 0)
-            pop(O_STACK_PAD);	    /* Remove spare stack space */
+            if (ref_stack_count(&o_stack) >= O_STACK_PAD)
+                to_pop = O_STACK_PAD;	    /* Remove spare stack space */
+            else
+                to_pop = ref_stack_count(&o_stack);
         else
-            pop(stack_depth_adjust - num_out);
+            to_pop = stack_depth_adjust - num_out;
+
+        if (to_pop < 0)
+            return_error(gs_error_stackunderflow);
+
+        ref_stack_pop(&o_stack, to_pop);
+
         /* Execute the closing procedure, if given */
         code = 0;
         if (esp_finish_proc != 0)
@@ -554,11 +574,11 @@ sampled_data_continue(i_ctx_t *i_ctx_p)
             if ((O_STACK_PAD - stack_depth_adjust) < 0) {
                 stack_depth_adjust = -(O_STACK_PAD - stack_depth_adjust);
                 check_op(stack_depth_adjust);
-                pop(stack_depth_adjust);
+                ref_stack_pop(&o_stack, stack_depth_adjust);
             }
             else {
                 check_ostack(O_STACK_PAD - stack_depth_adjust);
-                push(O_STACK_PAD - stack_depth_adjust);
+                ref_stack_push(&o_stack, O_STACK_PAD - stack_depth_adjust);
                 for (i=0;i<O_STACK_PAD - stack_depth_adjust;i++)
                     make_null(op - i);
             }
@@ -585,6 +605,7 @@ sampled_data_finish(i_ctx_t *i_ctx_p)
     ref cref;			/* closure */
     int code = gs_function_Sd_init(&pfn, params, imemory);
 
+    check_op(1);
     if (code < 0) {
         esp -= estack_storage;
         return code;
@@ -601,6 +622,8 @@ sampled_data_finish(i_ctx_t *i_ctx_p)
     make_oper_new(cref.value.refs + 1, 0, zexecfunction);
     ref_assign(op, &cref);
 
+    /* See bug #707007, explicitly freed structures on the stacks need to be made NULL */
+    make_null(esp);
     esp -= estack_storage;
     ifree_object(penum->pfn, "sampled_data_finish(pfn)");
     ifree_object(penum, "sampled_data_finish(enum)");
@@ -631,7 +654,16 @@ int make_sampled_function(i_ctx_t * i_ctx_p, ref *arr, ref *pproc, gs_function_t
     /*
      * Set up the hyper cube function data structure.
      */
-    params.Order = 3;
+    /* The amount of memory required grows dramatitcally with the number of inputs when
+     * Order is 3 (cubic interpolation). This is the same test as used in determine_sampled_data_size()
+     * below to limit the number of samples in the cube. We use it here to switch to the
+     * cheaper (memory usage) linear interpolation if there are a lot of input
+     * components, in the hope of being able to continue.
+     */
+    if (params.m <= 8)
+        params.Order = 3;
+    else
+        params.Order = 1;
     params.BitsPerSample = 16;
 
     code = space->numcomponents(i_ctx_p, arr, &num_components);
@@ -647,6 +679,9 @@ int make_sampled_function(i_ctx_t * i_ctx_p, ref *arr, ref *pproc, gs_function_t
     }
     params.Domain = fptr;
     params.m = num_components;
+
+    if (params.m > MAX_NUM_INPUTS)
+        return_error(gs_error_rangecheck);
 
     code = altspace->numcomponents(i_ctx_p, palternatespace, &num_components);
     if (code < 0) {

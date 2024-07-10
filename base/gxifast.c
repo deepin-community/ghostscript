@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -39,9 +39,7 @@
 #include "valgrind.h"
 
 /* Conditionally include statistics code. */
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
-#  define STATS
-#endif
+/* #define COLLECT_STATS_IFAST */
 
 /* ------ Strategy procedure ------ */
 
@@ -195,7 +193,7 @@ image_render_skip(gx_image_enum * penum, const byte * buffer, int data_x,
  * other bits in those bytes are set to zero (i.e., the value of the
  * 'zero' argument).
  */
-#ifdef STATS
+#ifdef COLLECT_STATS_IFAST
 struct stats_image_fast_s {
     long
          calls, all0s, all1s, runs, lbit0, byte00, byte01, byte02, byte03,
@@ -606,7 +604,7 @@ image_render_simple(gx_image_enum * penum, const byte * buffer, int data_x,
         line_size = (w + 7) >> 3;
         line_width = w;
         line_x = 0;
-    } else if (copy_mono == dev_proc(&mem_mono_device, copy_mono) &&
+    } else if (copy_mono == mem_mono_copy_mono &&
                dxx > 0 && gx_dc_is_pure(pdc1) && gx_dc_is_pure(pdc0) &&
                /* We know the colors must be (0,1) or (1,0). */
                (pdc0->colors.pure ^ pdc1->colors.pure) == 1 &&

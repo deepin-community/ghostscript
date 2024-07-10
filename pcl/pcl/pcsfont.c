@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -119,11 +119,11 @@ pcl_make_resident_font_copy(pcl_state_t * pcs)
 
     /* first check for a duplicate key, if found remove it */
     if (pl_dict_lookup
-        (&pcs->built_in_fonts, current_font_id, current_font_id_size, &value,
+        (&pcs->built_in_fonts, CURRENT_FONT_ID, CURRENT_FONT_ID_SIZE, &value,
          false, (pl_dict_t **) 0))
         if (pl_dict_undef
-            (&pcs->built_in_fonts, current_font_id,
-             current_font_id_size) == false)
+            (&pcs->built_in_fonts, CURRENT_FONT_ID,
+             CURRENT_FONT_ID_SIZE) == false)
             /* shouldn't fail */
             return -1;
 
@@ -137,7 +137,7 @@ pcl_make_resident_font_copy(pcl_state_t * pcs)
     if (found == false)
         return -1;
     return pl_dict_put_synonym(&pcs->built_in_fonts, key.data,
-                        key.size, current_font_id, current_font_id_size);
+                        key.size, CURRENT_FONT_ID, CURRENT_FONT_ID_SIZE);
 }
 
 static int                      /* ESC * c <fc_enum> F */
@@ -178,7 +178,7 @@ pcl_font_control(pcl_args_t * pargs, pcl_state_t * pcs)
             break;
         case 2:
             /* Delete soft font <font_id>. */
-            code = pcl_delete_soft_font(pcs, current_font_id, current_font_id_size,
+            code = pcl_delete_soft_font(pcs, CURRENT_FONT_ID, CURRENT_FONT_ID_SIZE,
                                  NULL);
             /* decache the currently selected font in case we deleted it. */
             pcl_decache_font(pcs, -1, true);
@@ -187,7 +187,7 @@ pcl_font_control(pcl_args_t * pargs, pcl_state_t * pcs)
         case 3:
             /* Delete character <font_id, character_code>. */
             if (pl_dict_find_no_stack
-                (&pcs->soft_fonts, current_font_id, current_font_id_size,
+                (&pcs->soft_fonts, CURRENT_FONT_ID, CURRENT_FONT_ID_SIZE,
                  &value))
                 pl_font_remove_glyph((pl_font_t *) value,
                                      pcs->character_code);
@@ -197,7 +197,7 @@ pcl_font_control(pcl_args_t * pargs, pcl_state_t * pcs)
         case 4:
             /* Make soft font <font_id> temporary. */
             if (pl_dict_find_no_stack
-                (&pcs->soft_fonts, current_font_id, current_font_id_size,
+                (&pcs->soft_fonts, CURRENT_FONT_ID, CURRENT_FONT_ID_SIZE,
                  &value))
                 ((pl_font_t *) value)->storage = pcds_temporary;
 
@@ -205,7 +205,7 @@ pcl_font_control(pcl_args_t * pargs, pcl_state_t * pcs)
         case 5:
             /* Make soft font <font_id> permanent. */
             if (pl_dict_find_no_stack
-                (&pcs->soft_fonts, current_font_id, current_font_id_size,
+                (&pcs->soft_fonts, CURRENT_FONT_ID, CURRENT_FONT_ID_SIZE,
                  &value)) {
                 ((pl_font_t *) value)->storage = pcds_permanent;
                 ((pl_font_t *) value)->params.pjl_font_number =
@@ -238,14 +238,14 @@ pcl_font_control(pcl_args_t * pargs, pcl_state_t * pcs)
                     if (code < 0)
                         return code;
 
-                    code = pcl_delete_soft_font(pcs, current_font_id,
-                                         current_font_id_size, NULL);
+                    code = pcl_delete_soft_font(pcs, CURRENT_FONT_ID,
+                                         CURRENT_FONT_ID_SIZE, NULL);
                     if (code < 0)
                         return code;
                     plfont->storage = pcds_temporary;
                     plfont->data_are_permanent = false;
-                    code = pl_dict_put(&pcs->soft_fonts, current_font_id,
-                                current_font_id_size, plfont);
+                    code = pl_dict_put(&pcs->soft_fonts, CURRENT_FONT_ID,
+                                CURRENT_FONT_ID_SIZE, plfont);
                 }
             }
             break;
@@ -255,6 +255,87 @@ pcl_font_control(pcl_args_t * pargs, pcl_state_t * pcs)
     return code;
 }
 
+#ifdef DEBUG
+static void
+dump_dl_font_header(const gs_memory_t * mem, const pcl_font_header_t *pfh)
+{
+    const char *header_format;
+    int i;
+
+    dmprintf1(mem, "FontDescriptorSize:%d\n", pl_get_uint16(pfh->FontDescriptorSize));
+
+    switch (pfh->HeaderFormat) {
+    case pcfh_bitmap:
+        header_format = "bitmap";
+        break;
+    case pcfh_resolution_bitmap:
+        header_format = "resolution bitmap";
+        break;
+    case pcfh_intellifont_bound:
+        header_format = "bound intellifont";
+        break;
+    case pcfh_intellifont_unbound:
+        header_format = "unbound intellifont";
+        break;
+    case pcfh_truetype:
+        header_format = "truetype";
+        break;
+    case pcfh_truetype_large:
+        header_format = "truetype large";
+        break;
+    default:
+        header_format = "unknown";
+    }
+    dmprintf1(mem, "Header Format:%s\n", header_format);
+    dmprintf1(mem, "Font Type:%d\n", (pl_font_type_t) pfh->FontType);
+    dmprintf1(mem, "Style:%d\n", (pfh->StyleMSB << 8) + pfh->StyleLSB);
+    dmprintf1(mem, "BaseLinePostion:%d\n", pl_get_uint16(pfh->BaselinePosition));
+    dmprintf1(mem, "Reserved (should be 0):%d\n", pfh->Reserved);
+    dmprintf1(mem, "CellWidth:%d\n", pl_get_uint16(pfh->CellWidth));
+    dmprintf1(mem, "CellHeight:%d\n", pl_get_uint16(pfh->CellHeight));
+    dmprintf1(mem, "Orientation:%d\n", pfh->Orientation);
+    dmprintf1(mem, "Spacing:%d\n", pfh->Spacing);
+    dmprintf1(mem, "SymbolSet:%d\n", pl_get_uint16(pfh->SymbolSet));
+    dmprintf1(mem, "Pitch:%d\n", pl_get_uint16(pfh->Pitch));
+    dmprintf1(mem, "Height:%d\n", pl_get_uint16(pfh->Height));
+    dmprintf1(mem, "xHeight:%d\n", pl_get_uint16(pfh->xHeight));
+    dmprintf1(mem, "WidthType:%d\n", pfh->WidthType);
+    dmprintf1(mem, "StrokeWeight:%d\n", pfh->StrokeWeight);
+    dmprintf1(mem, "TypeFace:%d\n", (pfh->TypefaceMSB << 8) + pfh->TypefaceLSB);
+    dmprintf1(mem, "SerifStyle:%d\n", pfh->SerifStyle);
+    dmprintf1(mem, "Quality:%d\n", pfh->Quality);
+    dmprintf1(mem, "Placement:%d\n", pfh->Placement);
+    dmprintf1(mem, "UnderlinePosition:%d\n", pfh->UnderlinePosition);
+    dmprintf1(mem, "UnderlineThickness:%d\n", pfh->UnderlineThickness);
+    dmprintf1(mem, "TextHeight:%d\n", pl_get_uint16(pfh->TextHeight));
+    dmprintf1(mem, "TextWidth:%d\n", pl_get_uint16(pfh->TextWidth));
+    dmprintf1(mem, "FirstCode:%d\n", pl_get_uint16(pfh->FirstCode));
+    dmprintf1(mem, "LastCode:%d\n", pl_get_uint16(pfh->LastCode));
+
+    dmprintf1(mem, "PitchExtended:%d\n", pfh->PitchExtended);
+    dmprintf1(mem, "HeightExtended:%d\n", pfh->HeightExtended);
+    dmprintf1(mem, "CapHeight:%d\n", pl_get_uint16(pfh->CapHeight));
+    dmprintf4(mem, "FontNumber:%d %d %d %d\n", pfh->FontNumber[0],
+              pfh->FontNumber[1], pfh->FontNumber[2], pfh->FontNumber[3]);
+    dmprintf(mem, "FontName:");
+    for (i = 0; i < sizeof(pfh->FontName); i++) {
+        unsigned char c = pfh->FontName[i];
+        if (c < 32 || c == 127)
+            dmprintf1(mem, "<%02x>", c);
+        else
+            dmprintf1(mem, "%c", c);
+    }
+    dmprintf(mem, "\n");
+    if (pfh->HeaderFormat == pcfh_resolution_bitmap) {
+#define pfhx ((const pcl_resolution_bitmap_header_t *)pfh)
+        dmprintf1(mem, "XResolution:%d\n", pl_get_uint16(pfhx->XResolution));
+        dmprintf1(mem, "YResolution:%d\n", pl_get_uint16(pfhx->YResolution));
+#undef pfhx
+    }
+
+    return;
+}
+#endif
 static int                      /* ESC ) s <count> W */
 pcl_font_header(pcl_args_t * pargs, pcl_state_t * pcs)
 {
@@ -277,6 +358,11 @@ pcl_font_header(pcl_args_t * pargs, pcl_state_t * pcs)
 
     if (count < 64 && pfh->HeaderFormat != pcfh_bitmap)
         return e_Range;         /* pcfh_bitmap defaults short headers to 0 except underline position = 5; */
+#ifdef DEBUG
+    if (gs_debug_c('=')) {
+        dump_dl_font_header(pcs->memory, pfh);
+    }
+#endif
     desc_size =
         (pfh->FontDescriptorSize[0] << 8) + pfh->FontDescriptorSize[1];
     /* Dispatch on the header format. */
@@ -330,11 +416,18 @@ pcl_font_header(pcl_args_t * pargs, pcl_state_t * pcs)
         }
     }
     /* Delete any previous font with this ID. */
-    code = pcl_delete_soft_font(pcs, current_font_id, current_font_id_size, NULL);
+    code = pcl_delete_soft_font(pcs, CURRENT_FONT_ID, CURRENT_FONT_ID_SIZE, NULL);
     if (code < 0)
         return code;
     /* Create the generic font information. */
     plfont = pl_alloc_font(mem, "pcl_font_header(pl_font_t)");
+#ifdef DEBUG
+    {
+        int i;
+        for (i = 0; i < sizeof(pfh->FontName); i++)
+            plfont->FontName[i] = pfh->FontName[i];
+    }
+#endif
     header = gs_alloc_bytes(mem, count, "pcl_font_header(header)");
     if (plfont == NULL || header == NULL) {
         gs_free_object(mem, header, "pcl_font_header(header)");
@@ -514,8 +607,8 @@ pcl_font_header(pcl_args_t * pargs, pcl_state_t * pcs)
         (pfh->TypefaceMSB << 8) + pfh->TypefaceLSB;
     plfont->params.pjl_font_number = pcs->pjl_dlfont_number++;
 
-    code = pl_dict_put(&pcs->soft_fonts, current_font_id,
-                current_font_id_size, plfont);
+    code = pl_dict_put(&pcs->soft_fonts, CURRENT_FONT_ID,
+                CURRENT_FONT_ID_SIZE, plfont);
     if (code < 0) {
         /* on error, pl_dict_put consumes plfont */
         return code;
@@ -563,21 +656,21 @@ pcl_character_data(pcl_args_t * pargs, pcl_state_t * pcs)
     }
 #endif
 
-    if (!pl_dict_find_no_stack(&pcs->soft_fonts, current_font_id,
-                               current_font_id_size, &value))
+    if (!pl_dict_find_no_stack(&pcs->soft_fonts, CURRENT_FONT_ID,
+                               CURRENT_FONT_ID_SIZE, &value))
         return 0;               /* font not found */
 
     plfont = ((pl_font_t *) value);
 
     if (count < 4 || data[2] > count - 2)
-        return e_Range;
+        goto fail_range;
     if (data[1]) {              /* continuation */
         /* Check that we are continuing data - we know this is the
            case if the previous download character command byte count
            is smaller than the data indicated calculating the space
            for the glyph */
         if ((pcs->soft_font_char_data == 0))
-            return e_Range;
+            goto fail_range;
         /* NB we only enable this for uncompressed bitmap
            characters for now, since we don't have real world
            examples for the other font file formats.  */
@@ -588,7 +681,7 @@ pcl_character_data(pcl_args_t * pargs, pcl_state_t * pcs)
         }
         /* check for buffer overrun */
         if (pcs->soft_font_count + count - 2 > gs_object_size(pcs->memory, pcs->soft_font_char_data))
-            return e_Range;
+            goto fail_range;
 
         /* append the new data to the new object */
         memcpy(pcs->soft_font_char_data + pcs->soft_font_count, data + 2,
@@ -612,14 +705,14 @@ pcl_character_data(pcl_args_t * pargs, pcl_state_t * pcs)
                      format != pcfh_resolution_bitmap &&
                      format != pcfh_truetype_large)
                     )
-                    return e_Range;
+                    goto fail_range;
 
                 width = pl_get_uint16(data + 10);
                 if (width < 1 || width > 16384)
-                    return e_Range;
+                    goto fail_range;
                 height = pl_get_uint16(data + 12);
                 if (height < 1 || height > 16384)
-                    return e_Range;
+                    goto fail_range;
                 /* more error checking of offsets, delta, width and height. */
                 {
                     int toff, loff;
@@ -627,16 +720,16 @@ pcl_character_data(pcl_args_t * pargs, pcl_state_t * pcs)
 
                     loff = pl_get_int16(data + 6);
                     if ((-16384 > loff) || (loff > 16384))
-                        return e_Range;
+                        goto fail_range;
                     toff = pl_get_int16(data + 8);
                     if ((-16384 > toff) || (toff > 16384))
-                        return e_Range;
+                        goto fail_range;
                     deltax = pl_get_int16(data + 14);
                     if ((-32768 > deltax) || (deltax > 32767))
-                        return e_Range;
+                        goto fail_range;
                     /* also reject if width * height larger than 1MByte */
                     if ((width * height / 8) > 1024 * 1024)
-                        return e_Range;
+                        goto fail_range;
                 }
 
                 switch (data[3]) {
@@ -671,7 +764,7 @@ pcl_character_data(pcl_args_t * pargs, pcl_state_t * pcs)
                                     uint rlen = *src++;
 
                                     if (rlen > width - x)
-                                        return e_Range; /* row overrun */
+                                        goto fail_range; /* row overrun */
                                     if (color) {        /* Set the run to black. */
                                         char *data = (char *)row;
 
@@ -693,7 +786,7 @@ pcl_character_data(pcl_args_t * pargs, pcl_state_t * pcs)
                         }
                         break;
                     default:
-                        return e_Range;
+                        goto fail_range;
                 }
             }
             break;
@@ -702,43 +795,43 @@ pcl_character_data(pcl_args_t * pargs, pcl_state_t * pcs)
                 (format != pcfh_intellifont_bound &&
                  format != pcfh_intellifont_unbound)
                 )
-                return e_Range;
+                goto fail_range;
             switch (data[3]) {
                 case 3:        /* non-compound character */
                     /* See TRM Table 11-41 (p. 11-60) for the following. */
                     if (count < 14)
-                        return e_Range;
+                        goto fail_range;
                     {
                         uint data_size = pl_get_uint16(data + 4);
 
                         /* The contour data excludes 4 initial bytes of header */
                         /* and 2 final bytes of padding/checksum. */
                         if (data_size != count - 6)
-                            return e_Range;
+                            goto fail_range;
                     }
                     break;
                 case 4:        /* compound character */
                     /* See TRM Figure 11-42 and 11-43 (p. 11-61) */
                     /* for the following. */
                     if (count < 8)
-                        return e_Range;
+                        goto fail_range;
                     {
                         uint num_components = data[6];
 
                         if (count != 8 + num_components * 6 + 2)
-                            return e_Range;
+                            goto fail_range;
                     }
                     break;
                 default:
-                    return e_Range;
+                    goto fail_range;
             }
             break;
         case pccd_truetype:
             if (format != pcfh_truetype && format != pcfh_truetype_large)
-                return e_Range;
+                goto fail_range;
             break;
         default:
-            return e_Range;
+            goto fail_range;
     }
     /* Register the character. */
     /**** FREE PREVIOUS DEFINITION ****/
@@ -769,14 +862,20 @@ pcl_character_data(pcl_args_t * pargs, pcl_state_t * pcs)
         plfont->orient = header->Orientation;
     }
     code = pl_font_add_glyph(plfont, pcs->character_code, char_data, font_data_size);
-    if (code < 0)
+    if (code < 0) {
+        gs_free_object(pcs->memory, char_data, "pcl_character_data");
         return code;
+    }
 #ifdef DISABLE_USE_MY_METRICS
     if (data[0] == pccd_truetype)
         code = pl_font_disable_composite_metrics(plfont, pcs->character_code);
 #endif /* DISABLE_USE_MY_METRICS */
     return code;
 #undef plfont
+
+    fail_range:
+    gs_free_object(pcs->memory, char_data, "pcl_character_data");
+    return e_Range;
 }
 
 /* template for casting data to command */
@@ -815,7 +914,7 @@ pcl_find_resource(pcl_state_t * pcs,
 
     size = pjl_proc_get_named_resource_size(pcs->pjls, alphaname);
     /* resource not found */
-    if (size == 0)
+    if (size <= 0)
         return 0;
 
     /* for a macro we need enough room for the macro header plus the
@@ -833,7 +932,7 @@ pcl_find_resource(pcl_state_t * pcs,
     if (pjl_proc_get_named_resource(pcs->pjls, alphaname,
                                         (byte *) value +
                                         (resource_type == macro_resource ?
-                                         sizeof(pcl_macro_t) : 0)) < 0) {
+                                         sizeof(pcl_macro_t) : 0), size) < 0) {
         gs_free_object(pcs->memory, value, "resource");
         return_error(gs_error_Fatal);
     }
@@ -859,17 +958,17 @@ pcl_find_resource(pcl_state_t * pcs,
        downloaded in the recursive interpreter invocation above, so we
        don't need to add (put) it in the dictionary. */
     if (resource_type == macro_resource) {
-        code = pl_dict_put(&pcs->macros, current_macro_id, current_macro_id_size, value);
+        code = pl_dict_put(&pcs->macros, CURRENT_MACRO_ID, CURRENT_MACRO_ID_SIZE, value);
         if (code == 0)
-            code = pl_dict_put_synonym(&pcs->macros, current_macro_id,
-                                       current_macro_id_size, sid, sid_size);
+            code = pl_dict_put_synonym(&pcs->macros, CURRENT_MACRO_ID,
+                                       CURRENT_MACRO_ID_SIZE, sid, sid_size);
         if (code < 0) {
             gs_free_object(pcs->memory, value, "resource");
             return_error(code);
         }
     } else {
-        code = pl_dict_put_synonym(&pcs->soft_fonts, current_font_id,
-                                   current_font_id_size, sid, sid_size);
+        code = pl_dict_put_synonym(&pcs->soft_fonts, CURRENT_FONT_ID,
+                                   CURRENT_FONT_ID_SIZE, sid, sid_size);
         /* font was constructed separately, don't need the
            original PCL commands from which the font was
            constructed. */
@@ -931,9 +1030,10 @@ pcl_alphanumeric_id_data(pcl_args_t * pargs, pcl_state_t * pcs)
                 void *value;
                 /* simple case the font is in the dictionary */
                 if (pl_dict_find_no_stack(&pcs->soft_fonts, alpha_data->string_id, string_id_size, &value)) {
-                    return pl_dict_put_synonym(&pcs->soft_fonts, alpha_data->string_id,
-                                               string_id_size, current_font_id,
-                                               current_font_id_size);
+                    (void)pl_dict_put_synonym(&pcs->soft_fonts, alpha_data->string_id,
+                                               string_id_size, CURRENT_FONT_ID,
+                                               CURRENT_FONT_ID_SIZE);
+                    return 0;
                 } else {
                     /* search the PJL file system for a font resource */
                     return pcl_find_resource(pcs, alpha_data->string_id,
@@ -1002,9 +1102,10 @@ pcl_alphanumeric_id_data(pcl_args_t * pargs, pcl_state_t * pcs)
                 void *value;
                 /* simple case - the macro is in the dictionary */
                 if (pl_dict_find_no_stack(&pcs->macros, alpha_data->string_id, string_id_size, &value)) {
-                    return pl_dict_put_synonym(&pcs->macros, alpha_data->string_id,
-                                               string_id_size, current_macro_id,
-                                               current_macro_id_size);
+                    (void)pl_dict_put_synonym(&pcs->macros, alpha_data->string_id,
+                                               string_id_size, CURRENT_MACRO_ID,
+                                               CURRENT_MACRO_ID_SIZE);
+                    return 0;
                 } else {
                     /* search the PJL file system for a macro resource */
                     return pcl_find_resource(pcs, alpha_data->string_id,
@@ -1015,14 +1116,14 @@ pcl_alphanumeric_id_data(pcl_args_t * pargs, pcl_state_t * pcs)
         case 20:
             /* deletes the font association named by the current Font ID */
             if (pcs->font_id_type == string_id)
-                return pcl_delete_soft_font(pcs, current_font_id,
-                                     current_font_id_size, NULL);
+                return pcl_delete_soft_font(pcs, CURRENT_FONT_STRING_ID,
+                                         CURRENT_FONT_STRING_ID_SIZE, NULL);
             break;
         case 21:
             /* deletes the macro association named the the current macro id */
             if (pcs->macro_id_type == string_id)
-                pl_dict_undef(&pcs->macros, current_macro_id,
-                              current_macro_id_size);
+                pl_dict_undef(&pcs->macros, CURRENT_MACRO_STRING_ID,
+                              CURRENT_MACRO_STRING_ID_SIZE);
             break;
         case 100:
             /* media select */

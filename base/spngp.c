@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -75,6 +75,9 @@ s_pngp_init(stream_state * st, bool need_prev)
 
     if (ss->Colors > s_PNG_max_Colors)
         return ERRC; /* Too many colorants */
+
+    if (bits_per_row < 1)
+        return ERRC;
 
     ss->bpp = (bits_per_pixel + 7) >> 3;
     if (need_prev) {

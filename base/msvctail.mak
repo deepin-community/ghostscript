@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2023 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 # of the license contained in the file LICENSE in this distribution.
 #
 # Refer to licensing information at http://www.artifex.com or contact
-# Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-# CA 94945, U.S.A., +1(415)492-9861, for further information.
+# Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+# CA 94129, USA, for further information.
 #
 # Common tail section for Microsoft Visual C++ 4.x/5.x,
 # Windows NT or Windows 95 platform.
@@ -61,7 +61,7 @@ $(GENHT_XE): $(GLSRC)genht.c $(GLGENDIR)\ccf32.tr $(GENHT_DEPS) $(MSVCTAIL_MAK)
 	$(CCAUX_) $(GENHT_CFLAGS) $(GLSRC)genht.c /Fo$(AUX)genht.obj /Fe$(GENHT_XE) $(CCAUX_TAIL)
 
 MKROMFS_OBJS=$(MKROMFS_ZLIB_OBJS) $(AUX)gp_ntfs.$(OBJ) $(AUX)gp_win32.$(OBJ) $(AUX)gpmisc.$(OBJ)\
-            $(AUX)gp_getnv.$(OBJ) $(AUX)gp_wutf8.$(OBJ) $(AUX)gp_winfs.$(OBJ)\
+	    $(AUX)gp_getnv.$(OBJ) $(AUX)gp_utf8.$(OBJ) $(AUX)gp_winfs.$(OBJ)\
 	    $(AUX)gp_winfs2.$(OBJ)
 $(MKROMFS_XE): $(GLSRC)mkromfs.c $(GLGENDIR)\ccf32.tr $(MKROMFS_COMMON_DEPS) $(MKROMFS_OBJS) $(MSVCTAIL_MAK)
 	$(CCAUX_) -I$(GLOBJ) -I$(ZSRCDIR) $(GLSRC)mkromfs.c /Fo$(AUX)mkromfs.obj /Fe$(MKROMFS_XE) $(MKROMFS_OBJS) $(CCAUX_TAIL)

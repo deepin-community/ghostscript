@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Fax devices */
@@ -27,13 +27,19 @@ static dev_proc_print_page(faxg4_print_page);
 
 /* Define procedures that adjust the paper size. */
 /* Since the print_page doesn't alter the device, this device can print in the background */
-const gx_device_procs gdev_fax_std_procs =
-    prn_params_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                     gdev_fax_get_params, gdev_fax_put_params);
+static void
+fax_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono_bg(dev);
+
+    set_dev_proc(dev, open_device, gdev_prn_open);
+    set_dev_proc(dev, get_params, gdev_fax_get_params);
+    set_dev_proc(dev, put_params, gdev_fax_put_params);
+}
 
 #define FAX_DEVICE(dname, print_page)\
 {\
-    FAX_DEVICE_BODY(gx_device_fax, gdev_fax_std_procs, dname, print_page)\
+    FAX_DEVICE_BODY(gx_device_fax, fax_initialize_device_procs, dname, print_page)\
 }
 
 const gx_device_fax gs_faxg3_device =

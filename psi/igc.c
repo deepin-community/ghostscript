@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -786,7 +786,8 @@ gc_trace_clump(const gs_memory_t *mem, clump_t * cp, gc_state_t * pstate, gc_mar
 /* 1 if we completed and marked some new objects. */
 static int gc_extend_stack(gc_mark_stack *, gc_state_t *);
 static int
-gc_trace(gs_gc_root_t * rp, gc_state_t * pstate, gc_mark_stack * pmstack)
+gc_trace(gs_gc_root_t * rp, /* lgtm [cpp/use-of-goto] */
+         gc_state_t * pstate, gc_mark_stack * pmstack)
 {
     int min_trace = pstate->min_collect;
     gc_mark_stack *pms = pmstack;
@@ -958,6 +959,7 @@ gc_trace(gs_gc_root_t * rp, gc_state_t * pstate, gc_mark_stack * pmstack)
                 case t_fontID:
                 case t_struct:
                 case t_astruct:
+                case t_pdfctx:
                     nptr = rptr->value.pstruct;
                     goto rs;
                     /* Non-trivial non-struct cases */
@@ -1060,7 +1062,7 @@ gc_extend_stack(gc_mark_stack * pms, gc_state_t * pstate)
 
             if (cp == 0) {	/* We were tracing outside collectible */
                 /* storage.  This can't happen. */
-                lprintf1("mark stack overflowed while outside collectible space at "PRI_INTPTR"!\n",
+                if_debug1('6', "mark stack overflowed while outside collectible space at "PRI_INTPTR"!\n",
                          (intptr_t)cptr);
                 gs_abort(pstate->heap);
             }
@@ -1289,7 +1291,7 @@ igc_reloc_struct_ptr(const void /*obj_header_t */ *obj, gc_state_t * gcst)
 
             if (cp != 0 && cp->cbase <= (byte *)obj && (byte *)obj <cp->ctop) {
                 if (back > (cp->ctop - cp->cbase) >> obj_back_shift) {
-                    lprintf2("Invalid back pointer %u at "PRI_INTPTR"!\n",
+                    if_debug2('6', "Invalid back pointer %u at "PRI_INTPTR"!\n",
                              back, (intptr_t)obj);
                     gs_abort(NULL);
                 }

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -176,9 +176,10 @@ obj_eq(const gs_memory_t *mem, const ref * pref1, const ref * pref2)
             return (!bytes_compare(pref1->value.bytes, r_size(pref1),
                                    pref2->value.bytes, r_size(pref2)));
         case t_device:
-            return (pref1->value.pdevice == pref2->value.pdevice);
+            return (pref1->value.pdevice->device == pref2->value.pdevice->device);
         case t_struct:
         case t_astruct:
+        case t_pdfctx:
             return (pref1->value.pstruct == pref2->value.pstruct);
         case t_fontID:
             /* This is complicated enough to deserve a separate procedure. */
@@ -303,7 +304,7 @@ obj_string_data(const gs_memory_t *mem, const ref *op, const byte **pchars, uint
  * repeatedly to print on a stream, which may require suspending at any
  * point to handle stream callouts.
  */
-static void ensure_dot(char *);
+static void ensure_dot(char *, size_t);
 int
 obj_cvp(const ref * op, byte * str, uint len, uint * prlen,
         int full_print, uint start_pos, const gs_memory_t *mem, bool restart)
@@ -339,15 +340,15 @@ obj_cvp(const ref * op, byte * str, uint len, uint * prlen,
              */
             float value = op->value.realval;
             float scanned;
-            code = gs_sprintf(buf, "%g", value);
+            code = gs_snprintf(buf, sizeof(buf), "%g", value);
             if (code <= 0)
                 return_error(gs_error_undefinedresult);
             code = sscanf(buf, "%f", &scanned);
             if (code <= 0)
                 return_error(gs_error_undefinedresult);
             if (scanned != value)
-                gs_sprintf(buf, "%.9g", value);
-            ensure_dot(buf);
+                gs_snprintf(buf, sizeof(buf), "%.9g", value);
+            ensure_dot(buf, 256);
             goto rs;
         }
         case t_operator:
@@ -478,6 +479,9 @@ obj_cvp(const ref * op, byte * str, uint len, uint * prlen,
             size += 2;
             data = (const byte *)buf;
             goto nl;
+        case t_pdfctx:
+            data = (const byte *)"-pdfcontext-";
+            goto rs;
         default:
 other:
             {
@@ -498,7 +502,7 @@ other:
         data = (const byte *)(op->value.boolval ? "true" : "false");
         break;
     case t_integer:
-        gs_sprintf(buf, "%"PRIpsint, op->value.intval);
+        gs_snprintf(buf, sizeof(buf), "%"PRIpsint, op->value.intval);
         break;
     case t_string:
         check_read(*op);
@@ -533,7 +537,11 @@ other:
             break;
         }
         /* Internal operator, no name. */
-        gs_sprintf(buf, "@"PRI_INTPTR, (intptr_t) op->value.opproc);
+#if DEBUG
+        gs_snprintf(buf, sizeof(buf), "@"PRI_INTPTR, (intptr_t) op->value.opproc);
+#else
+        gs_snprintf(buf, sizeof(buf), "@anonymous_operator", (intptr_t) op->value.opproc);
+#endif
         break;
     }
     case t_real:
@@ -544,11 +552,11 @@ other:
          * library implementation.  Work around this here.
          */
         if (op->value.realval == (float)0.0001) {
-            strcpy(buf, "0.0001");
+            strncpy(buf, "0.0001", 256);
         } else {
-            gs_sprintf(buf, "%g", op->value.realval);
+            gs_snprintf(buf, sizeof(buf), "%g", op->value.realval);
         }
-        ensure_dot(buf);
+        ensure_dot(buf, 256);
         break;
     default:
         data = (const byte *)"--nostringval--";
@@ -569,17 +577,18 @@ nl: if (size < start_pos)
  * Re-format the exponent to satisfy Genoa CET test.
  */
 static void
-ensure_dot(char *buf)
+ensure_dot(char *buf, size_t buflen)
 {
     char *pe = strchr(buf, 'e');
     if (pe) {
         int i;
         (void)sscanf(pe + 1, "%d", &i);
+        buflen -= (size_t)(pe - buf);
         /* MSVC .net 2005 express doesn't support "%+02d" */
         if (i >= 0)
-            gs_sprintf(pe + 1, "+%02d", i);
+            gs_snprintf(pe + 1, buflen, "+%02d", i);
         else
-            gs_sprintf(pe + 1, "-%02d", -i);
+            gs_snprintf(pe + 1, buflen, "-%02d", -i);
     } else if (strchr(buf, '.') == NULL) {
         strcat(buf, ".0");
     }

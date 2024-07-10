@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -201,6 +201,7 @@ typedef enum {
 /* Path accessors */
 
 gx_path *gx_current_path(const gs_gstate *);
+bool gx_path_position_valid(const gx_path *ppath);
 int gx_path_current_point(const gx_path *, gs_fixed_point *),
     gx_path_bbox(gx_path *, gs_fixed_rect *),
     gx_path_bbox_set(gx_path *, gs_fixed_rect *);

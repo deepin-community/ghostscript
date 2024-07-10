@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -53,6 +53,7 @@ struct gs_c_param_s {
     gs_c_param_value value;
     gs_param_type type;
     void *alternate_typed_data;
+    int error;
 };
 
 /* GC descriptor and procedures */
@@ -125,6 +126,14 @@ gs_c_param_list *
 gs_c_param_list_alloc(gs_memory_t *mem, client_name_t cname)
 {
     return gs_alloc_struct(mem, gs_c_param_list, &st_c_param_list, cname);
+}
+
+void gs_c_param_list_free(gs_memory_t *mem, gs_c_param_list *plist, client_name_t cname)
+{
+    if (plist == NULL)
+        return;
+    gs_c_param_list_release(plist);
+    gs_free_object(mem, plist, cname);
 }
 
 static gs_c_param *
@@ -261,6 +270,7 @@ c_param_add(gs_c_param_list * plist, gs_param_name pkey)
     }
     pparam->key.size = len;
     pparam->alternate_typed_data = 0;
+    pparam->error = 0;
     return pparam;
 }
 
@@ -450,6 +460,7 @@ static param_proc_xmit_typed(c_param_read_typed);
 static param_proc_next_key(c_param_get_next_key);
 static param_proc_get_policy(c_param_read_get_policy);
 static param_proc_signal_error(c_param_read_signal_error);
+static param_proc_read_signalled_error(c_param_read_signalled_error);
 static param_proc_commit(c_param_read_commit);
 static const gs_param_list_procs c_read_procs =
 {
@@ -461,7 +472,8 @@ static const gs_param_list_procs c_read_procs =
     NULL,			/* requested, N/A */
     c_param_read_get_policy,
     c_param_read_signal_error,
-    c_param_read_commit
+    c_param_read_commit,
+    c_param_read_signalled_error
 };
 
 /* Switch a list from writing to reading. */
@@ -596,10 +608,24 @@ c_param_read_get_policy(gs_param_list * plist, gs_param_name pkey)
 static int
 c_param_read_signal_error(gs_param_list * plist, gs_param_name pkey, int code)
 {
-    return code;
+    gs_c_param_list *const cplist = (gs_c_param_list *)plist;
+    gs_c_param *pparam = c_param_find(cplist, pkey, false);
+
+    if (pparam)
+        pparam->error = code;
+
+    return 0;
 }
 static int
 c_param_read_commit(gs_param_list * plist)
 {
     return 0;
+}
+static int
+c_param_read_signalled_error(gs_param_list * plist, gs_param_name pkey)
+{
+    gs_c_param_list *const cplist = (gs_c_param_list *)plist;
+    gs_c_param *pparam = c_param_find(cplist, pkey, false);
+
+    return (pparam ? pparam->error : 0);
 }

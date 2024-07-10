@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /*$Id: gdevtxtw.c 7795 2007-03-23 13:56:11Z tim $ */
@@ -30,7 +30,7 @@
 #include "gxfcid.h"
 #include "gxgstate.h"
 #include "gxpath.h"
-#include "gdevagl.h"
+#include "gsagl.h"
 #include "gxdevsop.h"
 #include "gzpath.h"
 #include "gdevkrnlsclass.h" /* 'standard' built in subclasses, currently First/Last Page and obejct filter */
@@ -112,7 +112,7 @@ static dev_proc_put_params(txtwrite_put_params);
 static dev_proc_fill_path(txtwrite_fill_path);
 static dev_proc_stroke_path(txtwrite_stroke_path);
 static dev_proc_text_begin(txtwrite_text_begin);
-static dev_proc_strip_copy_rop(txtwrite_strip_copy_rop);
+static dev_proc_strip_copy_rop2(txtwrite_strip_copy_rop2);
 static dev_proc_dev_spec_op(txtwrite_dev_spec_op);
 
 
@@ -145,86 +145,34 @@ typedef struct textw_text_enum_s {
 
 private_st_textw_text_enum();
 
+static void
+txtwrite_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, open_device, txtwrite_open_device);
+    set_dev_proc(dev, output_page, txtwrite_output_page);
+    set_dev_proc(dev, close_device, txtwrite_close_device);
+    set_dev_proc(dev, fill_rectangle, txtwrite_fill_rectangle);
+    set_dev_proc(dev, get_params, txtwrite_get_params);
+    set_dev_proc(dev, put_params, txtwrite_put_params);
+    set_dev_proc(dev, get_page_device, gx_page_device_get_page_device);
+    set_dev_proc(dev, fill_path, txtwrite_fill_path);
+    set_dev_proc(dev, stroke_path, txtwrite_stroke_path);
+    set_dev_proc(dev, strip_copy_rop2, txtwrite_strip_copy_rop2);
+    set_dev_proc(dev, composite, gx_null_composite);
+    set_dev_proc(dev, text_begin, txtwrite_text_begin);
+    set_dev_proc(dev, dev_spec_op, txtwrite_dev_spec_op);
+}
+
 const gx_device_txtwrite_t gs_txtwrite_device =
 {
     /* Define the device as 8-bit gray scale to avoid computing halftones. */
-    std_device_dci_body(gx_device_txtwrite_t, 0, "txtwrite",
+    std_device_dci_body(gx_device_txtwrite_t,
+                        txtwrite_initialize_device_procs, "txtwrite",
                         DEFAULT_WIDTH_10THS * X_DPI / 10,
                         DEFAULT_HEIGHT_10THS * Y_DPI / 10,
                         X_DPI, Y_DPI,
                         1, 8, 255, 0, 256, 1),
-    {txtwrite_open_device,
-     NULL, /*gx_upright_get_initial_matrix,*/
-     NULL, /*gx_default_sync_output,*/
-     txtwrite_output_page,
-     txtwrite_close_device,
-     NULL, /*gx_default_gray_map_rgb_color,*/
-     NULL, /*gx_default_gray_map_color_rgb,*/
-     txtwrite_fill_rectangle,               /* Can't be NULL and there is no gx_default_fill_rectangle! */
-     NULL, /*gx_default_tile_rectangle,*/
-     NULL, /*gx_default_copy_mono,*/
-     NULL, /*gx_default_copy_color,*/
-     NULL, /*gx_default_draw_line,*/
-     NULL, /*gx_default_get_bits,*/
-     txtwrite_get_params,
-     txtwrite_put_params,
-     NULL, /*gx_default_map_cmyk_color,*/
-     NULL, /*gx_default_get_xfont_procs,*/
-     NULL, /*gx_default_get_xfont_device,*/
-     NULL, /*gx_default_map_rgb_alpha_color,*/
-     gx_page_device_get_page_device, /*gx_page_device_get_page_device,*/
-     NULL,			/* get_alpha_bits */
-     NULL, /*gx_default_copy_alpha,*/
-     NULL,			/* get_band */
-     NULL,			/* copy_rop */
-     txtwrite_fill_path,
-     txtwrite_stroke_path,
-     NULL, /*gx_default_fill_mask,*/
-     NULL, /*gx_default_fill_trapezoid,*/
-     NULL, /*gx_default_fill_parallelogram,*/
-     NULL, /*gx_default_fill_triangle,*/
-     NULL, /*gx_default_draw_thin_line,*/
-     NULL,                      /* begin image */
-     NULL,			/* image_data */
-     NULL,			/* end_image */
-     NULL, /*gx_default_strip_tile_rectangle,*/
-     txtwrite_strip_copy_rop,
-     NULL,			/* get_clipping_box */
-     NULL, /* txtwrite_begin_typed_image */
-     NULL,			/* get_bits_rectangle */
-     NULL, /*gx_default_map_color_rgb_alpha,*/
-     gx_null_create_compositor,
-     NULL,			/* get_hardware_params */
-     txtwrite_text_begin,
-     NULL,			/* finish_copydevice */
-     NULL,			/* begin_transparency_group */
-     NULL,			/* end_transparency_group */
-     NULL,			/* begin_transparency_mask */
-     NULL,			/* end_transparency_mask */
-     NULL,			/* discard_transparency_layer */
-     NULL,			/* get_color_mapping_procs */
-     NULL,			/* get_color_comp_index */
-     NULL,			/* encode_color */
-     NULL,			/* decode_color */
-     NULL,                      /* pattern manager */
-     NULL,                      /* fill_rectangle_hl_color */
-     NULL,                      /* include_color_space */
-     NULL,                      /* fill_linear_color_scanline */
-     NULL,                      /* fill_linear_color_trapezoid */
-     NULL,                      /* fill_linear_color_triangle */
-     NULL,                      /* update_spot_equivalent_colors */
-     NULL,                      /* ret_devn_params */
-     NULL,                      /* fillpage */
-     NULL,                      /* push_transparency_state */
-     NULL,                      /* pop_transparency_state */
-     NULL,                      /* put_image */
-     txtwrite_dev_spec_op,      /* dev_spec_op */
-     NULL,                      /* copy_planes */
-     NULL,                      /* get_profile */
-     NULL,                      /* set_graphics_type_tag */
-     NULL,                      /* strip_copy_rop2 */
-     NULL                       /* strip_tile_rect_devn */
-    },
+    { 0 }, /* proc table */
     { 0 },			/* Page Data */
     { 0 },			/* Output Filename */
     0,				/* Output FILE * */
@@ -261,6 +209,7 @@ txtwrite_open_device(gx_device * dev)
     dev->color_info.separable_and_linear = GX_CINFO_SEP_LIN;
     set_linear_color_bits_mask_shift(dev);
     dev->interpolate_control = 0;
+    dev->non_strict_bounds = 0;
 
     code = install_internal_subclass_devices((gx_device **)&dev, NULL);
     return code;
@@ -699,20 +648,20 @@ static int simple_text_output(gx_device_txtwrite_t *tdev)
     return 0;
 }
 
-static int escaped_Unicode (unsigned short Unicode, char *Buf)
+static int escaped_Unicode (unsigned short Unicode, char Buf[32])
 {
     switch (Unicode)
     {
-    case 0x3C: gs_sprintf(Buf, "&lt;"); break;
-    case 0x3E: gs_sprintf(Buf, "&gt;"); break;
-    case 0x26: gs_sprintf(Buf, "&amp;"); break;
-    case 0x22: gs_sprintf(Buf, "&quot;"); break;
-    case 0x27: gs_sprintf(Buf, "&apos;"); break;
+    case 0x3C: gs_snprintf(Buf, 32, "&lt;"); break;
+    case 0x3E: gs_snprintf(Buf, 32, "&gt;"); break;
+    case 0x26: gs_snprintf(Buf, 32, "&amp;"); break;
+    case 0x22: gs_snprintf(Buf, 32, "&quot;"); break;
+    case 0x27: gs_snprintf(Buf, 32, "&apos;"); break;
     default:
         if (Unicode >= 32 && Unicode <= 127)
-            gs_sprintf(Buf, "%c", Unicode);
+            gs_snprintf(Buf, 32, "%c", Unicode);
         else
-            gs_sprintf(Buf, "&#x%x;", Unicode);
+            gs_snprintf(Buf, 32, "&#x%x;", Unicode);
         break;
     }
 
@@ -735,13 +684,13 @@ static int decorated_text_output(gx_device_txtwrite_t *tdev)
         x_entry = tdev->PageData.unsorted_text_list;
         while (x_entry) {
             next_x = x_entry->next;
-            gs_sprintf(TextBuffer, "<span bbox=\"%0.0f %0.0f %0.0f %0.0f\" font=\"%s\" size=\"%0.4f\">\n", x_entry->start.x, x_entry->start.y,
+            gs_snprintf(TextBuffer, sizeof(TextBuffer), "<span bbox=\"%0.0f %0.0f %0.0f %0.0f\" font=\"%s\" size=\"%0.4f\">\n", x_entry->start.x, x_entry->start.y,
                 x_entry->end.x, x_entry->end.y, x_entry->FontName,x_entry->size);
             gp_fwrite(TextBuffer, 1, strlen(TextBuffer), tdev->file);
             xpos = x_entry->start.x;
             for (i=0;i<x_entry->Unicode_Text_Size;i++) {
-                escaped_Unicode(x_entry->Unicode_Text[i], (char *)&Escaped);
-                gs_sprintf(TextBuffer, "<char bbox=\"%0.0f %0.0f %0.0f %0.0f\" c=\"%s\"/>\n", xpos,
+                escaped_Unicode(x_entry->Unicode_Text[i], Escaped);
+                gs_snprintf(TextBuffer, sizeof(TextBuffer), "<char bbox=\"%0.0f %0.0f %0.0f %0.0f\" c=\"%s\"/>\n", xpos,
                     x_entry->start.y, xpos + x_entry->Widths[i], x_entry->end.y, Escaped);
                 gp_fwrite(TextBuffer, 1, strlen(TextBuffer), tdev->file);
                 xpos += x_entry->Widths[i];
@@ -858,13 +807,13 @@ static int decorated_text_output(gx_device_txtwrite_t *tdev)
                 gp_fwrite("<line>\n", sizeof(unsigned char), 7, tdev->file);
                 x_entry = block_line->x_ordered_list;
                 while(x_entry) {
-                    gs_sprintf(TextBuffer, "<span bbox=\"%0.0f %0.0f %0.0f %0.0f\" font=\"%s\" size=\"%0.4f\">\n", x_entry->start.x, x_entry->start.y,
+                    gs_snprintf(TextBuffer, sizeof(TextBuffer), "<span bbox=\"%0.0f %0.0f %0.0f %0.0f\" font=\"%s\" size=\"%0.4f\">\n", x_entry->start.x, x_entry->start.y,
                         x_entry->end.x, x_entry->end.y, x_entry->FontName,x_entry->size);
                     gp_fwrite(TextBuffer, 1, strlen(TextBuffer), tdev->file);
                     xpos = x_entry->start.x;
                     for (i=0;i<x_entry->Unicode_Text_Size;i++) {
-                        escaped_Unicode(x_entry->Unicode_Text[i], (char *)&Escaped);
-                        gs_sprintf(TextBuffer, "<char bbox=\"%0.0f %0.0f %0.0f %0.0f\" c=\"%s\"/>\n", xpos,
+                        escaped_Unicode(x_entry->Unicode_Text[i], Escaped);
+                        gs_snprintf(TextBuffer, sizeof(TextBuffer), "<char bbox=\"%0.0f %0.0f %0.0f %0.0f\" c=\"%s\"/>\n", xpos,
                             x_entry->start.y, xpos + x_entry->Widths[i], x_entry->end.y, Escaped);
                         gp_fwrite(TextBuffer, 1, strlen(TextBuffer), tdev->file);
                         xpos += x_entry->Widths[i];
@@ -1090,14 +1039,15 @@ txtwrite_strip_tile_rectangle(gx_device * dev, const gx_strip_bitmap * tiles,
 }
 
 static int
-txtwrite_strip_copy_rop(gx_device * dev,
+txtwrite_strip_copy_rop2(gx_device * dev,
                     const byte * sdata, int sourcex, uint sraster,
                     gx_bitmap_id id,
                     const gx_color_index * scolors,
                     const gx_strip_bitmap * textures,
                     const gx_color_index * tcolors,
                     int x, int y, int w, int h,
-                    int phase_x, int phase_y, gs_logical_operation_t lop)
+                    int phase_x, int phase_y, gs_logical_operation_t lop,
+                    uint plane_height)
 {
     return 0;
 }*/
@@ -1218,7 +1168,7 @@ txtwrite_put_params(gx_device * dev, gs_param_list * plist)
     if (code < 0)
         return code;
 
-    if (ofs.data != 0) {	/* Close the file if it's open. */
+    if (ofs.data != 0 && (ofs.size != strlen(tdev->fname) || strncmp((const char *)ofs.data, tdev->fname, ofs.size)) != 0) {	/* Close the file if it's open. */
         if (tdev->file != 0) {
             gp_fclose(tdev->file);
             tdev->file = 0;
@@ -1236,12 +1186,13 @@ txtwrite_put_params(gx_device * dev, gs_param_list * plist)
         dev->is_open = false;
 
     code = gx_default_put_params(dev, plist);
+    dev->is_open = open;
     if (code < 0)
         return code;
 
-    dev->is_open = open;
 
     dev->interpolate_control = 0;
+    dev->non_strict_bounds = 0;
 
     return 0;
 }
@@ -1344,7 +1295,7 @@ txt_update_text_state(text_list_entry_t *ppts,
     gs_matrix smat, tmat;
     float size;
     int mask = 0;
-    int code = gx_path_current_point(penum->path, &cpt);
+    int code = gx_path_current_point(gs_text_enum_path(penum), &cpt);
 
     if (code < 0)
         return code;
@@ -1534,6 +1485,7 @@ txtwrite_process_plain_text(gs_text_enum_t *pte)
     uint operation = pte->text.operation;
     txt_glyph_widths_t widths;
     gs_point wanted;	/* user space */
+    float glyph_width;
 
     for (i=pte->index;i<pte->text.size;i++) {
         gs_point dpt = {0,0};
@@ -1567,7 +1519,29 @@ txtwrite_process_plain_text(gs_text_enum_t *pte)
         if (code < 0)
             return code;
 
+        /* Calculate glyph_width from the **original** glyph metrics, not the overriding
+         * advance width (if TEXT_REPLACE_WIDTHS is set below)
+         */
         txt_char_widths_to_uts(pte->orig_font, &widths); /* convert design->text space */
+        glyph_width = widths.real_width.xy.x * penum->text_state->size;
+
+        if (pte->text.operation & TEXT_REPLACE_WIDTHS)
+        {
+            gs_point tpt;
+
+            /* We are applying a width override, from x/y/xyshow. This could be from
+             * a PostScript file, or it could be from a PDF file where we have a font
+             * with a FontMatrix which is neither horizontal nor vertical.
+             */
+            code = gs_text_replaced_width(&pte->text, pte->xy_index++, &tpt);
+            if (code < 0)
+                return_error(gs_error_unregistered);
+
+            widths.Width.w = widths.real_width.w = tpt.x;
+            widths.Width.xy.x = widths.real_width.xy.x = tpt.x;
+            widths.Width.xy.y = widths.real_width.xy.y = tpt.y;
+        }
+
         gs_distance_transform(widths.real_width.xy.x * penum->text_state->size,
                           widths.real_width.xy.y * penum->text_state->size,
                           &penum->text_state->matrix, &wanted);
@@ -1575,7 +1549,7 @@ txtwrite_process_plain_text(gs_text_enum_t *pte)
         pte->returned.total_width.y += wanted.y;
         penum->Widths[penum->TextBufferIndex] = wanted.x;
         penum->Advs[penum->TextBufferIndex] = wanted.x;
-        penum->GlyphWidths[penum->TextBufferIndex] = widths.real_width.xy.x * penum->text_state->size;
+        penum->GlyphWidths[penum->TextBufferIndex] = glyph_width;
         penum->SpanDeltaX[penum->TextBufferIndex] = widths.real_width.xy.x * penum->text_state->size;
 
         if (pte->text.operation & TEXT_ADD_TO_ALL_WIDTHS) {
@@ -1903,10 +1877,14 @@ textw_text_process(gs_text_enum_t *pte)
         if (!penum->SpanDeltaX)
             return gs_note_error(gs_error_VMerror);
     }
+retry:
     {
         switch (font->FontType) {
         case ft_CID_encrypted:
         case ft_CID_TrueType:
+            errprintf(pte->memory, "\n\n*** The txtwrite device does not currently support the use of CID-Keyed fonts. ***\n\n");
+	        return_error(gs_error_typecheck);
+            break;
         case ft_composite:
               code = txtwrite_process_cmap_text(pte);
             break;
@@ -1914,13 +1892,14 @@ textw_text_process(gs_text_enum_t *pte)
         case ft_encrypted2:
         case ft_TrueType:
         case ft_user_defined:
+        case ft_PDF_user_defined:
         case ft_PCL_user_defined:
         case ft_GL2_stick_user_defined:
         case ft_GL2_531:
             code = txtwrite_process_plain_text(pte);
             break;
         default:
-	  return_error(gs_error_rangecheck);
+	        return_error(gs_error_rangecheck);
             break;
         }
         if (code == 0) {
@@ -1957,11 +1936,14 @@ textw_text_process(gs_text_enum_t *pte)
                 return code;
             /* Fall back to the default implementation. */
             code = gx_default_text_begin(pte->dev, pte->pgs, &pte->text, pte->current_font,
-                                 pte->path, pte->pdcolor, pte->pcpath, pte->memory, &pte_fallback);
+                                         pte->pcpath, &pte_fallback);
             if (code < 0)
                 return code;
             penum->pte_fallback = pte_fallback;
             gs_text_enum_copy_dynamic(pte_fallback, pte, false);
+
+            if (font->FontType == ft_PDF_user_defined && pte->text.size != 1)
+                pte_fallback->text.size = pte->index + 1;
 
             code = gs_text_process(pte_fallback);
             if (code != 0) {
@@ -1971,6 +1953,8 @@ textw_text_process(gs_text_enum_t *pte)
             }
             gs_text_release(NULL, pte_fallback, "txtwrite_text_process");
             penum->pte_fallback = 0;
+            if (font->FontType == ft_PDF_user_defined)
+                goto retry;
         }
     }
     return code;
@@ -1982,7 +1966,11 @@ textw_text_process(gs_text_enum_t *pte)
 static int
 textw_text_resync(gs_text_enum_t *pte, const gs_text_enum_t *pfrom)
 {
-    return gs_text_resync(pte, pfrom);
+    if ((pte->text.operation ^ pfrom->text.operation) & ~TEXT_FROM_ANY)
+        return_error(gs_error_rangecheck);
+    pte->text = pfrom->text;
+    gs_text_enum_copy_dynamic(pte, pfrom, false);
+    return 0;
 }
 static bool
 textw_text_is_width_only(const gs_text_enum_t *pte)
@@ -2033,16 +2021,26 @@ textw_text_release(gs_text_enum_t *pte, client_name_t cname)
     gx_device_txtwrite_t *const tdev = (gx_device_txtwrite_t *) pte->dev;
 
     /* Free the working buffer where the Unicode was assembled from the enumerated text */
-    if (penum->TextBuffer)
+    if (penum->TextBuffer) {
         gs_free(tdev->memory, penum->TextBuffer, 1, penum->TextBufferIndex, "txtwrite free temporary text buffer");
-    if (penum->Widths)
+        penum->TextBuffer = NULL;
+    }
+    if (penum->Widths) {
         gs_free(tdev->memory, penum->Widths, sizeof(float), pte->text.size, "txtwrite free temporary widths array");
-    if (penum->Advs)
+        penum->Widths = NULL;
+    }
+    if (penum->Advs) {
         gs_free(tdev->memory, penum->Advs, 1, penum->TextBufferIndex, "txtwrite free temporary text buffer");
-    if (penum->GlyphWidths)
+        penum->Advs = NULL;
+    }
+    if (penum->GlyphWidths) {
         gs_free(tdev->memory, penum->GlyphWidths, 1, penum->TextBufferIndex, "txtwrite free temporary text buffer");
-    if (penum->SpanDeltaX)
+        penum->GlyphWidths = NULL;
+    }
+    if (penum->SpanDeltaX) {
         gs_free(tdev->memory, penum->SpanDeltaX, 1, penum->TextBufferIndex, "txtwrite free temporary text buffer");
+        penum->SpanDeltaX = NULL;
+    }
     /* If this is copied away when we complete the text enumeration succesfully, then
      * we set the pointer to NULL, if we get here with it non-NULL , then there was
      * an error.
@@ -2059,7 +2057,9 @@ textw_text_release(gs_text_enum_t *pte, client_name_t cname)
         if (penum->text_state->FontName)
             gs_free(tdev->memory, penum->text_state->FontName, 1, penum->TextBufferIndex, "txtwrite free temporary font name copy");
         gs_free(tdev->memory, penum->text_state, 1, sizeof(penum->text_state), "txtwrite free text state");
+        penum->text_state = NULL;
     }
+    rc_decrement_only(pte->dev, "textw_text_release");
 }
 
 /* This is the list of methods for the text enumerator */
@@ -2078,13 +2078,14 @@ static const gs_text_enum_procs_t textw_text_procs = {
 static int
 txtwrite_text_begin(gx_device * dev, gs_gstate * pgs,
                 const gs_text_params_t * text, gs_font * font,
-                gx_path * path, const gx_device_color * pdcolor,
                 const gx_clip_path * pcpath,
-                gs_memory_t * mem, gs_text_enum_t ** ppenum)
+                gs_text_enum_t ** ppenum)
 {
     gx_device_txtwrite_t *const tdev = (gx_device_txtwrite_t *) dev;
     textw_text_enum_t *penum;
     int code;
+    gx_path *path = pgs->path;
+    gs_memory_t * mem = pgs->memory;
 
     /* If this is a stringwidth, we must let the default graphics library code handle it
      * in case there is no current point (this can happen if this is the first operation
@@ -2095,8 +2096,8 @@ txtwrite_text_begin(gx_device * dev, gs_gstate * pgs,
      */
     if ((!(text->operation & TEXT_DO_DRAW) && pgs->text_rendering_mode != 3)
                     || path == 0 || !path_position_valid(path))
-            return gx_default_text_begin(dev, pgs, text, font, path, pdcolor,
-                                         pcpath, mem, ppenum);
+            return gx_default_text_begin(dev, pgs, text, font,
+                                         pcpath, ppenum);
     /* Allocate and initialize one of our text enumerators. */
     rc_alloc_struct_1(penum, textw_text_enum_t, &st_textw_text_enum, mem,
                       return_error(gs_error_VMerror), "gdev_textw_text_begin");
@@ -2107,6 +2108,9 @@ txtwrite_text_begin(gx_device * dev, gs_gstate * pgs,
     penum->TextBuffer = NULL;
     penum->TextBufferIndex = 0;
     penum->Widths = NULL;
+    penum->Advs = NULL;
+    penum->GlyphWidths = NULL;
+    penum->SpanDeltaX = NULL;
     penum->pte_fallback = NULL;
     penum->d1_width = 0;
     penum->d1_width_set = false;
@@ -2118,7 +2122,7 @@ txtwrite_text_begin(gx_device * dev, gs_gstate * pgs,
     memset(penum->text_state, 0x00, sizeof(text_list_entry_t));
 
     code = gs_text_enum_init((gs_text_enum_t *)penum, &textw_text_procs,
-                             dev, pgs, text, font, path, pdcolor, pcpath, mem);
+                             dev, pgs, text, font, pcpath, mem);
     if (code < 0) {
         /* Belt and braces; I'm not certain this is required, but its safe */
         gs_free(tdev->memory, penum->text_state, 1, sizeof(text_list_entry_t), "txtwrite free text state");
@@ -2127,7 +2131,7 @@ txtwrite_text_begin(gx_device * dev, gs_gstate * pgs,
         return code;
     }
 
-    code = gx_path_current_point(penum->path, &penum->origin);
+    code = gx_path_current_point(gs_text_enum_path(penum), &penum->origin);
     if (code != 0)
        return code;
 
@@ -2137,14 +2141,15 @@ txtwrite_text_begin(gx_device * dev, gs_gstate * pgs,
 }
 
 static int
-txtwrite_strip_copy_rop(gx_device * dev,
+txtwrite_strip_copy_rop2(gx_device * dev,
                     const byte * sdata, int sourcex, uint sraster,
                     gx_bitmap_id id,
                     const gx_color_index * scolors,
                     const gx_strip_bitmap * textures,
                     const gx_color_index * tcolors,
                     int x, int y, int w, int h,
-                    int phase_x, int phase_y, gs_logical_operation_t lop)
+                    int phase_x, int phase_y, gs_logical_operation_t lop,
+                    uint plane_height)
 {
     return 0;
 }

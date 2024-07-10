@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* 8-bit-per-pixel "memory" (stored bitmap) device */
@@ -20,7 +20,7 @@
 #include "gxdevmem.h"           /* semi-public definitions */
 #include "gdevmem.h"            /* private definitions */
 
-#define mem_gray8_strip_copy_rop mem_gray8_rgb24_strip_copy_rop
+#define mem_gray8_strip_copy_rop2 mem_gray8_rgb24_strip_copy_rop2
 
 /* ================ Standard (byte-oriented) device ================ */
 
@@ -32,10 +32,20 @@ declare_mem_procs(mem_mapped8_copy_mono, mem_mapped8_copy_color, mem_mapped8_fil
 
 /* The device descriptor. */
 const gx_device_memory mem_mapped8_device =
-mem_device("image8", 8, 0,
-           mem_mapped_map_rgb_color, mem_mapped_map_color_rgb,
-  mem_mapped8_copy_mono, mem_mapped8_copy_color, mem_mapped8_fill_rectangle,
-           mem_gray8_strip_copy_rop);
+    mem_device("image8", 8, 0, mem_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_8 =
+{
+    mem_mapped_map_rgb_color,
+    mem_mapped_map_color_rgb,
+    mem_mapped8_fill_rectangle,
+    mem_mapped8_copy_mono,
+    mem_mapped8_copy_color,
+    gx_default_copy_alpha,
+    gx_default_strip_tile_rectangle,
+    mem_gray8_strip_copy_rop2,
+    mem_get_bits_rectangle
+};
 
 /* Convert x coordinate to byte offset in scan line. */
 #undef x_to_byte
@@ -185,6 +195,7 @@ mapped8_copyN1(chunk * dest, const byte * line, int first_bit,
                     goto enter7;
             }
             do {
+                sbyte = *sptr++;
                 enter0: if (sbyte & 128)
                             *pptr = b1;
                         pptr++;
@@ -209,11 +220,13 @@ mapped8_copyN1(chunk * dest, const byte * line, int first_bit,
                 enter7: if (sbyte & 1)
                             *pptr = b1;
                         pptr++;
-                sbyte = *sptr++;
                 count -= 8;
             } while (count >= 0);
             bit = 128;
             count += 8;
+            if (count > 0)
+                /* read the byte containing the trailing bits */
+                sbyte = *sptr++;
         } else {
             /* Less than 1 byte to do */
             bit = 0x80>>first_bit;
@@ -330,11 +343,20 @@ declare_mem_procs(mem8_word_copy_mono, mem8_word_copy_color, mem8_word_fill_rect
 
 /* Here is the device descriptor. */
 const gx_device_memory mem_mapped8_word_device =
-mem_full_device("image8w", 8, 0, mem_open,
-                mem_mapped_map_rgb_color, mem_mapped_map_color_rgb,
-        mem8_word_copy_mono, mem8_word_copy_color, mem8_word_fill_rectangle,
-                gx_default_map_cmyk_color, gx_default_strip_tile_rectangle,
-                gx_no_strip_copy_rop, mem_word_get_bits_rectangle);
+    mem_device("image8w", 8, 0, mem_word_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_8w =
+{
+    gx_default_rgb_map_rgb_color,
+    gx_default_rgb_map_color_rgb,
+    mem8_word_fill_rectangle,
+    mem8_word_copy_mono,
+    mem8_word_copy_color,
+    gx_default_copy_alpha,
+    gx_default_strip_tile_rectangle,
+    gx_no_strip_copy_rop2,
+    mem_word_get_bits_rectangle
+};
 
 /* Fill a rectangle with a color. */
 static int
@@ -343,7 +365,7 @@ mem8_word_fill_rectangle(gx_device * dev, int x, int y, int w, int h,
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     byte *base;
-    uint raster;
+    size_t raster;
 
     fit_fill(dev, x, y, w, h);
     base = scan_line_base(mdev, y);
@@ -362,7 +384,7 @@ mem8_word_copy_mono(gx_device * dev,
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     byte *row;
-    uint raster;
+    size_t raster;
     bool store;
 
     fit_copy(dev, base, sourcex, sraster, id, x, y, w, h);
@@ -384,7 +406,7 @@ mem8_word_copy_color(gx_device * dev,
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     byte *row;
-    uint raster;
+    size_t raster;
 
     fit_copy(dev, base, sourcex, sraster, id, x, y, w, h);
     row = scan_line_base(mdev, y);

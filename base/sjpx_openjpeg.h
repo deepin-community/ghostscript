@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -41,6 +41,9 @@ typedef struct stream_block_s
 	unsigned long fill;
 } stream_block;
 
+#define JPXD_PassThrough(proc)\
+  int proc(void *d, byte *Buffer, int Size)
+
 /* Stream state for the jpx codec using openjpeg
  * We rely on our finalization call to free the
  * associated handle and pointers.
@@ -68,6 +71,14 @@ typedef struct stream_jpxd_state_s
     int *sign_comps; /* compensate for signed data (signed => unsigned) */
 
     unsigned char *row_data;
+
+    int PassThrough;                    /* 0 or 1 */
+    bool StartedPassThrough;            /* Don't signal multiple starts for the same decode */
+    JPXD_PassThrough((*PassThroughfn)); /* We don't want the stream code or
+                                         * JPEG code to have to handle devices
+                                         * so we use a function at the interpreter level
+                                         */
+    void *device;                       /* The device we need to send PassThrough data to */
 } stream_jpxd_state;
 
 extern const stream_template s_jpxd_template;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -66,6 +66,46 @@ spot1_dummy(double x, double y)
     return (x + y) / 2;
 }
 
+static int
+ht_object_type_from_name(gs_ref_memory_t *mem, ref *pname, gs_HT_objtype_t *HTobjtype)
+{
+    ref sref;
+
+    *HTobjtype = HT_OBJTYPE_DEFAULT;
+    name_string_ref(mem, pname, &sref);
+    if (r_size(&sref) <= 1)
+        return_error(gs_error_undefined);	/* PDF allows zero length strings, but it can't match */
+
+    switch (sref.value.const_bytes[0]) {
+	case 'D':
+            if (r_size(&sref) == 7 && strncmp((const char *)sref.value.const_bytes, "Default", 7) == 0) {
+                *HTobjtype = HT_OBJTYPE_DEFAULT;
+		break;
+            }
+            return_error(gs_error_undefined);
+	case 'V':
+            if (r_size(&sref) == 6 && strncmp((const char *)sref.value.const_bytes, "Vector", 6) == 0) {
+                *HTobjtype = HT_OBJTYPE_VECTOR;
+		break;
+            }
+            return_error(gs_error_undefined);
+	case 'I':
+            if (r_size(&sref) == 5 && strncmp((const char *)sref.value.const_bytes, "Image", 5) == 0) {
+                *HTobjtype = HT_OBJTYPE_IMAGE;
+		break;
+            }
+            return_error(gs_error_undefined);
+	case 'T':
+            if (r_size(&sref) == 4 && strncmp((const char *)sref.value.const_bytes, "Text", 4) == 0) {
+                *HTobjtype = HT_OBJTYPE_TEXT;
+		break;
+            }	/* falls through to default if no match */
+        default:
+            return_error(gs_error_undefined);
+    }
+    return 0;
+}
+
 /* <dict> <dict5> .sethalftone5 - */
 static int sethalftone_finish(i_ctx_t *);
 static int sethalftone_cleanup(i_ctx_t *);
@@ -92,6 +132,8 @@ zsethalftone5(i_ctx_t *i_ctx_p)
     byte * pname;
     uint name_size;
     int halftonetype, type = 0;
+    gs_HT_objtype_t objtype = HT_OBJTYPE_DEFAULT;
+    ref *pdval;
     gs_gstate *pgs = igs;
     int space_index;
 
@@ -122,6 +164,13 @@ zsethalftone5(i_ctx_t *i_ctx_p)
     halftonetype = (type == 2 || type == 4)
                         ? ht_type_multiple_colorscreen
                         : ht_type_multiple;
+
+    /* Check if this dict has the optional ObjectType parameter */
+    if (dict_find_string(op - 1, "ObjectType", &pdval) > 0 &&
+        r_has_type(pdval, t_name)) {
+        if ((code = ht_object_type_from_name(iimemory, pdval, &objtype)) < 0)
+            return code;
+    }
 
     /* Count how many components that we will actually use. */
 
@@ -251,6 +300,7 @@ zsethalftone5(i_ctx_t *i_ctx_p)
     }
     if (code >= 0) {
         pht->type = halftonetype;
+        pht->objtype = objtype;
         pht->params.multiple.components = phtc;
         pht->params.multiple.num_comp = j;
         pht->params.multiple.get_colorname_string = gs_get_colorname_string;
@@ -301,7 +351,7 @@ zsethalftone5(i_ctx_t *i_ctx_p)
 
         odict = op[-1];
         odict5 = *op;
-        pop(2);
+        ref_stack_pop(&o_stack, 2);
         op = osp;
         esp += 5;
         make_mark_estack(esp - 4, es_other, sethalftone_cleanup);
@@ -599,6 +649,33 @@ sethalftone_cleanup(i_ctx_t *i_ctx_p)
                    "sethalftone_cleanup(device halftone)");
     gs_free_object(pht->rc.memory, pht,
                    "sethalftone_cleanup(halftone)");
+    /* See bug #707007, explicitly freed structures on the stacks need to be made NULL */
+    make_null(&esp[4]);
+    make_null(&esp[3]);
+    return 0;
+}
+
+static int
+zsetobjtypeHT(i_ctx_t *i_ctx_p)		/* <name> .setobjtypeHT - */
+                                        /* name is one of /Vector, /Image, or /Text */
+{
+    os_ptr op = osp;
+    int code = 0;
+    gs_HT_objtype_t HTobjtype = HT_OBJTYPE_DEFAULT;
+
+    if (ref_stack_count(&o_stack) < 1)
+        return_error(gs_error_stackunderflow);
+    check_type(*op, t_name);
+
+    if ((code = ht_object_type_from_name(iimemory, op, &HTobjtype)) < 0)
+        return code;
+
+    /* If we made it this far, HTobjtype is valid */
+    code = gx_gstate_dev_ht_copy_to_objtype(i_ctx_p->pgs, HTobjtype);
+    if (code < 0)
+        return code;
+
+    pop(1);
     return 0;
 }
 
@@ -609,6 +686,7 @@ const op_def zht2_l2_op_defs[] =
     op_def_begin_level2(),
     {"2.sethalftone5", zsethalftone5},
     {"1.genordered", zgenordered},
+    {"1.setobjtypeHT", zsetobjtypeHT},
                 /* Internal operators */
     {"0%sethalftone_finish", sethalftone_finish},
     op_def_end(0)

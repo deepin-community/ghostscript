@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Sony NWP-533 driver for GhostScript */
@@ -46,11 +46,18 @@ static dev_proc_open_device(nwp533_open);
 static dev_proc_print_page(nwp533_print_page);
 static dev_proc_close_device(nwp533_close);
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static gx_device_procs nwp533_procs =
-  prn_procs(nwp533_open, gdev_prn_bg_output_page_seekable, nwp533_close);
+static void
+nwp533_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono_bg(dev);
+
+    set_dev_proc(dev, open_device, nwp533_open);
+    set_dev_proc(dev, output_page, gdev_prn_bg_output_page_seekable);
+    set_dev_proc(dev, close_device, nwp533_close);
+}
 
 const gx_device_printer far_data gs_nwp533_device =
-  prn_device(nwp533_procs, "nwp533",
+  prn_device(mwp533_initialize_device_procs, "nwp533",
         PAPER_XDOTS * 10.0 / DPI,	/* width_10ths */
         PAPER_YDOTS * 10.0 / DPI,	/* height_10ths */
         DPI,				/* x_dpi */

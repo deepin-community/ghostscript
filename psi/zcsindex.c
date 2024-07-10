@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -35,7 +35,7 @@
 
 /* Allocate, and prepare to load, the index or tint map. */
 int
-zcs_begin_map(i_ctx_t *i_ctx_p, gs_indexed_map ** pmap, const ref * pproc,
+zcs_begin_map(i_ctx_t *i_ctx_p, gs_color_space *pcs, gs_indexed_map ** pmap, const ref * pproc,
               int num_entries,  const gs_color_space * base_space,
               op_proc_t map1)
 {
@@ -57,7 +57,8 @@ zcs_begin_map(i_ctx_t *i_ctx_p, gs_indexed_map ** pmap, const ref * pproc,
     check_estack(num_csme + 1);	/* 1 extra for map1 proc */
     ep = esp += num_csme;
     make_int(ep + csme_num_components, num_components);
-    make_struct(ep + csme_map, space, map);
+    make_struct(ep + csme_cspace, space, pcs);
+    rc_increment_cs(pcs);
     ep[csme_proc] = *pproc;
     make_int(ep + csme_hival, num_entries - 1);
     make_int(ep + csme_index, -1);
