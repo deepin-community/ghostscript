@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -283,10 +283,10 @@ static bool check_all_colors_known(int num_spot,
 
 /* If possible, update the equivalent CMYK color for a spot color */
 int
-update_spot_equivalent_cmyk_colors(gx_device * pdev, const gs_gstate * pgs,
+update_spot_equivalent_cmyk_colors(gx_device * pdev, const gs_gstate * pgs, const gs_color_space * pcs_in,
     gs_devn_params * pdevn_params, equivalent_cmyk_color_params * pparams)
 {
-    const gs_color_space * pcs;
+    const gs_color_space * pcs = pcs_in;
     cmm_dev_profile_t *dev_profile;
     int code;
 
@@ -303,12 +303,16 @@ update_spot_equivalent_cmyk_colors(gx_device * pdev, const gs_gstate * pgs,
         pparams->all_color_info_valid = true;
         return 0;
     }
+
+    /* If the caller apssed in NULL for the colour space, use the current colour space */
+    if (pcs_in == NULL)
+        pcs = gs_currentcolorspace_inline(pgs);
+
     /*
      * Verify that the given color space is a Separation or a DeviceN color
      * space.  If so then when check if the color space contains a separation
      * color for which we need a CMYK equivalent.
      */
-    pcs = gs_currentcolorspace_inline(pgs);
     if (pcs != NULL) {
         if (pcs->type->index == gs_color_space_index_Separation) {
             update_Separation_spot_equivalent_cmyk_colors(pdev, pgs, pcs,
@@ -368,7 +372,6 @@ typedef struct color_capture_device_s {
 static cmap_proc_gray(cmap_gray_capture_cmyk_color);
 static cmap_proc_rgb(cmap_rgb_capture_cmyk_color);
 static cmap_proc_cmyk(cmap_cmyk_capture_cmyk_color);
-static cmap_proc_rgb_alpha(cmap_rgb_alpha_capture_cmyk_color);
 static cmap_proc_separation(cmap_separation_capture_cmyk_color);
 static cmap_proc_devicen(cmap_devicen_capture_cmyk_color);
 
@@ -376,7 +379,6 @@ static const gx_color_map_procs cmap_capture_cmyk_color = {
     cmap_gray_capture_cmyk_color,
     cmap_rgb_capture_cmyk_color,
     cmap_cmyk_capture_cmyk_color,
-    cmap_rgb_alpha_capture_cmyk_color,
     cmap_separation_capture_cmyk_color,
     cmap_devicen_capture_cmyk_color
 };
@@ -426,14 +428,6 @@ cmap_cmyk_capture_cmyk_color(frac c, frac m, frac y, frac k, gx_device_color * p
 }
 
 static void
-cmap_rgb_alpha_capture_cmyk_color(frac r, frac g, frac b, frac alpha,
-        gx_device_color * pdc, const gs_gstate * pgs, gx_device * dev,
-                         gs_color_select_t select)
-{
-    cmap_rgb_capture_cmyk_color(r, g, b, pdc, pgs, dev, select);
-}
-
-static void
 cmap_separation_capture_cmyk_color(frac all, gx_device_color * pdc,
      const gs_gstate * pgs, gx_device * dev, gs_color_select_t select,
      const gs_color_space *pcs)
@@ -478,9 +472,10 @@ capture_spot_equivalent_cmyk_colors(gx_device * pdev, const gs_gstate * pgs,
                           0 /* blend_profile */, 0 /* postren_profile */,
                           { {0} } /* rendercond[] */, 0 /* devicegraytok */,
                           0 /* graydection */, 0 /* pageneutralcolor */,
-                          0 /* usefastcolor */, 0 /* blacktext */, 0 /* supports_devn */,
-                          0 /* overprint_control */, 0 /* spotnames */,
-                          0 /* prebandthreshold */, 0 /* memory */,
+                          0 /* usefastcolor */, 0 /* blacktext */, 0 /* blackvector */,
+                          0.0 /* blackthresholdL */, 0.0 /* blackthresholdC */,
+                          0 /* supports_devn */, 0 /* overprint_control */,
+                          0 /* spotnames */, 0 /* prebandthreshold */, 0 /* memory */,
                           { 0 } /* rc_header */
                           };
 
@@ -508,6 +503,7 @@ capture_spot_equivalent_cmyk_colors(gx_device * pdev, const gs_gstate * pgs,
 
     temp_profile.usefastcolor = false;  /* This avoids a few headaches */
     temp_profile.blacktext = false;
+    temp_profile.blackvector = false;
     temp_profile.prebandthreshold = true;
     temp_profile.supports_devn = false;
     temp_profile.rendercond[0] = render_cond;

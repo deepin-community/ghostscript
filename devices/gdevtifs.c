@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -76,12 +76,9 @@ tiff_close(gx_device * pdev)
     if (tfdev->tif)
         TIFFClose(tfdev->tif);
 
-    if (tfdev->icclink != NULL)
-    {
-        tfdev->icclink->procs.free_link(tfdev->icclink);
-        gsicc_free_link_dev(pdev->memory, tfdev->icclink);
-        tfdev->icclink = NULL;
-    }
+    gsicc_free_link_dev(tfdev->icclink);
+    tfdev->icclink = NULL;
+
     return gdev_prn_close(pdev);
 }
 
@@ -152,7 +149,7 @@ tiff_put_some_params(gx_device * dev, gs_param_list * plist, int which)
     bool big_endian = tfdev->BigEndian;
     bool usebigtiff = tfdev->UseBigTIFF;
     bool write_datetime = tfdev->write_datetime;
-    uint16 compr = tfdev->Compression;
+    uint16_t compr = tfdev->Compression;
     gs_param_string comprstr;
     long mss = tfdev->MaxStripSize;
     long aw = tfdev->AdjustWidth;
@@ -298,8 +295,6 @@ int gdev_tiff_begin_page(gx_device_tiff *tfdev,
                          gp_file *file)
 {
     gx_device_printer *const pdev = (gx_device_printer *)tfdev;
-    cmm_dev_profile_t *profile_struct;
-    gsicc_rendering_param_t rendering_params;
     int code;
 
     if (gdev_prn_file_is_new(pdev)) {
@@ -308,39 +303,10 @@ int gdev_tiff_begin_page(gx_device_tiff *tfdev,
         if (!tfdev->tif)
             return_error(gs_error_invalidfileaccess);
         /* Set up the icc link settings at this time */
-        code = dev_proc(pdev, get_profile)((gx_device *)pdev, &profile_struct);
+        code = gx_downscaler_create_post_render_link((gx_device *)pdev,
+                                                     &tfdev->icclink);
         if (code < 0)
-            return_error(gs_error_undefined);
-        if (profile_struct->postren_profile != NULL) {
-            rendering_params.black_point_comp = gsBLACKPTCOMP_ON;
-            rendering_params.graphics_type_tag = GS_UNKNOWN_TAG;
-            rendering_params.override_icc = false;
-            rendering_params.preserve_black = gsBLACKPRESERVE_OFF;
-            rendering_params.rendering_intent = gsRELATIVECOLORIMETRIC;
-            rendering_params.cmm = gsCMM_DEFAULT;
-            if (profile_struct->oi_profile != NULL) {
-                tfdev->icclink = gsicc_alloc_link_dev(pdev->memory,
-                    profile_struct->oi_profile, profile_struct->postren_profile,
-                    &rendering_params);
-            } else if (profile_struct->link_profile != NULL) {
-                tfdev->icclink = gsicc_alloc_link_dev(pdev->memory,
-                    profile_struct->link_profile, profile_struct->postren_profile,
-                    &rendering_params);
-            } else {
-                tfdev->icclink = gsicc_alloc_link_dev(pdev->memory,
-                    profile_struct->device_profile[GS_DEFAULT_DEVICE_PROFILE],
-                    profile_struct->postren_profile, &rendering_params);
-            }
-            if (tfdev->icclink == NULL) {
-                return_error(gs_error_VMerror);
-            }
-            /* If it is identity, release it now and set link to NULL */
-            if (tfdev->icclink->is_identity) {
-                tfdev->icclink->procs.free_link(tfdev->icclink);
-                gsicc_free_link_dev(pdev->memory, tfdev->icclink);
-                tfdev->icclink = NULL;
-            }
-        }
+            return code;
     }
 
     return tiff_set_fields_for_printer(pdev, tfdev->tif, tfdev->downscale.downscale_factor,
@@ -359,11 +325,16 @@ int tiff_set_compression(gx_device_printer *pdev,
         TIFFSetField(tif, TIFFTAG_ROWSPERSTRIP, pdev->height);
     }
     else {
-        int rows = max_strip_size /
+        int rows = 0;
+
+        if (pdev->width >=1) {
+            rows = max_strip_size /
             gdev_mem_bytes_per_scan_line((gx_device *)pdev);
-        TIFFSetField(tif,
+            TIFFSetField(tif,
                      TIFFTAG_ROWSPERSTRIP,
                      TIFFDefaultStripSize(tif, max(1, rows)));
+        } else
+            return_error(gs_error_rangecheck);
     }
 
     return 0;
@@ -389,6 +360,7 @@ int tiff_set_fields_for_printer(gx_device_printer *pdev,
     TIFFSetField(tif, TIFFTAG_XRESOLUTION, (float)xpi);
     TIFFSetField(tif, TIFFTAG_YRESOLUTION, (float)ypi);
 
+#ifndef CLUSTER
     {
         char revs[32];
 #define maxSoftware 40
@@ -400,12 +372,13 @@ int tiff_set_fields_for_printer(gx_device_printer *pdev,
 
         strncpy(softwareValue, gs_product, maxSoftware);
         softwareValue[maxSoftware - 1] = 0;
-        gs_sprintf(revs, " %d.%2d.%d", major, minor, patch);
+        gs_snprintf(revs, sizeof(revs), " %d.%02d.%d", major, minor, patch);
         strncat(softwareValue, revs,
                 maxSoftware - strlen(softwareValue) - 1);
 
         TIFFSetField(tif, TIFFTAG_SOFTWARE, softwareValue);
     }
+#endif
     if (writedatetime) {
         struct tm tms;
         time_t t;
@@ -418,7 +391,7 @@ int tiff_set_fields_for_printer(gx_device_printer *pdev,
         time(&t);
         tms = *localtime(&t);
 #endif
-        gs_sprintf(dateTimeValue, "%04d:%02d:%02d %02d:%02d:%02d",
+        gs_snprintf(dateTimeValue, sizeof(dateTimeValue), "%04d:%02d:%02d %02d:%02d:%02d",
                 tms.tm_year + 1900, tms.tm_mon + 1, tms.tm_mday,
                 tms.tm_hour, tms.tm_min, tms.tm_sec);
 
@@ -438,8 +411,6 @@ int tiff_set_fields_for_printer(gx_device_printer *pdev,
 
         if (pdev->icc_struct->postren_profile != NULL)
             icc_profile = pdev->icc_struct->postren_profile;
-        else if (pdev->icc_struct->oi_profile != NULL)
-            icc_profile = pdev->icc_struct->oi_profile;
         else
             icc_profile = pdev->icc_struct->device_profile[GS_DEFAULT_DEVICE_PROFILE];
 
@@ -494,7 +465,7 @@ tiff_print_page(gx_device_printer *dev, TIFF *tif, int min_feature_size)
         if (row - line_lag >= 0) {
 #if defined(ARCH_IS_BIG_ENDIAN) && (!ARCH_IS_BIG_ENDIAN)
             if (bpc == 16)
-                TIFFSwabArrayOfShort((uint16 *)data,
+                TIFFSwabArrayOfShort((uint16_t *)data,
                                      dev->width * (long)dev->color_info.num_components);
 #endif
 
@@ -558,8 +529,6 @@ tiff_downscale_and_print_page(gx_device_printer *dev, TIFF *tif,
     if (code < 0)
         return code;
 
-    if (num_comps == 4)
-        params->trap_w = params->trap_h = 1;
     if (tfdev->icclink == NULL) {
         code = gx_downscaler_init(&ds, (gx_device *)dev,
                                   8, bpc, num_comps,
@@ -603,7 +572,7 @@ tiff_downscale_and_print_page(gx_device_printer *dev, TIFF *tif,
 
 
 static struct compression_string {
-    uint16 id;
+    uint16_t id;
     const char *str;
 } compression_strings [] = {
     { COMPRESSION_NONE, "none" },
@@ -617,7 +586,7 @@ static struct compression_string {
 };
 
 int
-tiff_compression_param_string(gs_param_string *param, uint16 id)
+tiff_compression_param_string(gs_param_string *param, uint16_t id)
 {
     struct compression_string *c;
     for (c = compression_strings; c->str; c++)
@@ -629,7 +598,7 @@ tiff_compression_param_string(gs_param_string *param, uint16 id)
 }
 
 int
-tiff_compression_id(uint16 *id, gs_param_string *param)
+tiff_compression_id(uint16_t *id, gs_param_string *param)
 {
     struct compression_string *c;
     for (c = compression_strings; c->str; c++)
@@ -642,7 +611,7 @@ tiff_compression_id(uint16 *id, gs_param_string *param)
     return_error(gs_error_undefined);
 }
 
-int tiff_compression_allowed(uint16 compression, byte depth)
+int tiff_compression_allowed(uint16_t compression, byte depth)
 {
     return ((depth == 1 && (compression == COMPRESSION_NONE ||
                           compression == COMPRESSION_CCITTRLE ||

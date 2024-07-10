@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Default and device-independent RasterOp algorithms */
@@ -23,7 +23,6 @@
 #include "gxdcolor.h"
 #include "gxdevice.h"
 #include "gxdevmem.h"
-#include "gxdevrop.h"
 #include "gxgetbit.h"
 #include "gdevmem.h"            /* for mem_default_strip_copy_rop prototype */
 #include "gdevmpla.h"
@@ -89,28 +88,6 @@ trace_copy_rop(const char *cname, gx_device * dev,
 
 /* ---------------- Default copy_rop implementations ---------------- */
 
-/*
- * The default implementation for non-memory devices uses get_bits_rectangle
- * to read out the pixels, the memory device implementation to do the
- * operation, and copy_color to write the pixels back.
- */
-int
-gx_default_strip_copy_rop(gx_device * dev,
-                          const byte * sdata, int sourcex,
-                          uint sraster, gx_bitmap_id id,
-                          const gx_color_index * scolors,
-                          const gx_strip_bitmap * textures,
-                          const gx_color_index * tcolors,
-                          int x, int y, int width, int height,
-                          int phase_x, int phase_y,
-                          gs_logical_operation_t lop)
-{
-    return gx_default_strip_copy_rop2(dev, sdata, sourcex, sraster, id,
-                                      scolors, textures, tcolors,
-                                      x, y, width, height,
-                                      phase_x, phase_y, lop, 0);
-}
-
 int
 gx_default_strip_copy_rop2(gx_device * dev,
                            const byte * sdata, int sourcex,
@@ -139,7 +116,7 @@ gx_default_strip_copy_rop2(gx_device * dev,
 
 #ifdef DEBUG
     if (gs_debug_c('b'))
-        trace_copy_rop("gx_default_strip_copy_rop",
+        trace_copy_rop("gx_default_strip_copy_rop2",
                        dev, sdata, sourcex, sraster,
                        id, scolors, textures, tcolors,
                        x, y, width, height, phase_x, phase_y, lop);
@@ -163,10 +140,10 @@ gx_default_strip_copy_rop2(gx_device * dev,
     pmdev->height = block_height;
     pmdev->bitmap_memory = mem;
     pmdev->color_info = dev->color_info;
-    if (dev->is_planar)
+    if (dev->num_planar_planes)
     {
         gx_render_plane_t planes[GX_DEVICE_COLOR_MAX_COMPONENTS];
-        uchar num_comp = dev->color_info.num_components;
+        uchar num_comp = dev->num_planar_planes;
         uchar i;
         plane_depth = dev->color_info.depth / num_comp;
         for (i = 0; i < num_comp; i++)
@@ -212,7 +189,7 @@ gx_default_strip_copy_rop2(gx_device * dev,
             bit_params.data[0] = row;
             bit_params.x_offset = 0;
             code = (*dev_proc(dev, get_bits_rectangle))
-                (dev, &rect, &bit_params, NULL);
+                (dev, &rect, &bit_params);
             if (code < 0)
                 break;
             code = (*dev_proc(pmdev, copy_color))
@@ -222,23 +199,13 @@ gx_default_strip_copy_rop2(gx_device * dev,
             if (code < 0)
                 return code;
         }
-        if (planar_height == 0) {
-            code = (*dev_proc(pmdev, strip_copy_rop))
-                        ((gx_device *)pmdev,
-                         sdata + (py - y) * sraster, sourcex, sraster,
-                         gx_no_bitmap_id, scolors, textures, tcolors,
-                         0, 0, width, block_height,
-                         phase_x + x, phase_y + py,
-                         lop);
-        } else {
-            code = (*dev_proc(pmdev, strip_copy_rop2))
+        code = (*dev_proc(pmdev, strip_copy_rop2))
                         ((gx_device *)pmdev,
                          sdata + (py - y) * sraster, sourcex, sraster,
                          gx_no_bitmap_id, scolors, textures, tcolors,
                          0, 0, width, block_height,
                          phase_x + x, phase_y + py,
                          lop, planar_height);
-        }
         if (code < 0)
             break;
         if (is_planar) {
@@ -598,24 +565,8 @@ pack_planar_from_standard(gx_device_memory * dev, int y, int destx,
  * operation, pack_from_standard to convert them back to the device
  * representation, and copy_color to write the pixels back.
  */
-int
-mem_default_strip_copy_rop2(gx_device * dev,
-                            const byte * sdata, int sourcex,
-                            uint sraster, gx_bitmap_id id,
-                            const gx_color_index * scolors,
-                            const gx_strip_bitmap * textures,
-                            const gx_color_index * tcolors,
-                            int x, int y, int width, int height,
-                            int phase_x, int phase_y,
-                            gs_logical_operation_t lop,
-                            uint planar_height)
-{
-    dmlprintf(dev->memory, "mem_default_strip_copy_rop2 should never be called!\n");
-    return_error(gs_error_Fatal);
-}
-
-int
-mem_default_strip_copy_rop(gx_device * dev,
+static int
+do_strip_copy_rop(gx_device * dev,
                            const byte * sdata, int sourcex,
                            uint sraster, gx_bitmap_id id,
                            const gx_color_index * scolors,
@@ -647,7 +598,7 @@ mem_default_strip_copy_rop(gx_device * dev,
     gx_device_memory mdev;
     union { long l; void *p; } mdev_storage[20];
     uint row_raster = bitmap_raster(width * depth);
-    ulong size_from_mem_device;
+    size_t size_from_mem_device;
     gs_logical_operation_t lop = lop_sanitize(olop);
     bool uses_d = rop3_uses_D(lop);
     bool uses_s = rop3_uses_S(lop);
@@ -699,7 +650,7 @@ mem_default_strip_copy_rop(gx_device * dev,
 
     /* We know the device is a memory device, so we can store the
      * result directly into its scan lines, unless it is planar. */
-    if (!tdev->is_planar || tdev->color_info.num_components <= 1) {
+    if (!tdev->num_planar_planes || tdev->color_info.num_components <= 1) {
         if ((rop_depth == 24) && (dev_proc(dev, dev_spec_op)(dev,
                                       gxdso_is_std_cmyk_1bit, NULL, 0) > 0)) {
             pack = pack_cmyk_1bit_from_standard;
@@ -823,7 +774,7 @@ mem_default_strip_copy_rop(gx_device * dev,
             bit_params.x_offset = 0;
             bit_params.raster = mdev.raster;
             code = (*dev_proc(dev, get_bits_rectangle))
-                (dev, &rect, &bit_params, NULL);
+                (dev, &rect, &bit_params);
             if (code < 0)
                 break;
         }
@@ -836,10 +787,10 @@ mem_default_strip_copy_rop(gx_device * dev,
             source_data = source_row;
             source_raster = source_row_raster;
         }
-        code = (*dev_proc(&mdev, strip_copy_rop))
+        code = (*dev_proc(&mdev, strip_copy_rop2))
             ((gx_device *)&mdev, source_data, sx, source_raster,
              gx_no_bitmap_id, real_scolors, real_texture, real_tcolors,
-             0, 0, width, loop_height, phase_x + x, phase_y + py, lop);
+             0, 0, width, loop_height, phase_x + x, phase_y + py, lop, 0);
         if (code < 0)
             break;
         /* Convert the result back to the device's format. */
@@ -863,104 +814,26 @@ out:
     return code;
 }
 
-/* ------ Implementation of related functions ------ */
-
 int
-gx_default_copy_rop(gx_device * dev,
-             const byte * sdata, int sourcex, uint sraster, gx_bitmap_id id,
-                    const gx_color_index * scolors,
-             const gx_tile_bitmap * texture, const gx_color_index * tcolors,
-                    int x, int y, int width, int height,
-                    int phase_x, int phase_y, gs_logical_operation_t lop)
-{
-    const gx_strip_bitmap *textures;
-    gx_strip_bitmap tiles;
-
-    if (texture == 0)
-        textures = 0;
-    else {
-        *(gx_tile_bitmap *) & tiles = *texture;
-        tiles.rep_shift = tiles.shift = 0;
-        tiles.num_planes = 1;
-        textures = &tiles;
-    }
-    return (*dev_proc(dev, strip_copy_rop))
-        (dev, sdata, sourcex, sraster, id, scolors, textures, tcolors,
-         x, y, width, height, phase_x, phase_y, lop);
-}
-
-int
-gx_copy_rop_unaligned(gx_device * dev,
-             const byte * sdata, int sourcex, uint sraster, gx_bitmap_id id,
-                      const gx_color_index * scolors,
-             const gx_tile_bitmap * texture, const gx_color_index * tcolors,
-                      int x, int y, int width, int height,
-                      int phase_x, int phase_y, gs_logical_operation_t lop)
-{
-    const gx_strip_bitmap *textures;
-    gx_strip_bitmap tiles;
-
-    if (texture == 0)
-        textures = 0;
-    else {
-        *(gx_tile_bitmap *) & tiles = *texture;
-        tiles.rep_shift = tiles.shift = 0;
-        tiles.num_planes = 1;
-        textures = &tiles;
-    }
-    return gx_strip_copy_rop_unaligned
-        (dev, sdata, sourcex, sraster, id, scolors, textures, tcolors,
-         x, y, width, height, phase_x, phase_y, lop);
-}
-
-int
-gx_strip_copy_rop_unaligned(gx_device * dev,
-             const byte * sdata, int sourcex, uint sraster, gx_bitmap_id id,
+mem_default_strip_copy_rop2(gx_device * dev,
+                            const byte * sdata, int sourcex,
+                            uint sraster, gx_bitmap_id id,
                             const gx_color_index * scolors,
-           const gx_strip_bitmap * textures, const gx_color_index * tcolors,
+                            const gx_strip_bitmap * textures,
+                            const gx_color_index * tcolors,
                             int x, int y, int width, int height,
-                       int phase_x, int phase_y, gs_logical_operation_t lop)
+                            int phase_x, int phase_y,
+                            gs_logical_operation_t lop,
+                            uint planar_height)
 {
-    dev_proc_strip_copy_rop((*copy_rop)) = dev_proc(dev, strip_copy_rop);
-    int depth = (scolors == 0 ? dev->color_info.depth : 1);
-    int step = sraster & (align_bitmap_mod - 1);
-
-    /* Adjust the origin. */
-    if (sdata != 0) {
-        uint offset =
-        (uint) (sdata - (const byte *)0) & (align_bitmap_mod - 1);
-
-        /* See copy_color above re the following statement. */
-        if (depth == 24)
-            offset += (offset % 3) *
-                (align_bitmap_mod * (3 - (align_bitmap_mod % 3)));
-        sdata -= offset;
-        sourcex += (offset << 3) / depth;
-    }
-    /* Adjust the raster. */
-    if (!step || sdata == 0 ||
-        (scolors != 0 && scolors[0] == scolors[1])
-        ) {                     /* No adjustment needed. */
-        return (*copy_rop) (dev, sdata, sourcex, sraster, id, scolors,
-                            textures, tcolors, x, y, width, height,
-                            phase_x, phase_y, lop);
-    }
-    /* Do the transfer one scan line at a time. */
+    if (planar_height != 0)
     {
-        const byte *p = sdata;
-        int d = sourcex;
-        int dstep = (step << 3) / depth;
-        int code = 0;
-        int i;
-
-        for (i = 0; i < height && code >= 0;
-             ++i, p += sraster - step, d += dstep
-            )
-            code = (*copy_rop) (dev, p, d, sraster, gx_no_bitmap_id, scolors,
-                                textures, tcolors, x, y + i, width, 1,
-                                phase_x, phase_y, lop);
-        return code;
+        dmlprintf(dev->memory, "mem_default_strip_copy_rop2 should never be called!\n");
+        return_error(gs_error_Fatal);
     }
+    return do_strip_copy_rop(dev, sdata, sourcex, sraster, id, scolors,
+                             textures, tcolors, x, y, width, height,
+                             phase_x, phase_y, lop);
 }
 
 /* ---------------- Internal routines ---------------- */
@@ -1153,6 +1026,130 @@ static int
 mem_transform_pixel_region_render_portrait_n(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs)
 {
     return template_mem_transform_pixel_region_render_portrait(dev, state, buffer, data_x, cmapper, pgs, state->spp);
+}
+
+static inline int
+template_mem_transform_pixel_region_render_portrait_planar(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs, int spp)
+{
+    gx_device_memory *mdev = (gx_device_memory *)dev;
+    gx_dda_fixed_point pnext;
+    int vci, vdi;
+    int irun;			/* int x/rrun */
+    int w = state->w;
+    int h = state->h;
+    const byte *data = buffer[0] + data_x * spp;
+    const byte *bufend = NULL;
+    const byte *run;
+    int k;
+    gx_color_value *conc = &cmapper->conc[0];
+    gx_cmapper_fn *mapper = cmapper->set_color;
+    int minx, maxx;
+
+    if (h == 0)
+        return 0;
+
+    /* Clip on y */
+    get_portrait_y_extent(state, &vci, &vdi);
+    if (vci < state->clip.p.y)
+        vdi += vci - state->clip.p.y, vci = state->clip.p.y;
+    if (vci+vdi > state->clip.q.y)
+        vdi = state->clip.q.y - vci;
+    if (vdi <= 0)
+        return 0;
+
+    pnext = state->pixels;
+    dda_translate(pnext.x,  (-fixed_epsilon));
+    irun = fixed2int_var_rounded(dda_current(pnext.x));
+    if_debug5m('b', dev->memory, "[b]y=%d data_x=%d w=%d xt=%f yt=%f\n",
+               vci, data_x, w, fixed2float(dda_current(pnext.x)), fixed2float(dda_current(pnext.y)));
+
+    minx = state->clip.p.x;
+    maxx = state->clip.q.x;
+    bufend = data + w * spp;
+    while (data < bufend) {
+        /* Find the length of the next run. It will either end when we hit
+         * the end of the source data, or when the pixel data differs. */
+        run = data + spp;
+        while (1) {
+            dda_next(pnext.x);
+            if (run >= bufend)
+                break;
+            if (memcmp(run, data, spp))
+                break;
+            run += spp;
+        }
+        /* So we have a run of pixels from data to run that are all the same. */
+        /* This needs to be sped up */
+        for (k = 0; k < spp; k++) {
+            conc[k] = gx_color_value_from_byte(data[k]);
+        }
+        mapper(cmapper);
+        /* Fill the region between irun and fixed2int_var_rounded(pnext.x) */
+        {
+            int xi = irun;
+            int wi = (irun = fixed2int_var_rounded(dda_current(pnext.x))) - xi;
+
+            if (wi < 0)
+                xi += wi, wi = -wi;
+
+            if (xi < minx)
+                wi += xi - minx, xi = minx;
+            if (xi+wi > maxx)
+                wi = maxx - xi;
+            if (wi > 0) {
+                /* assert(color_is_pure(&cmapper->devc)); */
+                gx_color_index color = cmapper->devc.colors.pure;
+                for (k = 0; k < spp; k++) {
+                    unsigned char c = (color>>mdev->planes[k].shift) & ((1<<mdev->planes[k].depth)-1);
+                    for (h = 0; h < vdi; h++) {
+                        byte *out = mdev->line_ptrs[vci + h + k*mdev->height] + xi;
+                        memset(out, c, wi);
+                    }
+                }
+            }
+        }
+        data = run;
+    }
+    return 0;
+}
+
+static int
+mem_transform_pixel_region_render_portrait_1p(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs)
+{
+    return template_mem_transform_pixel_region_render_portrait_planar(dev, state, buffer, data_x, cmapper, pgs, 1);
+}
+
+static int
+mem_transform_pixel_region_render_portrait_3p(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs)
+{
+    return template_mem_transform_pixel_region_render_portrait_planar(dev, state, buffer, data_x, cmapper, pgs, 3);
+}
+
+static int
+mem_transform_pixel_region_render_portrait_4p(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs)
+{
+    return template_mem_transform_pixel_region_render_portrait_planar(dev, state, buffer, data_x, cmapper, pgs, 4);
+}
+
+static int
+mem_transform_pixel_region_render_portrait_np(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs)
+{
+    return template_mem_transform_pixel_region_render_portrait_planar(dev, state, buffer, data_x, cmapper, pgs, state->spp);
+}
+
+static int
+mem_transform_pixel_region_render_portrait_planar(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs)
+{
+    switch(state->spp) {
+    case 1:
+        return mem_transform_pixel_region_render_portrait_1p(dev, state, buffer, data_x, cmapper, pgs);
+    case 3:
+        return mem_transform_pixel_region_render_portrait_3p(dev, state, buffer, data_x, cmapper, pgs);
+    case 4:
+        return mem_transform_pixel_region_render_portrait_4p(dev, state, buffer, data_x, cmapper, pgs);
+    default:
+        return mem_transform_pixel_region_render_portrait_np(dev, state, buffer, data_x, cmapper, pgs);
+    }
 }
 
 static int
@@ -1691,12 +1688,138 @@ mem_transform_pixel_region_render_landscape(gx_device *dev, mem_transform_pixel_
     }
 }
 
+static inline int
+template_mem_transform_pixel_region_render_landscape_planar(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs, int spp)
+{
+    gx_device_memory *mdev = (gx_device_memory *)dev;
+    gx_dda_fixed_point pnext;
+    int vci, vdi;
+    int irun;			/* int x/rrun */
+    int w = state->w;
+    int h = state->h;
+    const byte *data = buffer[0] + data_x * spp;
+    const byte *bufend = NULL;
+    const byte *run;
+    int k;
+    gx_color_value *conc = &cmapper->conc[0];
+    gx_cmapper_fn *mapper = cmapper->set_color;
+    byte *out;
+    int miny, maxy;
+
+    if (h == 0)
+        return 0;
+
+    /* Clip on x */
+    get_landscape_x_extent(state, &vci, &vdi);
+    if (vci < state->clip.p.x)
+        vdi += vci - state->clip.p.x, vci = state->clip.p.x;
+    if (vci+vdi > state->clip.q.x)
+        vdi = state->clip.q.x - vci;
+    if (vdi <= 0)
+        return 0;
+
+    pnext = state->pixels;
+    dda_translate(pnext.x,  (-fixed_epsilon));
+    irun = fixed2int_var_rounded(dda_current(pnext.y));
+    if_debug5m('b', dev->memory, "[b]y=%d data_x=%d w=%d xt=%f yt=%f\n",
+               vci, data_x, w, fixed2float(dda_current(pnext.x)), fixed2float(dda_current(pnext.y)));
+
+    miny = state->clip.p.y;
+    maxy = state->clip.q.y;
+    bufend = data + w * spp;
+    while (data < bufend) {
+        /* Find the length of the next run. It will either end when we hit
+         * the end of the source data, or when the pixel data differs. */
+        run = data + spp;
+        while (1) {
+            dda_next(pnext.y);
+            if (run >= bufend)
+                break;
+            if (memcmp(run, data, spp))
+                break;
+            run += spp;
+        }
+        /* So we have a run of pixels from data to run that are all the same. */
+        /* This needs to be sped up */
+        for (k = 0; k < spp; k++) {
+            conc[k] = gx_color_value_from_byte(data[k]);
+        }
+        mapper(cmapper);
+        /* Fill the region between irun and fixed2int_var_rounded(pnext.y) */
+        {              /* 90 degree rotated rectangle */
+            int yi = irun;
+            int hi = (irun = fixed2int_var_rounded(dda_current(pnext.y))) - yi;
+
+            if (hi < 0)
+                yi += hi, hi = -hi;
+
+            if (yi < miny)
+                hi += yi - miny, yi = miny;
+            if (yi+hi > maxy)
+                hi = maxy - yi;
+            if (hi > 0) {
+                /* assert(color_is_pure(&cmapper->devc)); */
+                gx_color_index color = cmapper->devc.colors.pure;
+                for (k = 0; k < spp; k++) {
+                    unsigned char c = (color>>mdev->planes[k].shift) & ((1<<mdev->planes[k].depth)-1);
+                    for (h = 0; h < hi; h++) {
+                        out = mdev->line_ptrs[yi + h + k * mdev->height] + vci;
+                        memset(out, c, vdi);
+                    }
+                }
+            }
+        }
+        data = run;
+    }
+    return 1;
+}
+
+static int
+mem_transform_pixel_region_render_landscape_1p(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs)
+{
+    return template_mem_transform_pixel_region_render_landscape_planar(dev, state, buffer, data_x, cmapper, pgs, 1);
+}
+
+static int
+mem_transform_pixel_region_render_landscape_3p(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs)
+{
+    return template_mem_transform_pixel_region_render_landscape_planar(dev, state, buffer, data_x, cmapper, pgs, 3);
+}
+
+static int
+mem_transform_pixel_region_render_landscape_4p(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs)
+{
+    return template_mem_transform_pixel_region_render_landscape_planar(dev, state, buffer, data_x, cmapper, pgs, 4);
+}
+
+static int
+mem_transform_pixel_region_render_landscape_np(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs)
+{
+    return template_mem_transform_pixel_region_render_landscape_planar(dev, state, buffer, data_x, cmapper, pgs, state->spp);
+}
+
+static int
+mem_transform_pixel_region_render_landscape_planar(gx_device *dev, mem_transform_pixel_region_state_t *state, const unsigned char **buffer, int data_x, gx_cmapper_t *cmapper, const gs_gstate *pgs)
+{
+    switch (state->spp) {
+    case 1:
+        return mem_transform_pixel_region_render_landscape_1p(dev, state, buffer, data_x, cmapper, pgs);
+    case 3:
+        return mem_transform_pixel_region_render_landscape_3p(dev, state, buffer, data_x, cmapper, pgs);
+    case 4:
+        return mem_transform_pixel_region_render_landscape_4p(dev, state, buffer, data_x, cmapper, pgs);
+    default:
+        return mem_transform_pixel_region_render_landscape_np(dev, state, buffer, data_x, cmapper, pgs);
+    }
+}
+
 static int
 mem_transform_pixel_region_begin(gx_device *dev, int w, int h, int spp,
                       const gx_dda_fixed_point *pixels, const gx_dda_fixed_point *rows,
                       const gs_int_rect *clip, transform_pixel_region_posture posture,
                       mem_transform_pixel_region_state_t **statep)
 {
+    gx_device_memory *mdev = (gx_device_memory *)dev;
     mem_transform_pixel_region_state_t *state;
     gs_memory_t *mem = dev->memory->non_gc_memory;
     *statep = state = (mem_transform_pixel_region_state_t *)gs_alloc_bytes(mem, sizeof(mem_transform_pixel_region_state_t), "mem_transform_pixel_region_state_t");
@@ -1726,7 +1849,9 @@ mem_transform_pixel_region_begin(gx_device *dev, int w, int h, int spp,
     if (state->posture == transform_pixel_region_portrait) {
 #ifdef WITH_CAL
         int factor;
-        if (pixels->x.step.dQ == fixed_1*8 && pixels->x.step.dR == 0 && rows->y.step.dQ == fixed_1*8 && rows->y.step.dR == 0) {
+        if (mdev->num_planar_planes > 1) {
+            goto planar;
+        } else if (pixels->x.step.dQ == fixed_1*8 && pixels->x.step.dR == 0 && rows->y.step.dQ == fixed_1*8 && rows->y.step.dR == 0) {
             state->render = mem_transform_pixel_region_render_portrait_1to8;
             factor = 8;
             goto use_doubler;
@@ -1761,11 +1886,18 @@ mem_transform_pixel_region_begin(gx_device *dev, int w, int h, int spp,
         } else
 no_cal:
 #endif
-        if (pixels->x.step.dQ == fixed_1 && pixels->x.step.dR == 0)
+        if (mdev->num_planar_planes > 1)
+#ifdef WITH_CAL
+planar:
+#endif
+            state->render = mem_transform_pixel_region_render_portrait_planar;
+        else if (pixels->x.step.dQ == fixed_1 && pixels->x.step.dR == 0)
             state->render = mem_transform_pixel_region_render_portrait_1to1;
         else
             state->render = mem_transform_pixel_region_render_portrait;
-    } else
+    } else if (mdev->num_planar_planes > 1)
+        state->render = mem_transform_pixel_region_render_landscape_planar;
+    else
         state->render = mem_transform_pixel_region_render_landscape;
 
     return 0;

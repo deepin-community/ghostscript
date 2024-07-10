@@ -1,4 +1,4 @@
-/* Copyright (C) 2014-2021 Artifex Software, Inc.
+/* Copyright (C) 2014-2023 Artifex Software, Inc.
 All Rights Reserved.
 
 This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@ modified or distributed except as expressly authorized under the terms
 of the license contained in the file LICENSE in this distribution.
 
 Refer to licensing information at http://www.artifex.com or contact
-Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-CA 94945, U.S.A., +1(415)492-9861, for further information.
+Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+CA 94129, USA, for further information.
 */
 
 /* Methods for decoding and unpacking image data.  Used for color
@@ -39,6 +39,10 @@ get_unpack_proc(gx_image_enum_common_t *pie, image_decode_t *imd,
     int i;
     int index_bps = (imd->bps < 8 ? imd->bps >> 1 : (imd->bps >> 2) + 1);
     int log2_xbytes = (imd->bps <= 8 ? 0 : arch_log2_sizeof_frac);
+
+    imd->unpack = NULL;
+    if (index_bps < 0 || index_bps > 5)
+        return;
 
     switch (format) {
     case gs_image_format_chunky:

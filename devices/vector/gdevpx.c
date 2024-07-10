@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -41,6 +41,9 @@
 #include "gsicc_manage.h"
 #include "gsicc_cache.h"
 #include <stdlib.h>             /* abs() */
+
+#include "gxfcache.h"
+#include "gxfont.h"
 
 /* ---------------- Device definition ---------------- */
 
@@ -122,8 +125,8 @@ gs_public_st_suffix_add0_final(st_device_pclxl, gx_device_pclxl,
                                device_pclxl_reloc_ptrs, gx_device_finalize,
                                st_device_vector);
 
-#define pclxl_device_body(dname, depth)\
-  std_device_dci_type_body(gx_device_pclxl, 0, dname, &st_device_pclxl,\
+#define pclxl_device_body(dname, depth, init)\
+  std_device_dci_type_body(gx_device_pclxl, init, dname, &st_device_pclxl,\
                            DEFAULT_WIDTH_10THS * X_DPI / 10,\
                            DEFAULT_HEIGHT_10THS * Y_DPI / 10,\
                            X_DPI, Y_DPI,\
@@ -141,61 +144,61 @@ static dev_proc_fill_mask(pclxl_fill_mask);
 
 static dev_proc_get_params(pclxl_get_params);
 static dev_proc_put_params(pclxl_put_params);
+static dev_proc_text_begin(pclxl_text_begin);
 
 /*static dev_proc_draw_thin_line(pclxl_draw_thin_line); */
-static dev_proc_begin_image(pclxl_begin_image);
-static dev_proc_strip_copy_rop(pclxl_strip_copy_rop);
+static dev_proc_begin_typed_image(pclxl_begin_typed_image);
+static dev_proc_strip_copy_rop2(pclxl_strip_copy_rop2);
 
-#define pclxl_device_procs(map_rgb_color, map_color_rgb)\
-{\
-        pclxl_open_device,\
-        NULL,			/* get_initial_matrix */\
-        NULL,			/* sync_output */\
-        pclxl_output_page,\
-        pclxl_close_device,\
-        map_rgb_color,		/* differs */\
-        map_color_rgb,		/* differs */\
-        gdev_vector_fill_rectangle,\
-        NULL,			/* tile_rectangle */\
-        pclxl_copy_mono,\
-        pclxl_copy_color,\
-        NULL,			/* draw_line */\
-        NULL,			/* get_bits */\
-        pclxl_get_params,\
-        pclxl_put_params,\
-        NULL,			/* map_cmyk_color */\
-        NULL,			/* get_xfont_procs */\
-        NULL,			/* get_xfont_device */\
-        NULL,			/* map_rgb_alpha_color */\
-        gx_page_device_get_page_device,\
-        NULL,			/* get_alpha_bits */\
-        NULL,			/* copy_alpha */\
-        NULL,			/* get_band */\
-        NULL,			/* copy_rop */\
-        gdev_vector_fill_path,\
-        gdev_vector_stroke_path,\
-        pclxl_fill_mask,\
-        gdev_vector_fill_trapezoid,\
-        gdev_vector_fill_parallelogram,\
-        gdev_vector_fill_triangle,\
-        NULL /****** WRONG ******/,	/* draw_thin_line */\
-        pclxl_begin_image,\
-        NULL,			/* image_data */\
-        NULL,			/* end_image */\
-        NULL,			/* strip_tile_rectangle */\
-        pclxl_strip_copy_rop\
+static void
+pclxl_initialize_device_procs(gx_device *dev,
+                              dev_proc_map_rgb_color(map_rgb_color),
+                              dev_proc_map_color_rgb(map_color_rgb))
+{
+    set_dev_proc(dev, open_device, pclxl_open_device);
+    set_dev_proc(dev, output_page, pclxl_output_page);
+    set_dev_proc(dev, close_device, pclxl_close_device);
+    set_dev_proc(dev, map_rgb_color, map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, gdev_vector_fill_rectangle);
+    set_dev_proc(dev, copy_mono, pclxl_copy_mono);
+    set_dev_proc(dev, copy_color, pclxl_copy_color);
+    set_dev_proc(dev, get_params, pclxl_get_params);
+    set_dev_proc(dev, put_params, pclxl_put_params);
+    set_dev_proc(dev, get_page_device, gx_page_device_get_page_device);
+    set_dev_proc(dev, fill_path, gdev_vector_fill_path);
+    set_dev_proc(dev, stroke_path, gdev_vector_stroke_path);
+    set_dev_proc(dev, fill_mask, pclxl_fill_mask);
+    set_dev_proc(dev, fill_trapezoid, gdev_vector_fill_trapezoid);
+    set_dev_proc(dev, fill_parallelogram, gdev_vector_fill_parallelogram);
+    set_dev_proc(dev, fill_triangle, gdev_vector_fill_triangle);
+    set_dev_proc(dev, begin_typed_image, pclxl_begin_typed_image);
+    set_dev_proc(dev, strip_copy_rop2, pclxl_strip_copy_rop2);
+    set_dev_proc(dev, text_begin, pclxl_text_begin);
+}
+
+static void
+pxlmono_initialize_device_procs(gx_device *dev)
+{
+    pclxl_initialize_device_procs(dev,
+                                  gx_default_gray_map_rgb_color,
+                                  gx_default_gray_map_color_rgb);
+}
+
+static void
+pxlcolor_initialize_device_procs(gx_device *dev)
+{
+    pclxl_initialize_device_procs(dev,
+                                  gx_default_rgb_map_rgb_color,
+                                  gx_default_rgb_map_color_rgb);
 }
 
 const gx_device_pclxl gs_pxlmono_device = {
-    pclxl_device_body("pxlmono", 8),
-    pclxl_device_procs(gx_default_gray_map_rgb_color,
-                       gx_default_gray_map_color_rgb)
+    pclxl_device_body("pxlmono", 8, pxlmono_initialize_device_procs)
 };
 
 const gx_device_pclxl gs_pxlcolor_device = {
-    pclxl_device_body("pxlcolor", 24),
-    pclxl_device_procs(gx_default_rgb_map_rgb_color,
-                       gx_default_rgb_map_color_rgb)
+    pclxl_device_body("pxlcolor", 24, pxlcolor_initialize_device_procs)
 };
 
 /* ---------------- Other utilities ---------------- */
@@ -360,7 +363,10 @@ pclxl_can_handle_color_space(const gs_color_space * pcs)
     return !(index == gs_color_space_index_Separation ||
              index == gs_color_space_index_Pattern ||
              index == gs_color_space_index_DeviceN ||
-             index == gs_color_space_index_ICC);
+             index == gs_color_space_index_ICC ||
+             (index <= gs_color_space_index_CIEA &&
+             index >= gs_color_space_index_CIEDEFG)
+             );
 }
 
 /* Test whether we can icclink-transform an image. */
@@ -1973,25 +1979,27 @@ pclxl_fill_mask(gx_device * dev,
 
 /* Do a RasterOp. */
 static int
-pclxl_strip_copy_rop(gx_device * dev, const byte * sdata, int sourcex,
+pclxl_strip_copy_rop2(gx_device * dev, const byte * sdata, int sourcex,
                      uint sraster, gx_bitmap_id id,
                      const gx_color_index * scolors,
                      const gx_strip_bitmap * textures,
                      const gx_color_index * tcolors,
                      int x, int y, int width, int height,
-                     int phase_x, int phase_y, gs_logical_operation_t lop)
+                     int phase_x, int phase_y, gs_logical_operation_t lop,
+                     uint plane_height)
 {
     lop = lop_sanitize(lop);
     /* Improvements possible here using PXL ROP3
        for some combinations of args; use gx_default for now */
     if (!rop3_uses_D(lop))  /* gx_default() cannot cope with D ops */
-        return gx_default_strip_copy_rop(dev, sdata, sourcex,
-                                         sraster, id,
-                                         scolors,
-                                         textures,
-                                         tcolors,
-                                         x, y, width, height,
-                                         phase_x, phase_y, lop);
+        return gx_default_strip_copy_rop2(dev, sdata, sourcex,
+                                          sraster, id,
+                                          scolors,
+                                          textures,
+                                          tcolors,
+                                          x, y, width, height,
+                                          phase_x, phase_y, lop,
+                                          plane_height);
     return 0;
 }
 
@@ -2018,30 +2026,39 @@ gs_private_st_suffix_add2(st_pclxl_image_enum, pclxl_image_enum_t,
 
 /* Start processing an image. */
 static int
-pclxl_begin_image(gx_device * dev,
-                  const gs_gstate * pgs, const gs_image_t * pim,
-                  gs_image_format_t format, const gs_int_rect * prect,
+pclxl_begin_typed_image(gx_device * dev,
+                  const gs_gstate * pgs,
+                  const gs_matrix *pmat,
+                  const gs_image_common_t * pic,
+                  const gs_int_rect * prect,
                   const gx_drawing_color * pdcolor,
                   const gx_clip_path * pcpath, gs_memory_t * mem,
                   gx_image_enum_common_t ** pinfo)
 {
     gx_device_vector *const vdev = (gx_device_vector *) dev;
     gx_device_pclxl *const xdev = (gx_device_pclxl *) dev;
-    const gs_color_space *pcs = pim->ColorSpace;
+    const gs_image_t *pim = (const gs_image_t *)pic;
+    const gs_color_space *pcs;
     pclxl_image_enum_t *pie;
     byte *row_data;
     int num_rows;
     uint row_raster;
+    int bits_per_pixel;
+    gs_matrix mat;
+    int code;
 
+    /* We only cope with image type 1 here. */
+    if (pic->type->index != 1)
+        goto use_default;
+
+    pcs = pim->ColorSpace;
     /*
      * Following should divide by num_planes, but we only handle chunky
      * images, i.e., num_planes = 1.
      */
-    int bits_per_pixel =
+    bits_per_pixel =
         (pim->ImageMask ? 1 :
          pim->BitsPerComponent * gs_color_space_num_components(pcs));
-    gs_matrix mat;
-    int code;
 
     /*
      * Check whether we can handle this image.  PCL XL 1.0 and 2.0 only
@@ -2050,7 +2067,9 @@ pclxl_begin_image(gx_device * dev,
     code = gs_matrix_invert(&pim->ImageMatrix, &mat);
     if (code < 0)
         goto use_default;
-    gs_matrix_multiply(&mat, &ctm_only(pgs), &mat);
+    if (pmat == NULL)
+        pmat = &ctm_only(pgs);
+    gs_matrix_multiply(&mat, pmat, &mat);
 
     if (pclxl_nontrivial_transfer(pgs))
         goto use_default;
@@ -2095,7 +2114,7 @@ pclxl_begin_image(gx_device * dev,
             bits_per_pixel != 8 && bits_per_pixel != 24 &&
             bits_per_pixel != 32))
           && !(pclxl_can_icctransform(pim) && xdev->iccTransform))) ||
-        format != gs_image_format_chunky || pim->Interpolate || prect)
+        pim->format != gs_image_format_chunky || pim->Interpolate || prect)
         goto use_default;
     row_raster = (bits_per_pixel * pim->Width + 7) >> 3;
     num_rows = MAX_ROW_DATA / row_raster;
@@ -2111,7 +2130,7 @@ pclxl_begin_image(gx_device * dev,
         code = gs_note_error(gs_error_VMerror);
         goto fail;
     }
-    code = gdev_vector_begin_image(vdev, pgs, pim, format, prect,
+    code = gdev_vector_begin_image(vdev, pgs, pim, pim->format, prect,
                                    pdcolor, pcpath, mem,
                                    &pclxl_image_enum_procs,
                                    (gdev_vector_image_enum_t *) pie);
@@ -2332,8 +2351,8 @@ pclxl_begin_image(gx_device * dev,
         pclxl_set_color_space(xdev, eGray);
     else
         pclxl_set_color_space(xdev, eRGB);
-    return gx_default_begin_image(dev, pgs, pim, format, prect,
-                                  pdcolor, pcpath, mem, pinfo);
+    return gx_default_begin_typed_image(dev, pgs, pmat, pic, prect,
+                                        pdcolor, pcpath, mem, pinfo);
 }
 
 /* Write one strip of an image, from pie->rows.first_y to pie->y. */
@@ -2796,4 +2815,13 @@ pclxl_put_params(gx_device * dev,       /* I - Device info */
     }
 
     return (0);
+}
+
+static int pclxl_text_begin(gx_device * dev, gs_gstate * pgs,
+                    const gs_text_params_t *text, gs_font * font,
+                    const gx_clip_path * pcpath,
+                    gs_text_enum_t ** ppte)
+{
+    font->dir->ccache.upper = 0;
+    return gx_default_text_begin(dev, pgs, text, font, pcpath, ppte);
 }

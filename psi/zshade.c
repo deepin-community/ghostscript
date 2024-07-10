@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -61,6 +61,7 @@ zsetsmoothness(i_ctx_t *i_ctx_p)
     double smoothness;
     int code;
 
+    check_op(1);
     if (real_param(op, &smoothness) < 0)
         return_op_typecheck(op);
     if ((code = gs_setsmoothness(igs, smoothness)) < 0)
@@ -75,8 +76,10 @@ zshfill(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
     const gs_shading_t *psh;
-    int code = shading_param(op, &psh);
+    int code;
 
+    check_op(1);
+    code = shading_param(op, &psh);
     if (code < 0 || (code = gs_shfill(igs, psh)) < 0)
         return code;
     pop(1);
@@ -97,6 +100,7 @@ zbuildshadingpattern(i_ctx_t *i_ctx_p)
     gs_client_color cc_instance;
     int code;
 
+    check_op(3);
     check_type(*op2, t_dictionary);
     check_dict_read(*op2);
     gs_pattern2_init(&templat);
@@ -423,6 +427,7 @@ build_shading_2(i_ctx_t *i_ctx_p, const ref * op, const gs_shading_params_t * pc
     gs_shading_A_params_t params;
     int code;
 
+    check_op(1);
     *(gs_shading_params_t *)&params = *pcommon;
     if ((code = build_directional_shading(i_ctx_p, op, params.Coords, 4,
                                           params.Domain, &params.Function,

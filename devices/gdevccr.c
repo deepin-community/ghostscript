@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* CalComp Raster Format driver */
@@ -80,8 +80,8 @@ typedef struct gx_device_ccr_s gx_device_ccr;
 #define DEFAULT_HEIGHT_10THS_A3 165
 
 /* Macro for generating ccr device descriptors. */
-#define ccr_prn_device(procs, dev_name, margin, num_comp, depth, max_gray, max_rgb, print_page)\
-{	prn_device_body(gx_device_ccr, procs, dev_name,\
+#define ccr_prn_device(init, dev_name, margin, num_comp, depth, max_gray, max_rgb, print_page)\
+{	prn_device_body(gx_device_ccr, init, dev_name,\
           DEFAULT_WIDTH_10THS_A3, DEFAULT_HEIGHT_10THS_A3, X_DPI, Y_DPI,\
           margin, margin, margin, margin,\
           num_comp, depth, max_gray, max_rgb, max_gray + 1, max_rgb + 1,\
@@ -96,14 +96,22 @@ static dev_proc_map_color_rgb(ccr_map_color_rgb);
 static dev_proc_print_page(ccr_print_page);
 
 /* The device procedures */
-/* Since the print_page doesn't alter the device, this device can print in the background */
-static gx_device_procs ccr_procs =
-    prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                    ccr_map_rgb_color, ccr_map_color_rgb);
+static void
+ccr_initialize_device_procs(gx_device *dev)
+{
+    /* Since the print_page doesn't alter the device, this device can
+     * print in the background */
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, map_rgb_color, ccr_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, ccr_map_color_rgb);
+    set_dev_proc(dev, encode_color, ccr_map_rgb_color);
+    set_dev_proc(dev, decode_color, ccr_map_color_rgb);
+}
 
 /* The device descriptors themselves */
 gx_device_ccr far_data gs_ccr_device =
-  ccr_prn_device(ccr_procs, "ccr", 0.2, 3, 8, 1, 1,
+  ccr_prn_device(ccr_initialize_device_procs, "ccr", 0.2, 3, 8, 1, 1,
                  ccr_print_page);
 
 /* ------ Color mapping routines ------ */
@@ -212,9 +220,9 @@ static int alloc_rb( gs_memory_t *mem, cmyrow **rb, int rows)
       int r;
       for(r=0; r<rows; r++)
         {
-          gs_sprintf((*rb)[r].cname, "C%02x", r);
-          gs_sprintf((*rb)[r].mname, "M%02x", r);
-          gs_sprintf((*rb)[r].yname, "Y%02x", r);
+          gs_snprintf((*rb)[r].cname, sizeof((*rb)[r].cname), "C%02x", r);
+          gs_snprintf((*rb)[r].mname, sizeof((*rb)[r].mname), "M%02x", r);
+          gs_snprintf((*rb)[r].yname, sizeof((*rb)[r].yname), "Y%02x", r);
           (*rb)[r].is_used=0;
         }
       return 0;

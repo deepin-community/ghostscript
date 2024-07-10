@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -712,9 +712,10 @@ pack_long(LPUB8 * p, UL32 v)
 }
 
 static inline void
-pack_float(LPUB8 * p, float v)
+pack_float(LPUB8 * p, LPUB8 pe, float v)
 {
-    gs_sprintf((char *)(*p), "%f", v);
+    int plen = (int)(((char *)(*p)) - ((char *)(pe)));
+    gs_snprintf((char *)(*p), plen, "%f", v);
     *p += strlen((const char *)*p) + 1;
 }
 
@@ -770,7 +771,7 @@ pack_pseo_word_array(fapi_ufst_server * r, gs_fapi_font * ff, UB8 ** p,
 }
 
 static int
-pack_pseo_fhdr(fapi_ufst_server * r, gs_fapi_font * ff, UB8 * p)
+pack_pseo_fhdr(fapi_ufst_server * r, gs_fapi_font * ff, UB8 * p, UB8 * pe)
 {
     ushort j, n, skip = 0;
     int code;
@@ -784,7 +785,7 @@ pack_pseo_fhdr(fapi_ufst_server * r, gs_fapi_font * ff, UB8 * p)
         code = ff->get_float(ff, gs_fapi_font_feature_FontMatrix, j, &f);
         if (code < 0)
             return code;
-        pack_float(&p, f);
+        pack_float(&p, pe, f);
     }
     while (((uint64_t) p) & 0x03)       /* align to QUADWORD */
         PACK_ZERO(p);
@@ -1165,7 +1166,7 @@ ufst_make_font_data(fapi_ufst_server * r, const char *font_file_path,
         if (ff->is_type1) {
             LPUB8 fontdata = (LPUB8) h + PCLETTOFONTHDRSIZE;
 
-            code = pack_pseo_fhdr(r, ff, fontdata);
+            code = pack_pseo_fhdr(r, ff, fontdata, (LPUB8)(buf + area_length));
             if (code < 0)
                 return code;
         }
@@ -2246,6 +2247,8 @@ static const gs_fapi_server ufstserver = {
     {0},
     0,
     false,
+    false,
+    {1, 0, 0, 1, 0, 0},
     1,
     {1, 0, 0, 1, 0, 0},
     gs_fapi_ufst_ensure_open,

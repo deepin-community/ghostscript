@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -25,6 +25,7 @@
 #include "gx.h"
 #include "gsexit.h"
 #include "gp.h"
+#include "stream.h"
 
 #ifdef HAVE_FONTCONFIG
 #  include <fontconfig/fontconfig.h>
@@ -497,7 +498,7 @@ void gp_enumerate_fonts_free(void *enum_state)
 
 #ifdef __MINGW32__
 int
-gp_local_arg_encoding_get_codepoint(FILE *file, const char **astr)
+gp_local_arg_encoding_get_codepoint(stream *s, const char **astr)
 {
     int len;
     int c;
@@ -505,8 +506,8 @@ gp_local_arg_encoding_get_codepoint(FILE *file, const char **astr)
     wchar_t unicode[2];
     char utf8[4];
 
-    if (file) {
-        c = fgetc(file);
+    if (s) {
+        c = spgetc(s);
         if (c == EOF)
             return EOF;
     } else if (**astr) {
@@ -519,8 +520,8 @@ gp_local_arg_encoding_get_codepoint(FILE *file, const char **astr)
 
     arg[0] = c;
     if (IsDBCSLeadByte(c)) {
-        if (file) {
-            c = fgetc(file);
+        if (s) {
+            c = spgetc(s);
             if (c == EOF)
                 return EOF;
         } else if (**astr) {

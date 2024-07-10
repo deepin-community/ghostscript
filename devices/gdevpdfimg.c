@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 #include "stdint_.h"
@@ -57,19 +57,23 @@ int PCLm_close(gx_device * pdev);
 
 
 /* ------ The pdfimage8 device ------ */
+static void
+pdfimage8_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_gray(dev);
 
-static const gx_device_procs pdfimage8_procs =
-prn_color_params_procs(pdf_image_open,
-                       gdev_prn_output_page_seekable,
-                       pdf_image_close,
-                       gx_default_gray_map_rgb_color,
-                       gx_default_gray_map_color_rgb,
-                       pdf_image_get_params_downscale,
-                       pdf_image_put_params_downscale);
+    set_dev_proc(dev, open_device, pdf_image_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page);
+    set_dev_proc(dev, close_device, pdf_image_close);
+    set_dev_proc(dev, get_params, pdf_image_get_params_downscale);
+    set_dev_proc(dev, put_params, pdf_image_put_params_downscale);
+    set_dev_proc(dev, encode_color, gx_default_8bit_map_gray_color);
+    set_dev_proc(dev, decode_color, gx_default_8bit_map_color_gray);
+}
 
 const gx_device_pdf_image gs_pdfimage8_device = {
     prn_device_body(gx_device_pdf_image,
-                    pdfimage8_procs,
+                    pdfimage8_initialize_device_procs,
                     "pdfimage8",
                     DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                     600, 600,   /* 600 dpi by default */
@@ -86,19 +90,21 @@ const gx_device_pdf_image gs_pdfimage8_device = {
 };
 
 /* ------ The pdfimage24 device ------ */
+static void
+pdfimage24_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb(dev);
 
-static const gx_device_procs pdfimage24_procs =
-prn_color_params_procs(pdf_image_open,
-                       gdev_prn_output_page_seekable,
-                       pdf_image_close,
-                       gx_default_rgb_map_rgb_color,
-                       gx_default_rgb_map_color_rgb,
-                       pdf_image_get_params_downscale,
-                       pdf_image_put_params_downscale);
+    set_dev_proc(dev, open_device, pdf_image_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page);
+    set_dev_proc(dev, close_device, pdf_image_close);
+    set_dev_proc(dev, get_params, pdf_image_get_params_downscale);
+    set_dev_proc(dev, put_params, pdf_image_put_params_downscale);
+}
 
 const gx_device_pdf_image gs_pdfimage24_device = {
     prn_device_body(gx_device_pdf_image,
-                    pdfimage24_procs,
+                    pdfimage24_initialize_device_procs,
                     "pdfimage24",
                     DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                     600, 600,   /* 600 dpi by default */
@@ -115,17 +121,21 @@ const gx_device_pdf_image gs_pdfimage24_device = {
 };
 
 /* ------ The pdfimage32 device ------ */
+static void
+pdfimage32_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_cmyk8(dev);
 
-static const gx_device_procs pdfimage32_procs = {
-    pdf_image_open, NULL, NULL, gdev_prn_output_page_seekable, pdf_image_close,
-    NULL, cmyk_8bit_map_color_cmyk, NULL, NULL, NULL, NULL, NULL, NULL,
-    pdf_image_get_params_downscale_cmyk, pdf_image_put_params_downscale_cmyk,
-    cmyk_8bit_map_cmyk_color, NULL, NULL, NULL, gx_page_device_get_page_device
-};
+    set_dev_proc(dev, open_device, pdf_image_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page);
+    set_dev_proc(dev, close_device, pdf_image_close);
+    set_dev_proc(dev, get_params, pdf_image_get_params_downscale_cmyk);
+    set_dev_proc(dev, put_params, pdf_image_put_params_downscale_cmyk);
+}
 
 const gx_device_pdf_image gs_pdfimage32_device = {
     prn_device_body(gx_device_pdf_image,
-                    pdfimage32_procs,
+                    pdfimage32_initialize_device_procs,
                     "pdfimage32",
                     DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                     600, 600,   /* 600 dpi by default */
@@ -190,8 +200,6 @@ static int gdev_pdf_image_begin_page(gx_device_pdf_image *pdf_dev,
                          gp_file *file)
 {
     gx_device_printer *const pdev = (gx_device_printer *)pdf_dev;
-    cmm_dev_profile_t *profile_struct;
-    gsicc_rendering_param_t rendering_params;
     int code;
     pdfimage_page *page;
 
@@ -203,39 +211,11 @@ static int gdev_pdf_image_begin_page(gx_device_pdf_image *pdf_dev,
 
     if (gdev_prn_file_is_new(pdev)) {
         /* Set up the icc link settings at this time */
-        code = dev_proc(pdev, get_profile)((gx_device *)pdev, &profile_struct);
-        if (code < 0)
-            return_error(gs_error_undefined);
-        if (profile_struct->postren_profile != NULL) {
-            rendering_params.black_point_comp = gsBLACKPTCOMP_ON;
-            rendering_params.graphics_type_tag = GS_UNKNOWN_TAG;
-            rendering_params.override_icc = false;
-            rendering_params.preserve_black = gsBLACKPRESERVE_OFF;
-            rendering_params.rendering_intent = gsRELATIVECOLORIMETRIC;
-            rendering_params.cmm = gsCMM_DEFAULT;
-            if (profile_struct->oi_profile != NULL) {
-                pdf_dev->icclink = gsicc_alloc_link_dev(pdev->memory,
-                    profile_struct->oi_profile, profile_struct->postren_profile,
-                    &rendering_params);
-            } else if (profile_struct->link_profile != NULL) {
-                pdf_dev->icclink = gsicc_alloc_link_dev(pdev->memory,
-                    profile_struct->link_profile, profile_struct->postren_profile,
-                    &rendering_params);
-            } else {
-                pdf_dev->icclink = gsicc_alloc_link_dev(pdev->memory,
-                    profile_struct->device_profile[GS_DEFAULT_DEVICE_PROFILE], profile_struct->postren_profile,
-                    &rendering_params);
-            }
-            if (pdf_dev->icclink == NULL) {
-                gs_free_object(pdf_dev->memory->non_gc_memory, page, "pdfimage create new page");
-                return_error(gs_error_VMerror);
-            }
-            /* If it is identity, release it now and set link to NULL */
-            if (pdf_dev->icclink->is_identity) {
-                pdf_dev->icclink->procs.free_link(pdf_dev->icclink);
-                gsicc_free_link_dev(pdev->memory, pdf_dev->icclink);
-                pdf_dev->icclink = NULL;
-            }
+        code = gx_downscaler_create_post_render_link((gx_device *)pdev,
+                                                     &pdf_dev->icclink);
+        if (code < 0) {
+            gs_free_object(pdf_dev->memory->non_gc_memory, page, "pdfimage create new page");
+            return code;
         }
 
         /* Set up the stream and insert the file header */
@@ -280,10 +260,11 @@ static int gdev_pdf_image_begin_page(gx_device_pdf_image *pdf_dev,
             current = current->next;
         current->next = page;
     }
-    page->ImageObjectNumber = (pdf_dev->NumPages * 4) + PDFIMG_STATIC_OBJS + pdf_dev->ocr.file_objects;
+    page->ImageObjectNumber = (pdf_dev->NumPages * PDFIMG_OBJS_PER_PAGE) + PDFIMG_STATIC_OBJS + pdf_dev->ocr.file_objects;
     page->LengthObjectNumber = page->ImageObjectNumber + 1;
     page->PageStreamObjectNumber = page->LengthObjectNumber + 1;
     page->PageDictObjectNumber = page->PageStreamObjectNumber + 1;
+    page->PageLengthObjectNumber = page->PageDictObjectNumber + 1;
     page->ImageOffset = stell(pdf_dev->strm);
     pdf_dev->StripHeight = pdf_dev->height;
 
@@ -436,6 +417,7 @@ pdf_image_downscale_and_print_page(gx_device_printer *dev,
     pdfimage_page *page = pdf_dev->Pages;
     char Buffer[1024];
     stream *s = pdf_dev->strm;
+    gs_offset_t len;
 
     if (page == NULL)
         return_error(gs_error_undefined);
@@ -568,7 +550,7 @@ pdf_image_downscale_and_print_page(gx_device_printer *dev,
 
     page->PageStreamOffset = stell(pdf_dev->strm);
     pprintd1(pdf_dev->strm, "%d 0 obj\n", page->PageStreamObjectNumber);
-    stream_puts(pdf_dev->strm, "<<\n/Filter/FlateDecode/Length           \n>>\nstream\n");
+    pprintd1(pdf_dev->strm, "<<\n/Filter/FlateDecode/Length %d 0 R\n>>\nstream\n", page->PageLengthObjectNumber);
     stream_pos = stell(pdf_dev->strm);
     encode((gx_device *)pdf_dev, &pdf_dev->strm, &s_zlibE_template, pdf_dev->memory->non_gc_memory);
     if (pdf_dev->ocr.end_page)
@@ -581,20 +563,17 @@ pdf_image_downscale_and_print_page(gx_device_printer *dev,
         pdf_dev->ocr.end_page(pdf_dev);
     }
     s_close_filters(&pdf_dev->strm, s);
-    {
-        gs_offset_t pos = stell(pdf_dev->strm);
-        gs_offset_t len = pos - stream_pos;
-        sseek(pdf_dev->strm, stream_pos - 21);
-        pprintd1(pdf_dev->strm, "%d", (int)len);
-        sseek(pdf_dev->strm, pos);
-    }
+    len = stell(pdf_dev->strm) - stream_pos;
     stream_puts(pdf_dev->strm, "\nendstream\nendobj\n");
+
+    page->PageLengthOffset = stell(pdf_dev->strm);
+    pprintd2(pdf_dev->strm, "%d 0 obj\n%d\nendobj\n", page->PageLengthObjectNumber, len);
 
     page->PageDictOffset = stell(pdf_dev->strm);
     pprintd1(pdf_dev->strm, "%d 0 obj\n", page->PageDictObjectNumber);
     pprintd1(pdf_dev->strm, "<<\n/Contents %d 0 R\n", page->PageStreamObjectNumber);
     stream_puts(pdf_dev->strm, "/Type /Page\n/Parent 2 0 R\n");
-    gs_sprintf(Buffer, "/MediaBox [0 0 %f %f]\n", ((double)pdf_dev->width / pdf_dev->HWResolution[0]) * 72, ((double)pdf_dev->height / pdf_dev->HWResolution[1]) * 72);
+    gs_snprintf(Buffer, sizeof(Buffer), "/MediaBox [0 0 %f %f]\n", ((double)pdf_dev->width / pdf_dev->HWResolution[0]) * 72, ((double)pdf_dev->height / pdf_dev->HWResolution[1]) * 72);
     stream_puts(pdf_dev->strm, Buffer);
     pprintd1(pdf_dev->strm, "/Resources <<\n/XObject <<\n/Im1 %d 0 R\n>>\n", page->ImageObjectNumber);
     if (pdf_dev->ocr.file_init)
@@ -690,7 +669,7 @@ static void write_xref_entry (stream *s, gs_offset_t Offset)
     if (Offset > 9999999999){
         Offset = 0;
     }
-    gs_sprintf(O, "%d", Offset);
+    gs_snprintf(O, sizeof(O), "%d", Offset);
     for (i=0; i< (10 - strlen(O)); i++)
         stream_puts(s, "0");
     stream_puts(s, O);
@@ -698,13 +677,13 @@ static void write_xref_entry (stream *s, gs_offset_t Offset)
 }
 
 static void
-pdf_store_default_Producer(char *buf)
+pdf_store_default_Producer(char buf[256])
 {
     int major = (int)(gs_revision / 1000);
     int minor = (int)(gs_revision - (major * 1000)) / 10;
     int patch = gs_revision % 10;
 
-    gs_sprintf(buf, "(%s %d.%02d.%d)", gs_product, major, minor, patch);
+    gs_snprintf(buf, 256, "(%s %d.%02d.%d)", gs_product, major, minor, patch);
 }
 
 static int pdf_image_finish_file(gx_device_pdf_image *pdf_dev, int PCLm)
@@ -750,7 +729,7 @@ static int pdf_image_finish_file(gx_device_pdf_image *pdf_dev, int PCLm)
         tms = *localtime(&t);
 #endif
 
-        gs_sprintf(CreationDate, "(D:%04d%02d%02d%02d%02d%02d%c%02d\'%02d\')",
+        gs_snprintf(CreationDate, sizeof(CreationDate), "(D:%04d%02d%02d%02d%02d%02d%c%02d\'%02d\')",
             tms.tm_year + 1900, tms.tm_mon + 1, tms.tm_mday,
             tms.tm_hour, tms.tm_min, tms.tm_sec,
             timesign, timeoffset / 60, timeoffset % 60);
@@ -766,7 +745,7 @@ static int pdf_image_finish_file(gx_device_pdf_image *pdf_dev, int PCLm)
         if (PCLm)
             pprintd1(pdf_dev->strm, "xref\n0 %d\n0000000000 65536 f \n", pdf_dev->NextObject);
         else
-            pprintd1(pdf_dev->strm, "xref\n0 %d\n0000000000 65536 f \n", (pdf_dev->NumPages * 4) + PDFIMG_STATIC_OBJS + pdf_dev->ocr.file_objects);
+            pprintd1(pdf_dev->strm, "xref\n0 %d\n0000000000 65536 f \n", (pdf_dev->NumPages * PDFIMG_OBJS_PER_PAGE) + PDFIMG_STATIC_OBJS + pdf_dev->ocr.file_objects);
         write_xref_entry(pdf_dev->strm, pdf_dev->RootOffset);
         write_xref_entry(pdf_dev->strm, pdf_dev->PagesOffset);
         write_xref_entry(pdf_dev->strm, pdf_dev->InfoOffset);
@@ -785,9 +764,10 @@ static int pdf_image_finish_file(gx_device_pdf_image *pdf_dev, int PCLm)
                 write_xref_entry(pdf_dev->strm, page->LengthOffset);
                 write_xref_entry(pdf_dev->strm, page->PageStreamOffset);
                 write_xref_entry(pdf_dev->strm, page->PageDictOffset);
+                write_xref_entry(pdf_dev->strm, page->PageLengthOffset);
                 page = page->next;
             }
-            pprintd1(pdf_dev->strm, "trailer\n<<\n/Size %d\n/Root 1 0 R\n/ID [", (pdf_dev->NumPages * 4) + PDFIMG_STATIC_OBJS + pdf_dev->ocr.file_objects);
+            pprintd1(pdf_dev->strm, "trailer\n<<\n/Size %d\n/Root 1 0 R\n/ID [", (pdf_dev->NumPages * PDFIMG_OBJS_PER_PAGE) + PDFIMG_STATIC_OBJS + pdf_dev->ocr.file_objects);
             pdf_compute_fileID(pdf_dev, fileID, CreationDate, Title, Producer);
             write_fileID(pdf_dev->strm, (const byte *)&fileID, 16);
             write_fileID(pdf_dev->strm, (const byte *)&fileID, 16);
@@ -841,12 +821,8 @@ static int pdf_image_finish_file(gx_device_pdf_image *pdf_dev, int PCLm)
         pdf_dev->Pages = NULL;
         pdf_dev->NumPages = 0;
     }
-    if (pdf_dev->icclink != NULL)
-    {
-        pdf_dev->icclink->procs.free_link(pdf_dev->icclink);
-        gsicc_free_link_dev(pdf_dev->memory, pdf_dev->icclink);
-        pdf_dev->icclink = NULL;
-    }
+    gsicc_free_link_dev(pdf_dev->icclink);
+    pdf_dev->icclink = NULL;
     pdf_dev->RootOffset = 0;
     pdf_dev->PagesOffset = 0;
     pdf_dev->xrefOffset = 0;
@@ -888,7 +864,7 @@ pdf_image_print_page(gx_device_printer * pdev, gp_file * file)
 int
 pdf_image_open(gx_device *pdev)
 {
-    gx_device_pdf_image *ppdev = (gx_device_pdf_image *)pdev;
+    gx_device_pdf_image *ppdev;
     int code;
     bool update_procs = false;
 
@@ -899,6 +875,7 @@ pdf_image_open(gx_device *pdev)
     while(pdev->child)
         pdev = pdev->child;
 
+    ppdev = (gx_device_pdf_image *)pdev;
     ppdev->file = NULL;
     ppdev->Pages = NULL;
     ppdev->NumPages = 0;
@@ -918,7 +895,7 @@ pdf_image_open(gx_device *pdev)
             gx_copy_device_procs(pdev->parent, pdev, &gs_flp_device);
     }
     if (ppdev->OpenOutputFile)
-        code = gdev_prn_open_printer_seekable(pdev, 1, true);
+        code = gdev_prn_open_printer(pdev, 1);
 
     return code;
 }
@@ -973,6 +950,12 @@ pdf_image_get_some_params(gx_device * dev, gs_param_list * plist, int which)
     if (ecode < 0)
         return ecode;
 
+    ecode = param_write_bool(plist, "Tumble", &pdf_dev->Tumble);
+    if (ecode < 0)
+        return ecode;
+    ecode = param_write_bool(plist, "Tumble2", &pdf_dev->Tumble2);
+    if (ecode < 0)
+        return ecode;
     ecode = param_write_int(plist, "StripHeight", &pdf_dev->StripHeight);
     if (ecode < 0)
         return ecode;
@@ -1024,6 +1007,18 @@ pdf_image_put_some_params(gx_device * dev, gs_param_list * plist, int which)
     gs_param_string comprstr;
     const char *param_name;
 
+    code = param_read_bool(plist, param_name = "Tumble", &pdf_dev->Tumble);
+    if (code < 0) {
+        errprintf(pdf_dev->memory, "Invalid Tumble setting\n");
+        param_signal_error(plist, param_name, ecode);
+        return code;
+    }
+    code = param_read_bool(plist, param_name = "Tumble2", &pdf_dev->Tumble2);
+    if (code < 0) {
+        errprintf(pdf_dev->memory, "Invalid Tumble2 setting\n");
+        param_signal_error(plist, param_name, ecode);
+        return code;
+    }
     code = param_read_int(plist, param_name = "StripHeight", &pdf_dev->StripHeight);
     if (code < 0) {
         errprintf(pdf_dev->memory, "Invalid StripHeight setting\n");
@@ -1066,10 +1061,7 @@ pdf_image_put_some_params(gx_device * dev, gs_param_list * plist, int which)
                                           (which & 2 ? GX_DOWNSCALER_PARAMS_TRAP : 0) |
                                           (which & 4 ? GX_DOWNSCALER_PARAMS_ETS : 0)));
         if (code < 0)
-        {
             ecode = code;
-            param_signal_error(plist, param_name, ecode);
-        }
     }
     if (ecode < 0)
         return ecode;
@@ -1098,31 +1090,102 @@ pdf_image_put_params_downscale_cmyk_ets(gx_device * dev, gs_param_list * plist)
     return pdf_image_put_some_params(dev, plist, 7);
 }
 
+static void
+PCLm_get_initial_matrix(gx_device * dev, register gs_matrix * pmat)
+{
+    gx_device_pdf_image *pdev = (gx_device_pdf_image *)dev;
+
+    gx_default_get_initial_matrix(dev, pmat);
+
+    if (pdev->Duplex && (pdev->NumPages & 1)) {
+        /* Duplexing and we are on the back of the page. */
+        if (pdev->Tumble) {
+            if (pdev->Tumble2) {
+                /* Rotate by 180 degrees and flip on X. */
+                pmat->xx = pmat->xx;
+                pmat->xy = -pmat->xy;
+                pmat->yx = -pmat->yx;
+                pmat->yy = -pmat->yy;
+                pmat->ty = pdev->height - pmat->ty;
+            } else {
+                /* Rotate by 180 degrees */
+                pmat->xx = -pmat->xx;
+                pmat->xy = -pmat->xy;
+                pmat->yx = -pmat->yx;
+                pmat->yy = -pmat->yy;
+                pmat->tx = pdev->width - pmat->tx;
+                pmat->ty = pdev->height - pmat->ty;
+            }
+        } else if (pdev->Tumble2) {
+            /* Flip on X */
+            pmat->xx = -pmat->xx;
+            pmat->yx = -pmat->yx;
+            pmat->tx = pdev->width - pmat->tx;
+        }
+    }
+}
+
 /* ------ The PCLm device ------ */
+static void
+PCLm_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb(dev);
+
+    set_dev_proc(dev, open_device, PCLm_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page);
+    set_dev_proc(dev, get_initial_matrix, PCLm_get_initial_matrix);
+    set_dev_proc(dev, close_device, PCLm_close);
+    set_dev_proc(dev, get_params, pdf_image_get_params_downscale);
+    set_dev_proc(dev, put_params, pdf_image_put_params_downscale);
+}
+
+static void
+PCLm8_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb(dev);
+
+    set_dev_proc(dev, open_device, PCLm_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page);
+    set_dev_proc(dev, get_initial_matrix, PCLm_get_initial_matrix);
+    set_dev_proc(dev, close_device, PCLm_close);
+    set_dev_proc(dev, get_params, pdf_image_get_params_downscale);
+    set_dev_proc(dev, put_params, pdf_image_put_params_downscale);
+    set_dev_proc(dev, encode_color, gx_default_8bit_map_gray_color);
+    set_dev_proc(dev, decode_color, gx_default_8bit_map_color_gray);
+}
 
 static dev_proc_print_page(PCLm_print_page);
 
-static const gx_device_procs PCLm_procs =
-prn_color_params_procs(PCLm_open,
-                       gdev_prn_output_page_seekable,
-                       PCLm_close,
-                       gx_default_rgb_map_rgb_color,
-                       gx_default_rgb_map_color_rgb,
-                       pdf_image_get_params_downscale,
-                       pdf_image_put_params_downscale);
-
 const gx_device_pdf_image gs_PCLm_device = {
-    prn_device_body(gx_device_pdf_image,
-                    PCLm_procs,
-                    "pclm",
-                    DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
-                    600, 600,   /* 600 dpi by default */
-                    0, 0, 0, 0, /* Margins */
-                    3,          /* num components */
-                    24,         /* bits per sample */
-                    255, 255, 256, 256,
-                    PCLm_print_page),
-                    3,
+    prn_device_body_duplex(gx_device_pdf_image,
+                           PCLm_initialize_device_procs,
+                           "pclm",
+                           DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
+                           600, 600,   /* 600 dpi by default */
+                           0, 0, 0, 0, /* Margins */
+                           3,          /* num components */
+                           24,         /* bits per sample */
+                           255, 255, 256, 256,
+                           PCLm_print_page),
+    3,
+    GX_DOWNSCALER_PARAMS_DEFAULTS,
+    16, /* StripHeight */
+    0.0, /* QFactor */
+    0  /* JPEGQ */
+};
+
+const gx_device_pdf_image gs_PCLm8_device = {
+    prn_device_body_duplex(gx_device_pdf_image,
+                           PCLm8_initialize_device_procs,
+                           "pclm8",
+                           DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
+                           600, 600,   /* 600 dpi by default */
+                           0, 0, 0, 0, /* Margins */
+                           1,          /* num components */
+                           8,         /* bits per sample */
+                           255, 0, 256, 0,
+                           PCLm_print_page),
+    3,
     GX_DOWNSCALER_PARAMS_DEFAULTS,
     16, /* StripHeight */
     0.0, /* QFactor */
@@ -1176,7 +1239,7 @@ PCLm_close_temp_file(gx_device_pdf_image *pdev, PCLm_temp_file_t *ptf, int code)
     }
     if (file) {
         err = gp_ferror(file) | gp_fclose(file);
-        unlink(ptf->file_name);
+        gp_unlink(pdev->memory, ptf->file_name);
         ptf->file = 0;
     }
     return
@@ -1210,7 +1273,7 @@ PCLm_open_temp_stream(gx_device_pdf_image *pdev, PCLm_temp_file_t *ptf)
 int
 PCLm_open(gx_device *pdev)
 {
-    gx_device_pdf_image *ppdev = (gx_device_pdf_image *)pdev;
+    gx_device_pdf_image *ppdev;
     int code;
     bool update_procs = false;
 
@@ -1221,6 +1284,7 @@ PCLm_open(gx_device *pdev)
     while(pdev->child)
         pdev = pdev->child;
 
+    ppdev = (gx_device_pdf_image *)pdev;
     memset(&ppdev->ocr, 0, sizeof(ppdev->ocr));
     ppdev->file = NULL;
     ppdev->Pages = NULL;
@@ -1241,7 +1305,7 @@ PCLm_open(gx_device *pdev)
             gx_copy_device_procs(pdev->parent, pdev, &gs_flp_device);
     }
     if (ppdev->OpenOutputFile)
-        code = gdev_prn_open_printer_seekable(pdev, 1, true);
+        code = gdev_prn_open_printer(pdev, 1);
 
     if(code < 0)
         return code;
@@ -1260,8 +1324,6 @@ static int gdev_PCLm_begin_page(gx_device_pdf_image *pdf_dev,
                          gp_file *file)
 {
     gx_device_printer *const pdev = (gx_device_printer *)pdf_dev;
-    cmm_dev_profile_t *profile_struct;
-    gsicc_rendering_param_t rendering_params;
     int code;
     pdfimage_page *page;
 
@@ -1273,39 +1335,11 @@ static int gdev_PCLm_begin_page(gx_device_pdf_image *pdf_dev,
 
     if (gdev_prn_file_is_new(pdev)) {
         /* Set up the icc link settings at this time */
-        code = dev_proc(pdev, get_profile)((gx_device *)pdev, &profile_struct);
-        if (code < 0)
-            return_error(gs_error_undefined);
-        if (profile_struct->postren_profile != NULL) {
-            rendering_params.black_point_comp = gsBLACKPTCOMP_ON;
-            rendering_params.graphics_type_tag = GS_UNKNOWN_TAG;
-            rendering_params.override_icc = false;
-            rendering_params.preserve_black = gsBLACKPRESERVE_OFF;
-            rendering_params.rendering_intent = gsRELATIVECOLORIMETRIC;
-            rendering_params.cmm = gsCMM_DEFAULT;
-            if (profile_struct->oi_profile != NULL) {
-                pdf_dev->icclink = gsicc_alloc_link_dev(pdev->memory,
-                    profile_struct->oi_profile, profile_struct->postren_profile,
-                    &rendering_params);
-            } else if (profile_struct->link_profile != NULL) {
-                pdf_dev->icclink = gsicc_alloc_link_dev(pdev->memory,
-                    profile_struct->link_profile, profile_struct->postren_profile,
-                    &rendering_params);
-            } else {
-                pdf_dev->icclink = gsicc_alloc_link_dev(pdev->memory,
-                    profile_struct->device_profile[GS_DEFAULT_DEVICE_PROFILE], profile_struct->postren_profile,
-                    &rendering_params);
-            }
-            if (pdf_dev->icclink == NULL) {
-                gs_free_object(pdf_dev->memory->non_gc_memory, page, "pdfimage create new page");
-                return_error(gs_error_VMerror);
-            }
-            /* If it is identity, release it now and set link to NULL */
-            if (pdf_dev->icclink->is_identity) {
-                pdf_dev->icclink->procs.free_link(pdf_dev->icclink);
-                gsicc_free_link_dev(pdev->memory, pdf_dev->icclink);
-                pdf_dev->icclink = NULL;
-            }
+        code = gx_downscaler_create_post_render_link((gx_device *)pdev,
+                                                     &pdf_dev->icclink);
+        if (code < 0) {
+            gs_free_object(pdf_dev->memory->non_gc_memory, page, "pdfimage create new page");
+            return code;
         }
 
         /* Set up the stream and insert the file header */
@@ -1329,7 +1363,7 @@ static int gdev_PCLm_begin_page(gx_device_pdf_image *pdf_dev,
         stream_puts(pdf_dev->strm, "%PDF-1.3\n");
         stream_puts(pdf_dev->strm, "%PCLm 1.0\n");
         pdf_dev->Pages = page;
-        pdf_dev->NextObject = 3;
+        pdf_dev->NextObject = 4;
     } else {
         pdfimage_page *current = pdf_dev->Pages;
         while(current->next)
@@ -1407,7 +1441,7 @@ PCLm_downscale_and_print_page(gx_device_printer *dev,
     pprintd1(pdf_dev->strm, "%d 0 obj\n", page->PageDictObjectNumber);
     pprintd1(pdf_dev->strm, "<<\n/Contents %d 0 R\n", page->PageStreamObjectNumber);
     stream_puts(pdf_dev->strm, "/Type /Page\n/Parent 2 0 R\n");
-    gs_sprintf(Buffer, "/MediaBox [0 0 %.3f %.3f]\n", ((double)pdf_dev->width / pdf_dev->HWResolution[0]) * 72, ((double)pdf_dev->height / pdf_dev->HWResolution[1]) * 72);
+    gs_snprintf(Buffer, sizeof(Buffer), "/MediaBox [0 0 %.3f %.3f]\n", ((double)pdf_dev->width / pdf_dev->HWResolution[0]) * 72, ((double)pdf_dev->height / pdf_dev->HWResolution[1]) * 72);
     stream_puts(pdf_dev->strm, Buffer);
     stream_puts(pdf_dev->strm, "/Resources <<\n/XObject <<\n");
 
@@ -1426,9 +1460,9 @@ PCLm_downscale_and_print_page(gx_device_printer *dev,
             double adjusted;
             adjusted = height - (row * pdf_dev->StripHeight);
             adjusted = adjusted / (pdf_dev->HWResolution[1] / (factor * 72));
-            gs_sprintf(Buffer, "%.3f 0 0 %.3f 0 0 cm\n/Im%d Do Q\n", (width / (pdf_dev->HWResolution[0] / 72)) * factor, adjusted, row);
+            gs_snprintf(Buffer, sizeof(Buffer), "%.3f 0 0 %.3f 0 0 cm\n/Im%d Do Q\n", (width / (pdf_dev->HWResolution[0] / 72)) * factor, adjusted, row);
         } else
-            gs_sprintf(Buffer, "%.3f 0 0 %.3f 0 %f cm\n/Im%d Do Q\n", (width / (pdf_dev->HWResolution[0] / 72)) * factor, StripDecrement, ((height / (pdf_dev->HWResolution[1] / 72)) * factor) - (StripDecrement * (row + 1)), row);
+            gs_snprintf(Buffer, sizeof(Buffer), "%.3f 0 0 %.3f 0 %f cm\n/Im%d Do Q\n", (width / (pdf_dev->HWResolution[0] / 72)) * factor, StripDecrement, ((height / (pdf_dev->HWResolution[1] / 72)) * factor) - (StripDecrement * (row + 1)), row);
         stream_puts(pdf_dev->temp_stream.strm, Buffer);
         pprintd2(pdf_dev->strm, "/Im%d %d 0 R\n", row, page->ImageObjectNumber + (row * 2));
     }
@@ -1506,7 +1540,10 @@ PCLm_downscale_and_print_page(gx_device_printer *dev,
             stream_puts(pdf_dev->strm, "/Subtype /Image\n");
             pprintd1(pdf_dev->strm, "/Width %d\n", width);
             pprintd1(pdf_dev->strm, "/Height %d\n", Read);
-            stream_puts(pdf_dev->strm, "/ColorSpace /DeviceRGB\n");
+            if (dev->color_info.max_components == 1)
+                stream_puts(pdf_dev->strm, "/ColorSpace /DeviceGray\n");
+            else
+                stream_puts(pdf_dev->strm, "/ColorSpace /DeviceRGB\n");
             stream_puts(pdf_dev->strm, "/BitsPerComponent 8\n");
             switch (pdf_dev->Compression) {
                 case COMPRESSION_FLATE:
@@ -1606,7 +1643,10 @@ PCLm_downscale_and_print_page(gx_device_printer *dev,
         stream_puts(pdf_dev->strm, "/Subtype /Image\n");
         pprintd1(pdf_dev->strm, "/Width %d\n", width);
         pprintd1(pdf_dev->strm, "/Height %d\n", Read);
-        stream_puts(pdf_dev->strm, "/ColorSpace /DeviceRGB\n");
+        if (dev->color_info.max_components == 1)
+            stream_puts(pdf_dev->strm, "/ColorSpace /DeviceGray\n");
+        else
+            stream_puts(pdf_dev->strm, "/ColorSpace /DeviceRGB\n");
         stream_puts(pdf_dev->strm, "/BitsPerComponent 8\n");
         switch (pdf_dev->Compression) {
             case COMPRESSION_FLATE:

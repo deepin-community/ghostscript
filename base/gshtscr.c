@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -328,6 +328,9 @@ pick_cell_size(gs_screen_halftone * ph, const gs_matrix * pmat, ulong max_size,
 
     /* Compute trial values of u and v. */
 
+    if (f0 == 0)
+        return_error(gs_error_rangecheck);
+
     {
         gs_matrix rmat;
 
@@ -344,6 +347,15 @@ pick_cell_size(gs_screen_halftone * ph, const gs_matrix * pmat, ulong max_size,
 
     if (u0 == 0 && v0 == 0)
         return_error(gs_error_rangecheck);
+
+    /* We increment rt in a loop below until (u+v) * rt
+     * is at least 4. Make sure that rt has enough range
+     * to satisfy that calculation. If it doesn't then
+     * give up (silly values).
+     */
+    if ((fabs(u0) + fabs(v0)) < ((double)5.0 / max_int))
+        return_error(gs_error_rangecheck);
+
     while ((fabs(u0) + fabs(v0)) * rt < 4)
         ++rt;
     phcp->C = 0;
@@ -376,6 +388,11 @@ pick_cell_size(gs_screen_halftone * ph, const gs_matrix * pmat, ulong max_size,
                 if_debug3('h', "[h]trying m=%d, n=%d, r=%d\n", p.M, p.N, rt);
                 wt = p.W;
                 if (wt >= max_short)
+                    continue;
+                /* Calculations below involve dividing by one or more of these values
+                 * make sure we can't get a divide by zero.
+                 */
+                if (wt == 0 || p.D == 0 || (p.M == 0 && p.N == 0))
                     continue;
                 /* Check the strip size, not the full tile size, */
                 /* against max_size. */
@@ -602,7 +619,7 @@ gs_screen_next(gs_screen_enum * penum, double value)
     if (value < -1.0 || value > 1.0)
         return_error(gs_error_rangecheck);
     sample = (ht_sample_t) ((value + 1) * max_ht_sample);
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#if defined(DEBUG)
     if (gs_debug_c('H')) {
         gs_point pt;
 
@@ -627,6 +644,7 @@ gs_screen_install(gs_screen_enum * penum)
     dev_ht.rc.memory = penum->halftone.rc.memory;
     dev_ht.order = penum->order;
     dev_ht.components = 0;
+    penum->halftone.objtype = HT_OBJTYPE_DEFAULT;
     if ((code = gx_ht_install(penum->pgs, &penum->halftone, &dev_ht)) < 0)
         gx_device_halftone_release(&dev_ht, dev_ht.rc.memory);
     return code;

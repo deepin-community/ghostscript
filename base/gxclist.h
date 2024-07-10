@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -79,6 +79,8 @@ typedef struct gx_saved_page_s {
     char bfname[gp_file_name_sizeof];	/* block file name */
     const clist_io_procs_t *io_procs;
     uint tile_cache_size;	/* size of tile cache */
+    size_t line_ptrs_offset;
+    int num_planar_planes;
     int64_t bfile_end_pos;		/* ftell at end of bfile */
     gx_band_params_t band_params;  /* parameters used when writing band list */
                                 /* (actual values, no 0s) */
@@ -261,11 +263,11 @@ typedef struct gx_device_clist_common_s {
     gx_device_clist_common_members;
 } gx_device_clist_common;
 
-#define clist_band_height(cldev) ((cldev)->page_band_height)
-#define clist_cfname(cldev) ((cldev)->page_cfname)
-#define clist_cfile(cldev) ((cldev)->page_cfile)
-#define clist_bfname(cldev) ((cldev)->page_bfname)
-#define clist_bfile(cldev) ((cldev)->page_bfile)
+#define clist_band_height(cldev) ((cldev)->page_info.band_params.BandHeight)
+#define clist_cfname(cldev) ((cldev)->page_info.cfname)
+#define clist_cfile(cldev) ((cldev)->page_info.cfile)
+#define clist_bfname(cldev) ((cldev)->page_info.bfname)
+#define clist_bfile(cldev) ((cldev)->page_info.bfile)
 
 /* Define the length of the longest dash pattern we are willing to store. */
 /* (Strokes with longer patterns are converted to fills.) */
@@ -433,8 +435,7 @@ extern_st(st_device_clist);
         (xclist)->writer.pinst = NULL;\
     END
 
-/* The device template itself is never used, only the procedures. */
-extern const gx_device_procs gs_clist_device_procs;
+void clist_initialize_device_procs(gx_device *dev);
 
 void clist_init_io_procs(gx_device_clist *pclist_dev, bool in_memory);
 
@@ -674,6 +675,6 @@ clist_mutate_to_clist(gx_device_clist_mutatable  *pdev,
                       bool                        bufferSpace_is_exact,
                 const gx_device_buf_procs_t      *buf_procs,
                       dev_proc_dev_spec_op(dev_spec_op),
-                      uint                        min_buffer_space);
+                      size_t                      min_buffer_space);
 
 #endif /* gxclist_INCLUDED */

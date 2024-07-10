@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Practical Automation ATX-23, -24, -38  and ITK-24i, -38 driver */
@@ -43,7 +43,8 @@ static dev_proc_print_page(atx24_print_page);
 static dev_proc_print_page(atx38_print_page);
 
 #define ATX_DEVICE(dname, w10, h10, dpi, lrm, btm, print_page)\
-  prn_device_margins(prn_std_procs, dname, w10, h10, dpi, dpi, 0, 0,\
+  prn_device_margins(gdev_prn_initialize_device_procs_mono, dname,\
+                     w10, h10, dpi, dpi, 0, 0,\
                      lrm, btm, lrm, btm, 1, print_page)
 
 const gx_device_printer gs_atx23_device = /* real width = 576 pixels */

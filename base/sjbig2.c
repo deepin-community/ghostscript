@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -63,7 +63,7 @@ s_jbig2decode_error(void *callback_data, const char *msg, Jbig2Severity severity
         default: type = "unknown message:"; break;;
     }
     if (seg_idx == JBIG2_UNKNOWN_SEGMENT_NUMBER) segment[0] = '\0';
-    else gs_sprintf(segment, "(segment 0x%02x)", seg_idx);
+    else gs_snprintf(segment, sizeof(segment), "(segment 0x%02x)", seg_idx);
 
     if (error_data)
     {
@@ -365,6 +365,11 @@ s_jbig2decode_process(stream_state * ss, stream_cursor_read * pr,
         }
         /* handle fatal decoding errors reported through our callback */
         if (state->callback_data->error) return state->callback_data->error;
+    } else {
+        /* Ran out of input, try and terminate cleanly */
+        if (last == 1) {
+            jbig2_complete_page(state->decode_ctx);
+        }
     }
     if (out_size > 0) {
         if (image == NULL) {

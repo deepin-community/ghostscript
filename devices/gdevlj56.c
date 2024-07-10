@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* H-P LaserJet 5 & 6 drivers for Ghostscript */
@@ -42,24 +42,36 @@ static dev_proc_close_device(ljet5_close);
 static dev_proc_print_page(ljet5_print_page);
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs ljet5_procs =
-prn_procs(ljet5_open, gdev_prn_bg_output_page, ljet5_close);
+static void
+ljet5_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono_bg(dev);
+
+    set_dev_proc(dev, open_device, ljet5_open);
+    set_dev_proc(dev, close_device, ljet5_close);
+}
 
 const gx_device_printer gs_lj5mono_device =
-prn_device(ljet5_procs, "lj5mono",
+prn_device(ljet5_initialize_device_procs, "lj5mono",
            DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
            X_DPI, Y_DPI,
            0, 0, 0, 0,
            1, ljet5_print_page);
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs lj5gray_procs =
-prn_color_procs(ljet5_open, gdev_prn_bg_output_page, ljet5_close,
-                gx_default_gray_map_rgb_color,
-                gx_default_gray_map_color_rgb);
+static void
+lj5gray_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_gray_bg(dev);
+
+    set_dev_proc(dev, open_device, ljet5_open);
+    set_dev_proc(dev, close_device, ljet5_close);
+    set_dev_proc(dev, encode_color, gx_default_gray_encode_color);
+    set_dev_proc(dev, decode_color, gx_default_gray_decode_color);
+}
 
 const gx_device_printer gs_lj5gray_device = {
-    prn_device_body(gx_device_printer, lj5gray_procs, "lj5gray",
+    prn_device_body(gx_device_printer, lj5gray_initialize_device_procs, "lj5gray",
                     DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                     X_DPI, Y_DPI,
                     0, 0, 0, 0,

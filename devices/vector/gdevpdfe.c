@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -27,7 +27,24 @@
 #include "gdevpdfg.h"
 #include "gdevpdfo.h"
 
-static char PDFDocEncodingLookup [92] = {
+/* These two tables map PDFDocEncoding character codes (0x00->0x20 and 0x80->0xAD)
+ * to their equivalent UTF-16BE value. That allows us to convert a PDFDocEncoding
+ * string to UTF-16BE, and then further translate that into UTF-8.
+ * Note 0x7F is individually treated.
+ * See pdf_xmp_write_translated().
+ */
+static char PDFDocEncodingLookupLo [64] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x09, 0x00, 0x0A, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x0D, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x02, 0xD8, 0x02, 0xC7, 0x02, 0xC6, 0x02, 0xD9,
+    0x02, 0xDD, 0x02, 0xDB, 0x02, 0xDA, 0x02, 0xDC
+};
+
+static char PDFDocEncodingLookupHi [92] = {
     0x20, 0x22, 0x20, 0x20, 0x20, 0x21, 0x20, 0x26,
     0x20, 0x14, 0x20, 0x13, 0x01, 0x92, 0x20, 0x44,
     0x20, 0x39, 0x20, 0x3A, 0x22, 0x12, 0x20, 0x30,
@@ -209,7 +226,7 @@ pdf_xmp_time(char *buf, int buf_length)
     time(&t);
     tms = *localtime(&t);
 #endif
-    gs_sprintf(buf1,
+    gs_snprintf(buf1, sizeof(buf1),
             "%04d-%02d-%02d",
             tms.tm_year + 1900, tms.tm_mon + 1, tms.tm_mday);
     strncpy(buf, buf1, buf_length);
@@ -359,6 +376,7 @@ static const char firstByteMark[7] = { 0x00, 0x00, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC 
 static int gs_ConvertUTF16(unsigned char *UTF16, size_t UTF16Len, unsigned char **UTF8Start, int UTF8Len)
 {
     size_t i, bytes = 0;
+    uint32_t U32 = 0;
     unsigned short U16;
     unsigned char *UTF8 = *UTF8Start;
     unsigned char *UTF8End = UTF8 + UTF8Len;
@@ -372,22 +390,38 @@ static int gs_ConvertUTF16(unsigned char *UTF16, size_t UTF16Len, unsigned char 
         U16 += *UTF16++;
 
         if (U16 >= 0xD800 && U16 <= 0xDBFF) {
-            return gs_note_error(gs_error_rangecheck);
-        }
-        if (U16 >= 0xDC00 && U16 <= 0xDFFF) {
-            return gs_note_error(gs_error_rangecheck);
-        }
+            /* Ensure at least two bytes of input left */
+            if (i == (UTF16Len / sizeof(short)) - 1)
+                return gs_note_error(gs_error_rangecheck);
 
-        if(U16 < 0x80) {
-            bytes = 1;
+            U32 += (U16 & 0x3FF) << 10;
+            U16 = (*(UTF16++) << 8);
+            U16 += *(UTF16++);
+            i++;
+
+            /* Ensure a high order surrogate is followed by a low order surrogate */
+            if (U16 < 0xDC00 || U16 > 0xDFFF)
+                return gs_note_error(gs_error_rangecheck);
+
+            U32 += (U16 & 0x3FF) | 0x10000;
+            bytes = 4;
         } else {
-            if (U16 < 0x800) {
-                    bytes = 2;
+            if (U16 >= 0xDC00 && U16 <= 0xDFFF) {
+                /* We got a low order surrogate without a preceding high-order */
+                return gs_note_error(gs_error_rangecheck);
+            }
+
+            if(U16 < 0x80) {
+                bytes = 1;
             } else {
-                bytes = 3;
-                U16 = 0xFFFD;
+                if (U16 < 0x800) {
+                    bytes = 2;
+                } else {
+                    bytes = 3;
+                }
             }
         }
+
         if (UTF8 + bytes > UTF8End)
             return gs_note_error(gs_error_VMerror);
 
@@ -395,6 +429,9 @@ static int gs_ConvertUTF16(unsigned char *UTF16, size_t UTF16Len, unsigned char 
         UTF8 += bytes;
 
         switch(bytes) {
+            case 4:
+                *--UTF8 = (unsigned char)((U32 | 0x80) & 0xBF);
+                U16 = U32 >> 6;
             case 3:
                 *--UTF8 = (unsigned char)((U16 | 0x80) & 0xBF);
                 U16 >>= 6;
@@ -415,12 +452,13 @@ static int gs_ConvertUTF16(unsigned char *UTF16, size_t UTF16Len, unsigned char 
     return 0;
 }
 
-static int
+int
 pdf_xmp_write_translated(gx_device_pdf *pdev, stream *s, const byte *data, int data_length,
                          void(*write)(stream *s, const byte *data, int data_length))
 {
+    int code = 0;
     size_t i, j=0;
-    unsigned char *buf0;
+    unsigned char *buf0 = NULL, *buf1 = NULL;
 
     if (data_length == 0)
         return 0;
@@ -438,7 +476,6 @@ pdf_xmp_write_translated(gx_device_pdf *pdev, stream *s, const byte *data, int d
         j++;
     }
     if (buf0[0] != 0xfe || buf0[1] != 0xff) {
-        unsigned char *buf1;
         /* We must assume that the information is PDFDocEncoding. In this case
          * we need to convert it into UTF-8. If we just convert it to UTF-16
          * then we can safely fall through to the code below.
@@ -454,18 +491,33 @@ pdf_xmp_write_translated(gx_device_pdf *pdev, stream *s, const byte *data, int d
         }
         memset(buf1, 0x00, (j * sizeof(short)) + 2);
         for (i = 0; i < j; i++) {
-            if (buf0[i] <= 0x7f || buf0[i] >= 0xAE) {
-                if (buf0[i] == 0x7f) {
-                    emprintf1(pdev->memory, "PDFDocEncoding %x cannot be represented in Unicode\n",
-                        buf0[i]);
-                } else
-                    buf1[(i * 2) + 3] = buf0[i];
-            } else {
-                buf1[(i * 2) + 2] = PDFDocEncodingLookup[(buf0[i] - 0x80) * 2];
-                buf1[(i * 2) + 3] = PDFDocEncodingLookup[((buf0[i] - 0x80) * 2) + 1];
-                if (PDFDocEncodingLookup[((buf0[i] - 0x80) * 2) + 1] == 0x00)
-                    emprintf1(pdev->memory, "PDFDocEncoding %x cannot be represented in Unicode\n",
-                        PDFDocEncodingLookup[((buf0[i] - 0x80) * 2) + 1]);
+            if ((buf0[i] >= 0x20 && buf0[i] < 0x7F) || buf0[i] >= 0xAE)
+                buf1[(i * 2) + 3] = buf0[i];
+            else {
+                if (buf0[i] == 0x7F) {
+                    emprintf1(pdev->memory, "PDFDocEncoding %x is undefined\n", buf0[i]);
+                    code = gs_note_error(gs_error_rangecheck);
+                    goto error;
+                }
+                else {
+                    if (buf0[i] < 0x20) {
+                        buf1[(i * 2) + 2] = PDFDocEncodingLookupLo[(buf0[i]) * 2];
+                        buf1[(i * 2) + 3] = PDFDocEncodingLookupLo[((buf0[i]) * 2) + 1];
+                        if (PDFDocEncodingLookupLo[((buf0[i]) * 2) + 1] == 0x00) {
+                            emprintf1(pdev->memory, "PDFDocEncoding %x is undefined\n", buf0[i]);
+                            code = gs_note_error(gs_error_rangecheck);
+                            goto error;
+                        }
+                    } else {
+                        buf1[(i * 2) + 2] = PDFDocEncodingLookupHi[(buf0[i] - 0x80) * 2];
+                        buf1[(i * 2) + 3] = PDFDocEncodingLookupHi[((buf0[i] - 0x80) * 2) + 1];
+                        if (PDFDocEncodingLookupHi[((buf0[i] - 0x80) * 2) + 1] == 0x00) {
+                            emprintf1(pdev->memory, "PDFDocEncoding %x is undefined\n", buf0[i]);
+                            code = gs_note_error(gs_error_rangecheck);
+                            goto error;
+                        }
+                    }
+                }
             }
         }
         gs_free_object(pdev->memory, buf0, "pdf_xmp_write_translated");
@@ -489,13 +541,25 @@ pdf_xmp_write_translated(gx_device_pdf *pdev, stream *s, const byte *data, int d
         /* Skip the Byte Order Mark (0xfe 0xff) */
         buf0b = (short *)(buf0 + 2);
         code = gs_ConvertUTF16((unsigned char *)buf0b, j - 2, (unsigned char **)&buf1b, data_length * 2 * sizeof(unsigned char));
-        if (code < 0)
+        if (code < 0) {
+            gs_free_object(pdev->memory, buf0, "pdf_xmp_write_translated");
+            gs_free_object(pdev->memory, buf1, "pdf_xmp_write_translated");
             return code;
-        write(s, (const byte *)buf1, buf1b - buf1);
+        }
+
+        /* s and write can be NULL in order to use this function to test whether the specified data can be converted to UTF8 */
+        if (s && write)
+            write(s, (const byte*)buf1, buf1b - buf1);
+
         gs_free_object(pdev->memory, buf1, "pdf_xmp_write_translated");
     }
     gs_free_object(pdev->memory, buf0, "pdf_xmp_write_translated");
     return 0;
+
+error:
+    gs_free_object(pdev->memory, buf0, "pdf_xmp_write_translated");
+    gs_free_object(pdev->memory, buf1, "pdf_xmp_write_translated");
+    return code;
 }
 
 static int
@@ -565,7 +629,7 @@ pdf_make_uuid(const byte node[6], uint64_t uuid_time, ulong time_seq, char *buf,
     writehex(&p, node[4], 1);
     writehex(&p, node[5], 1);
     *p = 0;
-    strncpy(buf, b, buf_length);
+    strncpy(buf, b, strlen(b) + 1);
 }
 
 static int
@@ -693,21 +757,23 @@ pdf_write_document_metadata(gx_device_pdf *pdev, const byte digest[6])
             pdf_xml_attribute_name(s, "xmlns:xmp");
             pdf_xml_attribute_value(s, "http://ns.adobe.com/xap/1.0/");
             pdf_xml_tag_end(s);
-            {
-                pdf_xml_tag_open_beg(s, "xmp:ModifyDate");
-                pdf_xml_tag_end(s);
-                mod_date_time[mod_date_time_len] = 0x00;
-                pdf_xml_copy(s, mod_date_time);
-                pdf_xml_tag_close(s, "xmp:ModifyDate");
-                pdf_xml_newline(s);
-            }
-            {
-                pdf_xml_tag_open_beg(s, "xmp:CreateDate");
-                pdf_xml_tag_end(s);
-                cre_date_time[cre_date_time_len] = 0x00;
-                pdf_xml_copy(s, cre_date_time);
-                pdf_xml_tag_close(s, "xmp:CreateDate");
-                pdf_xml_newline(s);
+            if (!pdev->OmitInfoDate) {
+                {
+                    pdf_xml_tag_open_beg(s, "xmp:ModifyDate");
+                    pdf_xml_tag_end(s);
+                    mod_date_time[mod_date_time_len] = 0x00;
+                    pdf_xml_copy(s, mod_date_time);
+                    pdf_xml_tag_close(s, "xmp:ModifyDate");
+                    pdf_xml_newline(s);
+                }
+                {
+                    pdf_xml_tag_open_beg(s, "xmp:CreateDate");
+                    pdf_xml_tag_end(s);
+                    cre_date_time[cre_date_time_len] = 0x00;
+                    pdf_xml_copy(s, cre_date_time);
+                    pdf_xml_tag_close(s, "xmp:CreateDate");
+                    pdf_xml_newline(s);
+                }
             }
             {
                 pdf_xml_tag_open_beg(s, "xmp:CreatorTool");
@@ -881,7 +947,7 @@ pdf_document_metadata(gx_device_pdf *pdev)
         code = COS_WRITE_OBJECT(pres->object, pdev, resourceNone);
         if (code < 0)
             return code;
-        gs_sprintf(buf, "%ld 0 R", pres->object->id);
+        gs_snprintf(buf, sizeof(buf), "%ld 0 R", pres->object->id);
         pdf_record_usage(pdev, pres->object->id, resource_usage_part9_structure);
 
         code = cos_dict_put_c_key_object(pdev->Catalog, "/Metadata", pres->object);

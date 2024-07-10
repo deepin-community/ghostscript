@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -205,7 +205,11 @@ pcl_process_init(pcl_parser_state_t * pst, pcl_state_t * pcs)
 {
     pcl_args_t args;
     int code = 0;
-    pcl_parser_init_inline(pst);
+    pst->scan_type = scanning_none;
+    pst->args.data = 0;
+    pst->args.data_on_heap = false;
+    pst->short_hand = false;
+    pst->min_bytes_needed = 0;
 
     /*
      * RTL Files should start with a PCL escape sequence to enter the
@@ -343,7 +347,6 @@ pcl_process(pcl_parser_state_t * pst, pcl_state_t * pcs,
                                                        pst->args.command);
                     if (pst->short_hand) {
                         pst->scan_type = scanning_parameter;
-                        continue;
                     } else
                         pst->scan_type = scanning_none;
                     break;

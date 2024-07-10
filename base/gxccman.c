@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -442,11 +442,12 @@ gs_purge_fm_pair(gs_font_dir * dir, cached_fm_pair * pair, int xfont_only)
                      pair->num_chars);
         }
 #endif
-        {   /* Free xvalues here because gx_add_fm_pair copied
-               them into the stable memory dir->memory. */
+        if (uid_is_XUID(&pair->UID)) {
             gs_free_object(dir->memory->stable_memory, pair->UID.xvalues, "gs_purge_fm_pair");
-            pair->UID.xvalues = 0;
+            pair->UID.id = 0;
+            pair->UID.xvalues = NULL;
         }
+
         fm_pair_set_free(pair);
         code = fm_pair_remove_from_list(dir, pair, &dir->fmcache.used);
         if (code < 0)
@@ -472,43 +473,28 @@ gs_purge_fm_pair(gs_font_dir * dir, cached_fm_pair * pair, int xfont_only)
  * (multiplication by 1 << pscale->{x,y}.)
  * The depth parameter is the final number of alpha bits;
  * depth <= x scale * y scale.
- * If dev == NULL, this is an xfont-only entry.
- * If dev != NULL, set up the memory device(s); in this case, if dev2 is
- * not NULL, dev should be an alpha-buffer device with dev2 (an alpha
- * device) as target.
  */
 int
-gx_alloc_char_bits(gs_font_dir * dir, gx_device_memory * dev,
-                   gx_device_memory * dev2, ushort iwidth, ushort iheight,
+gx_alloc_char_bits(gs_font_dir * dir, gx_device_memory * pdev,
+                   ushort iwidth, ushort iheight,
                    const gs_log2_scale_point * pscale, int depth, cached_char **pcc)
 {
     int log2_xscale = pscale->x;
     int log2_yscale = pscale->y;
     int log2_depth = ilog2(depth);
-    uint nwidth_bits = (iwidth >> log2_xscale) << log2_depth;
-    ulong isize, icdsize;
+    size_t nwidth_bits = ((size_t)iwidth >> log2_xscale) << log2_depth;
+    size_t isize, icdsize;
 #ifdef ENABLE_IMPOSSIBLE_ALPHA_CODE
     ulong isize2;
 #endif
-    uint iraster;
+    size_t iraster;
     cached_char *cc;
-    gx_device_memory mdev;
-    gx_device_memory *pdev = dev;
-    gx_device_memory *pdev2;
     float HWResolution0 = 72, HWResolution1 = 72;  /* default for dev == NULL */
     int code;
 
     *pcc = 0;
-    if (dev == NULL) {
-        mdev.memory = 0;
-        mdev.target = 0;
-        pdev = &mdev;
-    } else {
-        HWResolution0 = dev->HWResolution[0];
-        HWResolution1 = dev->HWResolution[1];
-    }
-
-    pdev2 = (dev2 == 0 ? pdev : dev2);
+    HWResolution0 = pdev->HWResolution[0];
+    HWResolution1 = pdev->HWResolution[1];
 
     /* Compute the scaled-down bitmap size, and test against */
     /* the maximum cachable character size. */
@@ -521,7 +507,7 @@ gx_alloc_char_bits(gs_font_dir * dir, gx_device_memory * dev,
         return 0;		/* too big */
     }
     /* Compute the actual bitmap size(s) and allocate the bits. */
-    if (dev2 == 0) {
+    {
         /*
          * Render to a full (possibly oversampled) bitmap; compress
          * (if needed) when done.
@@ -544,44 +530,6 @@ gx_alloc_char_bits(gs_font_dir * dir, gx_device_memory * dev,
         gdev_mem_bitmap_size(pdev, &isize);	/* Assume less than max_ulong */
         pdev->HWResolution[0] = HWResolution0;
         pdev->HWResolution[1] = HWResolution1;
-    } else {
-        /* We reckon this code has never actually been run since 2002,
-         * as the conditions set up in gx_compute_text_oversampling
-         * preclude this function ever being called in a way that
-         * will cause this else clause to be executed. */
-#ifndef ENABLE_IMPOSSIBLE_ALPHA_CODE
-        static int THIS_NEVER_HAPPENS = 0;
-
-        if (THIS_NEVER_HAPPENS == 0) {
-            /* Just put the warning out once */
-            dmlprintf(dev2->memory,
-                      "Unexpected code path in gx_alloc_char_bits taken!\n"
-                      "Please contact the Ghostscript developers.\n");
-            THIS_NEVER_HAPPENS = 1;
-        }
-        return_error(gs_error_unknownerror);
-#else /* ENABLE_IMPOSSIBLE_ALPHA_CODE */
-        /* Use an alpha-buffer device to compress as we go. */
-        /* Preserve the reference counts, if any. */
-        rc_header rc;
-
-        rc = dev2->rc;
-        gs_make_mem_alpha_device(dev2, dev2->memory, NULL, depth);
-        dev2->rc = rc;
-        dev2->width = iwidth >> log2_xscale;
-        dev2->height = iheight >> log2_yscale;
-        rc = dev->rc;
-        gs_make_mem_abuf_device(dev, dev->memory, (gx_device *) dev2,
-                                pscale, depth, 0, false);
-        dev->rc = rc;
-        dev->width = iwidth;
-        dev->height = 2 << log2_yscale;
-        gdev_mem_bitmap_size(dev, &isize);	/* Assume less than max_ulong */
-        gdev_mem_bitmap_size(dev2, &isize2);	/* Assume less than max_ulong */
-        isize += isize2;	/* Assume less than max_ulong */
-        dev->HWResolution[0] = HWResolution0 * (1 >> log2_xscale);
-        dev->HWResolution[1] = HWResolution1 * (1 >> log2_yscale);
-#endif /* ENABLE_IMPOSSIBLE_ALPHA_CODE */
     }
     icdsize = isize + sizeof_cached_char;
     code = alloc_char(dir, icdsize, &cc);
@@ -590,7 +538,7 @@ gx_alloc_char_bits(gs_font_dir * dir, gx_device_memory * dev,
     *pcc = cc;
     if (cc == 0)
         return 0;
-    if_debug4m('k', dev->memory, "[k]adding char "PRI_INTPTR":%u(%u,%u)\n",
+    if_debug4m('k', pdev->memory, "[k]adding char "PRI_INTPTR":%u(%u,%u)\n",
                (intptr_t)cc, (uint)icdsize, iwidth, iheight);
 
     /* Fill in the entry. */
@@ -600,35 +548,17 @@ gx_alloc_char_bits(gs_font_dir * dir, gx_device_memory * dev,
     /* Set the width and height to those of the device. */
     /* Note that if we are oversampling without an alpha buffer. */
     /* these are not the final unscaled dimensions. */
-    cc->width = pdev2->width;
-    cc->height = pdev2->height;
+    cc->width = pdev->width;
+    cc->height = pdev->height;
     cc->shift = 0;
-    cc_set_raster(cc, gdev_mem_raster(pdev2));
+    cc_set_raster(cc, gdev_mem_raster(pdev));
     cc_set_pair_only(cc, 0);	/* not linked in yet */
     cc->id = gx_no_bitmap_id;
     cc->subpix_origin.x = cc->subpix_origin.y = 0;
     cc->linked = false;
 
     /* Open the cache device(s). */
-
-#ifndef ENABLE_IMPOSSIBLE_ALPHA_CODE
-    if (dev2) {			/* The second device is an alpha device that targets */
-        /* the real storage for the character. */
-        byte *bits = cc_bits(cc);
-        ulong bsize;
-
-        gdev_mem_bitmap_size(dev2, &bsize);
-        memset(bits, 0, bsize);
-        dev2->base = bits;
-        (*dev_proc(dev2, open_device)) ((gx_device *) dev2);
-        dev->base = bits + bsize;
-        (*dev_proc(dev, open_device)) ((gx_device *) dev);
-    } else if (dev)
-        gx_open_cache_device(dev, cc);
-#else /* ENABLE_IMPOSSIBLE_ALPHA_CODE */
-    if (dev)
-        gx_open_cache_device(dev, cc);
-#endif /* ENABLE_IMPOSSIBLE_ALPHA_CODE */
+    gx_open_cache_device(pdev, cc);
 
     return 0;
 }
@@ -638,7 +568,7 @@ void
 gx_open_cache_device(gx_device_memory * dev, cached_char * cc)
 {
     byte *bits = cc_bits(cc);
-    ulong bsize;
+    size_t bsize;
 
     gdev_mem_bitmap_size(dev, &bsize);
 

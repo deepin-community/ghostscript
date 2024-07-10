@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -326,9 +326,11 @@ fn_PtCr_evaluate(const gs_function_t *pfn_common, const float *in, float *out)
         case PtCr_idiv:
             if (vsp->value.i == 0)
                 return_error(gs_error_undefinedresult);
-            if ((vsp[-1].value.i /= vsp->value.i) == min_int &&
+            if (vsp[-1].value.i == min_int &&
                 vsp->value.i == -1)  /* anomalous boundary case, fail */
                 return_error(gs_error_rangecheck);
+            else
+                vsp[-1].value.i /= vsp->value.i;
             --vsp; continue;
         case PtCr_ln:
             vsp->value.f = log(vsp->value.f);
@@ -555,19 +557,22 @@ fn_PtCr_evaluate(const gs_function_t *pfn_common, const float *in, float *out)
         }
     }
  fin:
-
-    if (vsp != vstack + pfn->params.n)
-        return_error(gs_error_rangecheck);
-    for (i = 0; i < pfn->params.n; ++i) {
-        switch (vstack[i + 1].type) {
-        case CVT_INT:
-            out[i] = (float)vstack[i + 1].value.i;
-            break;
-        case CVT_FLOAT:
-            out[i] = vstack[i + 1].value.f;
-            break;
-        default:
-            return_error(gs_error_typecheck);
+    {   /* Following Acrobat, take the desired number of parameters */
+        /* from the top of stack and ignore the rest. Bug 702950. */
+        int extra_ops = vsp - vstack - pfn->params.n;
+        if (extra_ops < 0)
+            return_error(gs_error_rangecheck);
+        for (i = 0; i < pfn->params.n; ++i) {
+            switch (vstack[i + 1 + extra_ops].type) {
+            case CVT_INT:
+                out[i] = (float)vstack[i + 1 + extra_ops].value.i;
+                break;
+            case CVT_FLOAT:
+                out[i] = vstack[i + 1 + extra_ops].value.f;
+                break;
+            default:
+                return_error(gs_error_typecheck);
+            }
         }
     }
     return 0;

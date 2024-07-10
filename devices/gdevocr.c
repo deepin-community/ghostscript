@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -30,6 +30,7 @@
 #define X_DPI 72
 #define Y_DPI 72
 
+static dev_proc_initialize_device(ocr_initialize_device);
 static dev_proc_print_page(ocr_print_page);
 static dev_proc_print_page(hocr_print_page);
 static dev_proc_get_params(ocr_get_params);
@@ -50,15 +51,23 @@ struct gx_device_ocr_s {
 };
 
 /* 8-bit gray bitmap -> UTF8 OCRd text */
+static void
+ocr_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_gray_bg(dev);
 
-static const gx_device_procs ocr_procs =
-prn_color_params_procs(ocr_open, gdev_prn_bg_output_page, ocr_close,
-                       gx_default_gray_map_rgb_color,
-                       gx_default_gray_map_color_rgb,
-                       ocr_get_params, ocr_put_params);
+    set_dev_proc(dev, initialize_device, ocr_initialize_device);
+    set_dev_proc(dev, open_device, ocr_open);
+    set_dev_proc(dev, close_device, ocr_close);
+    set_dev_proc(dev, get_params, ocr_get_params);
+    set_dev_proc(dev, put_params, ocr_put_params);
+    set_dev_proc(dev, encode_color, gx_default_8bit_map_gray_color);
+    set_dev_proc(dev, decode_color, gx_default_8bit_map_color_gray);
+}
+
 const gx_device_ocr gs_ocr_device =
 {
-    prn_device_body(gx_device_ocr, ocr_procs, "ocr",
+    prn_device_body(gx_device_ocr, ocr_initialize_device_procs, "ocr",
                     DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                     X_DPI, Y_DPI,
                     0, 0, 0, 0,	/* margins */
@@ -67,15 +76,23 @@ const gx_device_ocr gs_ocr_device =
 };
 
 /* 8-bit gray bitmap -> HTML OCRd text */
+static void
+hocr_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_gray_bg(dev);
 
-static const gx_device_procs hocr_procs =
-prn_color_params_procs(ocr_open, gdev_prn_bg_output_page, hocr_close,
-                       gx_default_gray_map_rgb_color,
-                       gx_default_gray_map_color_rgb,
-                       ocr_get_params, ocr_put_params);
+    set_dev_proc(dev, initialize_device, ocr_initialize_device);
+    set_dev_proc(dev, open_device, ocr_open);
+    set_dev_proc(dev, close_device, hocr_close);
+    set_dev_proc(dev, get_params, ocr_get_params);
+    set_dev_proc(dev, put_params, ocr_put_params);
+    set_dev_proc(dev, encode_color, gx_default_8bit_map_gray_color);
+    set_dev_proc(dev, decode_color, gx_default_8bit_map_color_gray);
+}
+
 const gx_device_ocr gs_hocr_device =
 {
-    prn_device_body(gx_device_ocr, hocr_procs, "hocr",
+    prn_device_body(gx_device_ocr, hocr_initialize_device_procs, "hocr",
                     DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                     X_DPI, Y_DPI,
                     0, 0, 0, 0,	/* margins */
@@ -87,6 +104,17 @@ const gx_device_ocr gs_hocr_device =
 
 #define HOCR_HEADER "<html>\n <body>\n"
 #define HOCR_TRAILER " </body>\n</html>\n"
+
+static int
+ocr_initialize_device(gx_device *dev)
+{
+    gx_device_ocr *odev = (gx_device_ocr *)dev;
+    const char *default_ocr_lang = "eng";
+
+    odev->language[0] = '\0';
+    strcpy(odev->language, default_ocr_lang);
+    return 0;
+}
 
 static int
 ocr_open(gx_device *pdev)
@@ -108,7 +136,6 @@ static int
 ocr_close(gx_device *pdev)
 {
     gx_device_ocr *dev = (gx_device_ocr *)pdev;
-    gx_device_printer * const ppdev = (gx_device_printer *)pdev;
 
     ocr_fin_api(dev->memory->non_gc_memory, dev->api);
 
@@ -119,7 +146,6 @@ static int
 hocr_close(gx_device *pdev)
 {
     gx_device_ocr *dev = (gx_device_ocr *)pdev;
-    gx_device_printer * const ppdev = (gx_device_printer *)pdev;
 
     if (dev->page_count > 0 && dev->file != NULL) {
        gp_fwrite(HOCR_TRAILER, 1, sizeof(HOCR_TRAILER)-1, dev->file);
@@ -173,11 +199,17 @@ ocr_put_params(gx_device *dev, gs_param_list *plist)
 
     switch (code = param_read_string(plist, (param_name = "OCRLanguage"), &langstr)) {
         case 0:
-            len = langstr.size;
-            if (len >= sizeof(pdev->language))
-                len = sizeof(pdev->language)-1;
-            memcpy(pdev->language, langstr.data, len);
-            pdev->language[len] = 0;
+                if (pdev->memory->gs_lib_ctx->core->path_control_active
+                && (strlen(pdev->language) != langstr.size || memcmp(pdev->language, langstr.data, langstr.size) != 0)) {
+                return_error(gs_error_invalidaccess);
+            }
+            else {
+                len = langstr.size;
+                if (len >= sizeof(pdev->language))
+                    len = sizeof(pdev->language)-1;
+                memcpy(pdev->language, langstr.data, len);
+                pdev->language[len] = 0;
+            }
             break;
         case 1:
             break;
@@ -216,7 +248,6 @@ ocr_put_params(gx_device *dev, gs_param_list *plist)
 static int
 do_ocr_print_page(gx_device_ocr * pdev, gp_file * file, int hocr)
 {
-    gs_memory_t *mem = pdev->memory;
     int row;
     byte *data = NULL;
     char *out;

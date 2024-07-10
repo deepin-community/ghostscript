@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -123,8 +123,18 @@ xps_decode_jpeg(xps_context_t *ctx, byte *rbuf, int rlen, xps_image_t *image)
 
     if (jddp.dinfo.density_unit == 1)
     {
-        image->xres = jddp.dinfo.X_density;
-        image->yres = jddp.dinfo.Y_density;
+        /* According to the XPS specification we should also use the EXIF and APP13 marker segments
+         * to set the resolution, but we don't and adding that would be more effort than we want to
+         * go to for XPS currently. This at least means that images won't go completely AWOL.
+         */
+        if (jddp.dinfo.X_density != 0)
+            image->xres = jddp.dinfo.X_density;
+        else
+            image->xres = 96;
+        if (jddp.dinfo.Y_density != 0)
+            image->yres = jddp.dinfo.Y_density;
+        else
+            image->yres = 96;
     }
     else if (jddp.dinfo.density_unit == 2)
     {

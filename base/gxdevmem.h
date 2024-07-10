@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -127,6 +127,10 @@ struct gx_device_memory_s {
         gx_color_index abcdefgh;	/* cache key */
         bits32 abcd, efgh;	/* cache value */
     } color64;
+    /* The following is used to indicate the device that 'owns' this one as
+     * a buffer device. Any dev_spec_ops that come to us should be forwarded
+     * up to that one if we can't cope with them. */
+    gx_device *owner;
     /* Following are only used for alpha buffers. */
     /* The client initializes those marked with $; */
     /* they don't change after initialization. */
@@ -166,6 +170,7 @@ extern_st(st_device_memory);
         { gx_no_color_index },	/* color48 */\
         { gx_no_color_index },	/* color56 */\
         { gx_no_color_index },	/* color64 */\
+        0,			/* owner */\
         { 0, 0 }, 0,		/* scale, log2_alpha_bits */\
         0, 0, 0, 0,		/* mapped_* */\
         gx_no_color_index	/* save_color */
@@ -178,13 +183,13 @@ extern_st(st_device_memory);
  */
 /* bits only */
 int gdev_mem_bits_size(const gx_device_memory *mdev, int width,
-                         int height, ulong *size);
+                         int height, size_t *size);
 /* line pointers only */
-ulong gdev_mem_line_ptrs_size(const gx_device_memory *mdev, int width,
+size_t gdev_mem_line_ptrs_size(const gx_device_memory *mdev, int width,
                               int height);
 /* bits + line pointers */
 int gdev_mem_data_size(const gx_device_memory *mdev, int width,
-                         int height, ulong *size);
+                         int height, size_t *size);
 
 #define gdev_mem_bitmap_size(mdev, size)\
   gdev_mem_data_size(mdev, (mdev)->width, (mdev)->height, size)
@@ -193,7 +198,7 @@ int gdev_mem_data_size(const gx_device_memory *mdev, int width,
  * Do the inverse computation: given the device width and a buffer size,
  * compute the maximum height.
  */
-int gdev_mem_max_height(const gx_device_memory * dev, int width, ulong size,
+int gdev_mem_max_height(const gx_device_memory * dev, int width, size_t size,
                 bool page_uses_transparency);
 
 /*
@@ -201,6 +206,56 @@ int gdev_mem_max_height(const gx_device_memory * dev, int width, ulong size,
  */
 #define gdev_mem_raster(mdev)\
   gx_device_raster((const gx_device *)(mdev), true)
+
+typedef struct
+{
+    dev_proc_map_rgb_color((*map_rgb_color));
+    dev_proc_map_color_rgb((*map_color_rgb));
+    dev_proc_fill_rectangle((*fill_rectangle));
+    dev_proc_copy_mono((*copy_mono));
+    dev_proc_copy_color((*copy_color));
+    dev_proc_copy_alpha((*copy_alpha));
+    dev_proc_strip_tile_rectangle((*strip_tile_rectangle));
+    dev_proc_strip_copy_rop2((*strip_copy_rop2));
+    dev_proc_get_bits_rectangle((*get_bits_rectangle));
+} gdev_mem_functions;
+
+extern const gdev_mem_functions gdev_mem_fns_1;
+extern const gdev_mem_functions gdev_mem_fns_2;
+extern const gdev_mem_functions gdev_mem_fns_4;
+extern const gdev_mem_functions gdev_mem_fns_8;
+extern const gdev_mem_functions gdev_mem_fns_16;
+extern const gdev_mem_functions gdev_mem_fns_24;
+extern const gdev_mem_functions gdev_mem_fns_32;
+extern const gdev_mem_functions gdev_mem_fns_40;
+extern const gdev_mem_functions gdev_mem_fns_48;
+extern const gdev_mem_functions gdev_mem_fns_56;
+extern const gdev_mem_functions gdev_mem_fns_64;
+#if ARCH_IS_BIG_ENDIAN
+#define gdev_mem_fns_1w  gdev_mem_fns_1
+#define gdev_mem_fns_2w  gdev_mem_fns_2
+#define gdev_mem_fns_4w  gdev_mem_fns_4
+#define gdev_mem_fns_8w  gdev_mem_fns_8
+#define gdev_mem_fns_24w gdev_mem_fns_24
+#define gdev_mem_fns_32w gdev_mem_fns_32
+#define gdev_mem_fns_40w gdev_mem_fns_40
+#define gdev_mem_fns_48w gdev_mem_fns_48
+#define gdev_mem_fns_56w gdev_mem_fns_56
+#define gdev_mem_fns_64w gdev_mem_fns_64
+#else
+extern const gdev_mem_functions gdev_mem_fns_1w;
+extern const gdev_mem_functions gdev_mem_fns_2w;
+extern const gdev_mem_functions gdev_mem_fns_4w;
+extern const gdev_mem_functions gdev_mem_fns_8w;
+extern const gdev_mem_functions gdev_mem_fns_24w;
+extern const gdev_mem_functions gdev_mem_fns_32w;
+extern const gdev_mem_functions gdev_mem_fns_40w;
+extern const gdev_mem_functions gdev_mem_fns_48w;
+extern const gdev_mem_functions gdev_mem_fns_56w;
+extern const gdev_mem_functions gdev_mem_fns_64w;
+#endif
+const gdev_mem_functions *gdev_mem_functions_for_bits(int bits);
+const gdev_mem_functions *gdev_mem_word_functions_for_bits(int bits);
 
 /* Determine the appropriate memory device for a given */
 /* number of bits per pixel (0 if none suitable). */
@@ -230,8 +285,6 @@ void gs_make_mem_abuf_device(gx_device_memory * adev, gs_memory_t * mem,
                              gx_device * target,
                              const gs_log2_scale_point * pscale,
                              int alpha_bits, int mapped_x, bool devn);
-void gs_make_mem_alpha_device(gx_device_memory * adev, gs_memory_t * mem,
-                              gx_device * target, int alpha_bits);
 
 /*
  * Create memory devices with copydevice.  For now the destructor is
@@ -249,8 +302,8 @@ int gs_make_mem_device_with_copydevice(gx_device_memory ** mdev,
                                        gx_device * target);
 
 /*
- * TODO replace gs_make_mem_abuf_device, gs_make_mem_alpha_device with
- * procedures that use copydevice.
+ * TODO replace gs_make_mem_abuf_device with
+ * procedure that uses copydevice.
  */
 
 /*
@@ -295,5 +348,9 @@ bool gs_device_is_abuf(const gx_device *);
 
 /* Check for getting the antialiasing bit depth */
 int alpha_buffer_bits(gs_gstate * pgs);
+
+/* Dev spec op handler for memory devices. */
+dev_proc_dev_spec_op(mem_spec_op);
+
 
 #endif /* gxdevmem_INCLUDED */

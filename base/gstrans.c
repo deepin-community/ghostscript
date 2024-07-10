@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -31,6 +31,7 @@
 #include "gxclist.h"
 #include "gsicc_manage.h"
 #include "gsicc_cache.h"
+#include "gxdevsop.h"
 
 /* ------ Transparency-related graphics state elements ------ */
 
@@ -124,7 +125,7 @@ check_for_nontrans_pattern(gs_gstate *pgs, unsigned char *comp_name)
 /*
  * Push a PDF 1.4 transparency compositor onto the current device. Note that
  * if the current device already is a PDF 1.4 transparency compositor, the
- * create_compositor will update its parameters but not create a new
+ * composite will update its parameters but not create a new
  * compositor device.
  */
 static int
@@ -186,10 +187,14 @@ int
 gs_update_trans_marking_params(gs_gstate * pgs)
 {
     gs_pdf14trans_params_t params = { 0 };
+    int code;
 
     if_debug0m('v', pgs->memory, "[v]gs_update_trans_marking_params\n");
     params.pdf14_op = PDF14_SET_BLEND_PARAMS;
-    return gs_gstate_update_pdf14trans(pgs, &params);
+    code = gs_gstate_update_pdf14trans(pgs, &params);
+    if (code == gs_error_unregistered)
+        code = 0;
+    return code;
 }
 
 int
@@ -207,7 +212,7 @@ gs_begin_transparency_group(gs_gstate *pgs,
     }
     /*
      * Put parameters into a compositor parameter and then call the
-     * create_compositor.  This will pass the data to the PDF 1.4
+     * composite.  This will pass the data to the PDF 1.4
      * transparency device.
      */
     params.pdf14_op = group_type;
@@ -221,6 +226,7 @@ gs_begin_transparency_group(gs_gstate *pgs,
     params.blend_mode = pgs->blend_mode;
     params.text_group = ptgp->text_group;
     params.shade_group = ptgp->shade_group;
+    params.ColorSpace = ptgp->ColorSpace;
     /* This function is called during the c-list writer side.
        Store some information so that we know what the color space is
        so that we can adjust according later during the clist reader.
@@ -559,6 +565,7 @@ gs_begin_transparency_mask(gs_gstate * pgs,
     params.subtype = ptmp->subtype;
     params.Background_components = ptmp->Background_components;
     memcpy(params.Background, ptmp->Background, l);
+    params.ColorSpace = ptmp->ColorSpace;
     params.Matte_components = ptmp->Matte_components;
     memcpy(params.Matte, ptmp->Matte, m);
     params.GrayBackground = ptmp->GrayBackground;
@@ -789,6 +796,7 @@ gs_push_pdf14trans_device(gs_gstate * pgs, bool is_pattern, bool retain,
     gsicc_rendering_param_t render_cond;
     int code;
     cmm_dev_profile_t *dev_profile;
+    unsigned char pattern_opsim_setting[2];
 
     code = dev_proc(pgs->device, get_profile)(pgs->device,  &dev_profile);
     if (code < 0)
@@ -805,10 +813,41 @@ gs_push_pdf14trans_device(gs_gstate * pgs, bool is_pattern, bool retain,
     params.num_spot_colors = get_num_pdf14_spot_colors(pgs);
     params.is_pattern = is_pattern;
 
-    /* Information related to overprint simulation */
-    params.num_spot_colors_int = spot_color_count;
-    if (depth < 0)
-        params.overprint_sim_push = true;
+    /* If pattern, get overprint simulation information from
+       the pattern accumulators target device */
+    if (is_pattern && dev_proc(pgs->device, dev_spec_op)(pgs->device, gxdso_overprintsim_state, &pattern_opsim_setting, sizeof(pattern_opsim_setting))) {
+        /* Use the target device setting */
+        params.overprint_sim_push = pattern_opsim_setting[0];
+        params.num_spot_colors_int = pattern_opsim_setting[1];
+    } else {
+        /* Use information from interpreter */
+        params.num_spot_colors_int = spot_color_count;
+        if (depth < 0)
+            params.overprint_sim_push = true;
+    }
+
+    /* If we have an NCLR ICC profile, the extra spot colorants do
+    *  get included in the transparency buffers. Trying to avoid
+    * including them became a rube goldberg mess in terms of knowing
+    * which colorants are on the page vs what has been specified and
+    * any aliasing between these two.  Just too many things to go wrong.
+    * So we allocate all and carry around. If you are doing special
+    * spot handling with transparency this is the cost. */
+
+    if (dev_profile->spotnames != NULL && dev_profile->spotnames->count > 4) {
+        /* Making an assumption here, that list is CMYK + extra.
+           An error should have been thrown by the target device if not. */
+        int avail_page_spots = pgs->device->color_info.num_components - 4;
+        params.num_spot_colors_int = avail_page_spots;
+        params.num_spot_colors = avail_page_spots;
+
+        /* This should not be possible, but lets be safe. We can't have a negative
+          number of source spots to carry forward, so apply threshold. */
+        if (params.num_spot_colors_int < 0)
+            params.num_spot_colors_int = 0;
+        if (params.num_spot_colors < 0)
+            params.num_spot_colors = 0;
+    }
 
     /* If we happen to be in a situation where we are going out to a device
        whose profile is CIELAB then we will need to make sure that we

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -43,16 +43,6 @@
 #include "ivmspace.h"
 #include "store.h"
 #include "scanchar.h"
-
-/* Procedure for handling DSC comments if desired. */
-/* Set at initialization if a DSC handling module is included. */
-int (*gs_scan_dsc_proc) (const byte *, uint) = NULL;
-
-/* Procedure for handling all comments if desired. */
-/* Set at initialization if a comment handling module is included. */
-/* If both gs_scan_comment_proc and gs_scan_dsc_proc are set, */
-/* scan_comment_proc is called only for non-DSC comments. */
-int (*gs_scan_comment_proc) (const byte *, uint) = NULL;
 
 /*
  * Level 2 includes some changes in the scanner:
@@ -127,10 +117,11 @@ dynamic_grow(da_ptr pda, byte * next, uint max_size)
     pda->next = next;
     if (old_size >= max_size)
         return_error(gs_error_limitcheck);
-    while ((code = dynamic_resize(pda, new_size)) < 0 &&
-           new_size > old_size
-        ) {                     /* Try trimming down the requested new size. */
+    while ((code = dynamic_resize(pda, new_size)) < 0) {
+        /* Try trimming down the requested new size. */
         new_size -= (new_size - old_size + 1) >> 1;
+        if (new_size <= old_size)
+                break;
     }
     return code;
 }
@@ -145,7 +136,13 @@ dynamic_save(da_ptr pda)
 
         if (len > sizeof(pda->buf))
             len = sizeof(pda->buf);
-        memcpy(pda->buf, pda->base, len);
+        /* This can happen if we get a /<CR> at the end of a buffer, and the file is
+         * not at EOF. In this case 'len' will be zero so we don't actually copy any
+         * bytes. So this is safe on current C run-time libraries, but it's probably
+         * best to avoid it. Coverity ID C382008
+         */
+        if (pda->base != NULL)
+            memcpy(pda->buf, pda->base, len);
         pda->next = pda->buf + len;
         pda->base = pda->buf;
     }
@@ -355,10 +352,6 @@ scan_comment(i_ctx_t *i_ctx_p, ref *pref, scanner_state *pstate,
             dmputs(imemory, "\n");
         }
 #endif
-        if (gs_scan_dsc_proc != NULL) {
-            code = gs_scan_dsc_proc(base, len);
-            return (code < 0 ? code : 0);
-        }
         if (pstate->s_options & SCAN_PROCESS_DSC_COMMENTS) {
             code = scan_DSC_Comment;
             goto comment;
@@ -374,10 +367,6 @@ scan_comment(i_ctx_t *i_ctx_p, ref *pref, scanner_state *pstate,
         }
     }
 #endif
-    if (gs_scan_comment_proc != NULL) {
-        code = gs_scan_comment_proc(base, len);
-        return (code < 0 ? code : 0);
-    }
     if (pstate->s_options & SCAN_PROCESS_COMMENTS) {
         code = scan_Comment;
         goto comment;

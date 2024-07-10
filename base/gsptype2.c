@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -158,13 +158,14 @@ gx_dc_is_pattern2_color(const gx_device_color *pdevc)
 }
 
 /*
- * The device halftone used by a PatternType 2 patter is that current in
+ * The device halftone used by a PatternType 2 pattern is that current in
  * the graphic state at the time of the makepattern call.
  */
 static const gx_device_halftone *
 gx_dc_pattern2_get_dev_halftone(const gx_device_color * pdevc)
 {
-    return ((gs_pattern2_instance_t *)pdevc->ccolor.pattern)->saved->dev_ht;
+    /* FIXME: Do we need to be objtype specific w.r.t. to the dev_ht ??? */
+    return ((gs_pattern2_instance_t *)pdevc->ccolor.pattern)->saved->dev_ht[HT_OBJTYPE_DEFAULT];
 }
 
 /* Load a PatternType 2 color into the cache.  (No effect.) */
@@ -221,7 +222,7 @@ gs_pattern2_set_color(const gs_client_color * pcc, gs_gstate * pgs)
 
 /* Fill a rectangle with a PatternType 2 color. */
 /* WARNING: This function doesn't account the shading BBox
-   to allow the clipent to optimize the clipping
+   to allow the client to optimize the clipping
    with changing the order of clip paths and rects.
    The client must clip with the shading BBox before calling this function. */
 static int

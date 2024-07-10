@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 #ifndef gdevpsd_INCLUDED
@@ -31,7 +31,6 @@ typedef struct {
     int chnl_to_orig_sep[GX_DEVICE_COLOR_MAX_COMPONENTS];
     /* Map output channel number to gx_color_index position. */
     int chnl_to_position[GX_DEVICE_COLOR_MAX_COMPONENTS];
-
     /* byte offset of image data */
     int image_data_off;
 } psd_write_ctx;

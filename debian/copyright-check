@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright 2020-2021  Jonas Smedegaard <dr@jones.dk>
+# Copyright 2020-2023  Jonas Smedegaard <dr@jones.dk>
 # Copyright 2020-2021  Purism, SPC
 # Description: helper script to update copyright_hints
 #
@@ -20,6 +20,7 @@
 #  licensecheck,
 #  libimage-exiftool-perl,
 #  libipc-system-simple-perl,
+#  libpath-tiny-perl,
 #  libregexp-assemble-perl,
 #  perl,
 
@@ -39,9 +40,10 @@ _file_regex() {
 		-e '$nonverb_re = Regexp::Assemble->new->add( "\\W+", map { "\\W+(?:$_)\\W+" } @{ $opt{nonverb} } )->as_string;'\
 		-e '@content_re = map { s/\W+/[**]/g; s/\Q[**]\E\d\Q[**]\E/[**]\\S{0,2}[**]/g; s/\Q[**]\E/$nonverb_re/g; qr/$_/ } @license, @grant;'\
 		-e '$inspect = sub {'\
+			-e 'return if $_[0]->is_dir;'\
 			-e '$file = $_[0];'\
 			-e 'if (@firstline_re) {'\
-				-e '($head) = $_[0]->lines( { count => 1 } );'\
+				-e '($head) = $file->lines( { count => 1 } );'\
 				-e 'push @match, quotemeta and return '\
 					-e 'if any { $head =~ $_ } @firstline_re };'\
 			-e 'push @match, quotemeta'\
@@ -58,7 +60,7 @@ _file_regex() {
 SKIPFILES='skip|meta|comment'
 
 # cleanup stray hint files from a previous run
-find -type f -regextype posix-egrep -regex "^.*:($SKIPFILES)$" -delete
+find ./* -type f -regextype posix-egrep -regex "^\./.*:($SKIPFILES)$" -delete
 
 # omit files not copyright protected nor stating copyright or licensing
 #  * lib/ghostpdf.cat is a digital signature for lib/ghostpdf.cat
@@ -67,17 +69,18 @@ RE_omit='.*\.(ico)|lib/ghostpdf\.cat|doc/.*\.htm'
 
 1>&2 echo 'skip binary files without parsable metadata ...'
 RE_skip='.*\.(xls|pcl|xps)'
-find -type f -regextype posix-egrep -regex "^($RE_skip)$" -exec sh -c "echo 'License: UNKNOWN' > '{}:skip'" ';'
+find ./* -type f -regextype posix-egrep -regex "^\./($RE_skip)$" -exec sh -c 'echo "License: UNKNOWN" > "$1:skip"' shell {} ';'
 
 1>&2 echo 'extract metadata from binary files ...'
-RE_meta='.*\.(icc|pdf|png|ttf)|Resource/Font/.*'
-exiftool '-textOut!' %d%f.%e:meta -short -short -recurse -ext icc -ext pdf -ext png -ext ttf .
-exiftool '-textOut!' %d%f.%e:meta -short -short -recurse -ext '*' Resource/Font
+EXT_meta='icc pdf png ttf'
+RE_meta=$(echo "$EXT_meta" | perl -aE '$"="|";say ".*\\.(@F)|Resource/Font/.*"') #"
+exiftool '-textOut!' %d%f.%e:meta -short -short -recurse -extractEmbedded $(echo "$EXT_meta" | perl -aE 'say map {" -ext $_"} @F') -- ./*
+exiftool '-textOut!' %d%f.%e:meta -short -short -recurse -extractEmbedded -ext '*' -- Resource/Font
 
 1>&2 echo 'extract comments and metadata from Postscript files ...'
-RE_comment_ps=$(_file_regex --shebang '%!PS-Adobe-' --regex '.*\.eps' --regex '.*\.ps' Resource)
-find * -type f -regextype posix-egrep -regex "^($RE_comment_ps)$" \
- -exec sh -c 'perl -nE '\''/^\s*(|%+\s*\K.*|dup\s+\/\S+\s+\(.*\)\s+put)\s*$/ && print $& =~ s/^dup \/(\S+)\s+\(\s*(.*)\s*\)\s*put/\1: \2/r'\'' {} > {}:comment' ';'
+RE_comment_ps=$(_file_regex --shebang '%!PS-Adobe-' --regex '.*\.eps' --regex '.*\.ps' -- Resource)
+find ./* -type f -regextype posix-egrep -regex "^\./($RE_comment_ps)$" \
+ -exec sh -c 'perl -nE "$1" "$2" > "$2:comment"' shell '/^\s*(|%+\s*\K.*|dup\s+\/\S+\s+\(.*\)\s+put)\s*$/ && print $& =~ s/^dup \/(\S+)\s+\(\s*(.*)\s*\)\s*put/\1: \2/r' {} ';'
 
 RE_SKIP="$RE_omit|$RE_skip|$RE_meta|$RE_comment_ps"
 
@@ -85,9 +88,9 @@ RE_SKIP="$RE_omit|$RE_skip|$RE_meta|$RE_comment_ps"
 RE_cmap='Resource/CMap/.*'
 
 # licensing patterns misdetected by licensecheck
-RE_ghostscript=$(_file_regex --grantglob 'arch/*' --nonverb 'dnl' *)
+RE_ghostscript=$(_file_regex --grantglob 'arch/*' --nonverb 'dnl' -- *)
 
-RE_artifex=$(_file_regex --grantglob 'base/bobbin.c' *)
+RE_artifex=$(_file_regex --grantglob 'base/bobbin.c' -- *)
 
 # TODO: automate more of this manual cleanup:
 #  * strip garbage copyright holders
@@ -143,4 +146,4 @@ _licensecheck --check '.*' --ignore "^($RE_ghostscript|$RE_artifex|$RE_cmap|$RE_
 _licensecheck --subset 'debian/*' --check '^debian/' --ignore "^($RE_SKIP|debian/(changelog|copyright(_hints)?|source/lintian-overrides))$"
 
 # cleanup hint files
-find -type f -regextype posix-egrep -regex "^.*:($SKIPFILES)$" -delete
+find ./* -type f -regextype posix-egrep -regex "^\./.*:($SKIPFILES)$" -delete

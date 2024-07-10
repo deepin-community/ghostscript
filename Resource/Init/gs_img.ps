@@ -1,4 +1,4 @@
-% Copyright (C) 2002-2021 Artifex, Inc.  All rights reserved.
+% Copyright (C) 2002-2023 Artifex, Inc.  All rights reserved.
 %
 % This software is provided AS-IS with no warranty, either express or
 % implied.
@@ -10,8 +10,8 @@
 % For more information about licensing, please refer to
 % http://www.ghostscript.com/licensing/. For information on
 % commercial licensing, go to http://www.artifex.com/licensing/ or
-% contact Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
-% CA 94945, U.S.A., +1(415)492-9861.
+% contact Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+% CA 94129, USA.
 
 % image, colorimage, and imagemask implementation
 
@@ -199,7 +199,7 @@ def
       { pop //false }
     ifelse
   }
-.bind def
+.forcebind def
 
 %
 % Procedures to convert a set of stack entries to a dictionary. There is
@@ -268,7 +268,7 @@ def
 
     currentdict end
   }
-.bind def
+.forcebind def
 
 %
 %   <dict>  <array>   img_unbuild_dict   <oper_0>  ...  <oper_n>
@@ -287,7 +287,7 @@ def
     pop
     end
   }
-.bind def
+.forcebind def
 
 %
 % Check the image types that can be used as data sources
@@ -374,7 +374,7 @@ def
     % stack: <w> <h> <bps> <mtx> <dsrc|dsrc_array> <multi> <n>
     //img_params_ary //img_build_dict exec
   }
-.bind def
+.forcebind def
 currentdict /good_image_types .undef
 
 %
@@ -402,7 +402,7 @@ currentdict /good_image_types .undef
       }
     if
   }
-.bind def
+.forcebind def
 
 %
 %   <width>  <height>  <polarity>  <matrix>  <dsrc>
@@ -429,7 +429,7 @@ currentdict /good_image_types .undef
     % the imagemask dictionary can be built; do so
     //img_mask_params_ary //img_build_dict exec
   }
-.bind def
+.forcebind def
 
 %
 %   <?dict?>
@@ -454,7 +454,7 @@ currentdict /good_image_types .undef
       }
     if
   }
-.bind def
+.forcebind def
 
 %
 %   <width>  <height>  <bits/component>  <matrix>  <dsrc_0> ...
@@ -513,7 +513,7 @@ currentdict /good_image_types .undef
       }
     if
   }
-.bind def
+.forcebind def
 
 %
 %   <width>  <height>  <bits/component>  <matrix>  <dsrc_0> ...
@@ -534,7 +534,7 @@ systemdict /setcolorscreen .knownget
                { /colorimage .systemvar  $error /errorname get signalerror }
              if
           }
-        .bind systemdict begin odef end
+        .forcebind systemdict begin odef end
       }
     if
   }
@@ -634,7 +634,7 @@ if
       }
     ifelse
   }
-.bind odef
+.forcebind odef
 
 % An auxiliary function for checking whether an imagemask to be interpolated.
 /.is_low_resolution    %  <image dict> .is_low_resolution <bool>
@@ -649,7 +649,7 @@ if
    } repeat
    .max
    2 gt % arbitrary
-} .bind def
+} .forcebind def
 
 %
 %   width  height  polarity  matrix  datasrc   imagemask   -
@@ -712,7 +712,7 @@ if
       }
     ifelse
   }
-.bind odef
+.forcebind odef
 
 % undefine a bunch of local definitions
 [

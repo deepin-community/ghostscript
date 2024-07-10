@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -60,8 +60,7 @@ cmd_write_rect_hl_cmd(gx_device_clist_writer * cldev, gx_clist_state * pcls,
     cmd_set_rect(pcls->rect);
     if (extended_command) {
         rcsize = 2 + cmd_size_rect(&pcls->rect);
-        code = set_cmd_put_op(&dp, cldev, pcls, cmd_opv_extend, rcsize);
-        dp[1] = op;
+        code = set_cmd_put_extended_op(&dp, cldev, pcls, op, rcsize);
         dp += 2;
     } else {
         rcsize = 1 + cmd_size_rect(&pcls->rect);
@@ -70,7 +69,7 @@ cmd_write_rect_hl_cmd(gx_device_clist_writer * cldev, gx_clist_state * pcls,
     }
     if (code < 0)
         return code;
-    if_debug5m('L', cldev->memory, "rect hl r%d:%d,%d,%d,%d\n",
+    if_debug5m('L', cldev->memory, "[L]  rect hl r%d:%d,%d,%d,%d\n",
                rcsize - 1, pcls->rect.x, pcls->rect.y,
                pcls->rect.width, pcls->rect.height);
     cmd_put_rect(&pcls->rect, dp);
@@ -158,7 +157,7 @@ cmd_write_rect_cmd(gx_device_clist_writer * cldev, gx_clist_state * pcls,
         code = set_cmd_put_op(&dp, cldev, pcls, op, rcsize);
         if (code < 0)
             return code;
-        if_debug5m('L', cldev->memory, "    r%d:%d,%d,%d,%d\n",
+        if_debug5m('L', cldev->memory, "[L]  r%d:%d,%d,%d,%d\n",
                    rcsize - 1, dx, dwidth, dy, dheight);
         cmd_put_rect(&pcls->rect, dp + 1);
     }
@@ -891,9 +890,21 @@ copy:{
         }
         op += compress;
         if (dx) {
+            if_debug0m('L', dev->memory,
+                       "[L] fake end_run: really set_misc_data_x[2]\n");
             *dp++ = cmd_count_op(cmd_opv_set_misc, 2, dev->memory);
             *dp++ = cmd_set_misc_data_x + dx;
         }
+#ifdef DEBUG
+        if (gs_debug_c('L')) {
+            const char *const *sub = cmd_sub_op_names[op >> 4];
+
+            if (sub)
+                dmlprintf1(dev->memory, "[L] fake end_run: really %s\n", sub[op & 0xf]);
+            else
+                dmlprintf2(dev->memory, "[L] fake end_run: really %s %d\n", cmd_op_names[op >> 4], op & 0xf);
+        }
+#endif
         *dp++ = cmd_count_op(op, csize, dev->memory);
         /* Store the plane_height */
         cmd_putw(0, &dp);
@@ -1013,9 +1024,21 @@ clist_copy_planes(gx_device * dev,
          * cmd_put_bits fill the buffer up. */
         dp2 = dp;
         if (dx) {
+            if_debug0m('L', cdev->memory,
+                       "[L] fake end_run: really set_misc_data_x[2]\n");
             *dp2++ = cmd_count_op(cmd_opv_set_misc, 2, cdev->memory);
             *dp2++ = cmd_set_misc_data_x + dx;
         }
+#ifdef DEBUG
+        if (gs_debug_c('L')) {
+            const char *const *sub = cmd_sub_op_names[(op+code) >> 4];
+
+            if (sub)
+                dmlprintf1(cdev->memory, "[L] fake end_run: really %s\n", sub[(op+code) & 0xf]);
+            else
+                dmlprintf2(cdev->memory, "[L] fake end_run: really %s %d\n", cmd_op_names[(op+code) >> 4], (op+code) & 0xf);
+        }
+#endif
         *dp2++ = cmd_count_op(op + code, csize, cdev->memory);
         cmd_putw(plane_height, &dp2);
         cmd_put2w(rx, re.y, &dp2);
@@ -1145,9 +1168,21 @@ copy:{
             }
             op += compress;
             if (dx) {
+                if_debug0m('L', dev->memory,
+                           "[L] fake end_run: really set_misc_data_x[2]\n");
                 *dp++ = cmd_count_op(cmd_opv_set_misc, 2, dev->memory);
                 *dp++ = cmd_set_misc_data_x + dx;
             }
+#ifdef DEBUG
+            if (gs_debug_c('L')) {
+                const char *const *sub = cmd_sub_op_names[op >> 4];
+
+                if (sub)
+                    dmlprintf1(dev->memory, "[L] fake end_run: really %s\n", sub[op & 0xf]);
+                else
+                    dmlprintf2(dev->memory, "[L] fake end_run: really %s %d\n", cmd_op_names[op >> 4], op & 0xf);
+            }
+#endif
             *dp++ = cmd_count_op(op, csize, dev->memory);
             cmd_put2w(rx, re.y, &dp);
             cmd_put2w(w1, re.height, &dp);
@@ -1222,8 +1257,7 @@ clist_copy_alpha_hl_color(gx_device * dev, const byte * data, int data_x,
         if (!re.pcls->color_is_devn) {
             byte *dp;
 
-            code = set_cmd_put_op(&dp, cdev, re.pcls, cmd_opv_extend, 2);
-            dp[1] = cmd_opv_ext_set_color_is_devn;
+            code = set_cmd_put_extended_op(&dp, cdev, re.pcls, cmd_opv_ext_set_color_is_devn, 2);
             dp += 2;
             if (code < 0)
                   return code;
@@ -1275,9 +1309,21 @@ copy:{
             }
             op += compress;
             if (dx) {
+                if_debug0m('L', dev->memory,
+                           "[L] fake end_run: really set_misc_data_x[2]\n");
                 *dp++ = cmd_count_op(cmd_opv_set_misc, 2, dev->memory);
                 *dp++ = cmd_set_misc_data_x + dx;
             }
+#ifdef DEBUG
+            if (gs_debug_c('L')) {
+                const char *const *sub = cmd_sub_op_names[op >> 4];
+
+                if (sub)
+                    dmlprintf1(dev->memory, "[L] fake end_run: really %s\n", sub[op & 0xf]);
+                else
+                    dmlprintf2(dev->memory, "[L] fake end_run: really %s %d\n", cmd_op_names[op >> 4], op & 0xf);
+            }
+#endif
             *dp++ = cmd_count_op(op, csize, dev->memory);
             *dp++ = depth;
             cmd_put2w(rx, re.y, &dp);
@@ -1350,12 +1396,10 @@ clist_copy_alpha(gx_device * dev, const byte * data, int data_x,
         if (re.pcls->color_is_devn) {
             byte *dp;
 
-            code = set_cmd_put_op(&dp, cdev, re.pcls, cmd_opv_extend, 1);
-            if (code >= 0)
-                code = set_cmd_put_op(&dp, cdev, re.pcls,
-                                      cmd_opv_ext_unset_color_is_devn, 1);
+            code = set_cmd_put_extended_op(&dp, cdev, re.pcls, cmd_opv_ext_unset_color_is_devn, 1);
             if (code < 0)
                 return code;
+            dp++;
             re.pcls->color_is_alpha = 1;
         }
         if (color != re.pcls->colors[1]) {
@@ -1407,9 +1451,21 @@ copy:{
             }
             op += compress;
             if (dx) {
+                if_debug0m('L', dev->memory,
+                           "[L] fake end_run: really set_misc_data_x[2]\n");
                 *dp++ = cmd_count_op(cmd_opv_set_misc, 2, dev->memory);
                 *dp++ = cmd_set_misc_data_x + dx;
             }
+#ifdef DEBUG
+            if (gs_debug_c('L')) {
+                const char *const *sub = cmd_sub_op_names[op >> 4];
+
+                if (sub)
+                    dmlprintf1(dev->memory, "[L] fake end_run: really %s\n", sub[op & 0xf]);
+                else
+                    dmlprintf2(dev->memory, "[L] fake end_run: really %s %d\n", cmd_op_names[op >> 4], op & 0xf);
+            }
+#endif
             *dp++ = cmd_count_op(op, csize, dev->memory);
             *dp++ = depth;
             cmd_put2w(rx, re.y, &dp);
@@ -1418,20 +1474,6 @@ copy:{
         }
     } while ((re.y += re.height) < re.yend);
     return 0;
-}
-
-int
-clist_strip_copy_rop(gx_device * dev,
-             const byte * sdata, int sourcex, uint sraster, gx_bitmap_id id,
-                     const gx_color_index * scolors,
-           const gx_strip_bitmap * textures, const gx_color_index * tcolors,
-                     int rx, int ry, int rwidth, int rheight,
-                     int phase_x, int phase_y, gs_logical_operation_t lop)
-{
-    return clist_strip_copy_rop2(dev, sdata, sourcex, sraster, id,
-                                 scolors, textures, tcolors,
-                                 rx, ry, rwidth, rheight, phase_x, phase_y,
-                                 lop, 0);
 }
 
 int
@@ -1647,13 +1689,13 @@ clist_strip_copy_rop2(gx_device * dev,
                         }
                         continue;
                     }
-                    if (((phase_x != re.pcls->tile_phase.x) && (tiles->rep_width > 1)) ||
-                        ((phase_y != re.pcls->tile_phase.y) && (tiles->rep_height > 1))) {
-                        code = cmd_set_tile_phase(cdev, re.pcls, phase_x,
-                                                  phase_y);
-                        if (code < 0)
-                            return code;
-                    }
+                }
+                if (((phase_x != re.pcls->tile_phase.x) && (tiles->rep_width > 1)) ||
+                    ((phase_y != re.pcls->tile_phase.y) && (tiles->rep_height > 1))) {
+                    code = cmd_set_tile_phase(cdev, re.pcls, phase_x,
+                                              phase_y);
+                    if (code < 0)
+                        return code;
                 }
             }
             /* Set the tile colors. */

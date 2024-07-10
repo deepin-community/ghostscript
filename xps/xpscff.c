@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,14 +9,16 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
 /* XPS interpreter - cff font support */
 
 #include "ghostxps.h"
+
+#define CFF_ARGS_SIZE 48
 
 /*
  * Big-endian memory accessor functions
@@ -171,7 +173,7 @@ xps_read_cff_integer(byte *p, byte *e, int b0, int *val)
 static int
 xps_read_cff_dict(byte *p, byte *e, xps_font_t *font, gs_font_type1 *pt1)
 {
-    struct { int ival; float fval; } args[48];
+    struct { int ival; float fval; } args[CFF_ARGS_SIZE];
     int offset;
     int b0, n;
 
@@ -202,17 +204,25 @@ xps_read_cff_dict(byte *p, byte *e, xps_font_t *font, gs_font_type1 *pt1)
 
             if (b0 == 17)
             {
+                if (args[0].ival < 0)
+                    return gs_throw(-1, "corrupt cff file offset");
                 font->charstrings = font->cffdata + args[0].ival;
             }
 
             if (b0 == 18)
             {
+                if (args[0].ival < 0 || args[1].ival < 0)
+                    return gs_throw(-1, "corrupt cff file offset");
                 privatelen = args[0].ival;
                 privateofs = args[1].ival;
+                if ((font->cffdata + privateofs + privatelen) > font->cffend)
+                    return gs_throw(-1, "corrupt cff file offset");
             }
 
             if (b0 == 19)
             {
+                if (args[0].ival < 0)
+                    return gs_throw(-1, "corrupt cff file offset");
                 font->subrs = font->cffdata + offset + args[0].ival;
             }
 
@@ -342,6 +352,8 @@ xps_read_cff_dict(byte *p, byte *e, xps_font_t *font, gs_font_type1 *pt1)
         {
             if (b0 == 30)
             {
+                if (n >= CFF_ARGS_SIZE)
+                    return gs_throw(-1, "overflow in cff dict");
                 p = xps_read_cff_real(p, e, &args[n].fval);
                 if (!p)
                     return gs_throw(-1, "corrupt dictionary operand");
@@ -350,6 +362,8 @@ xps_read_cff_dict(byte *p, byte *e, xps_font_t *font, gs_font_type1 *pt1)
             }
             else if (b0 == 28 || b0 == 29 || (b0 >= 32 && b0 <= 254))
             {
+                if (n >= CFF_ARGS_SIZE)
+                    return gs_throw(-1, "overflow in cff dict");
                 p = xps_read_cff_integer(p, e, b0, &args[n].ival);
                 if (!p)
                     return gs_throw(-1, "corrupt dictionary operand");
@@ -415,6 +429,12 @@ xps_count_cff_index(byte *p, byte *e, int *countp)
 
     p += count * offsize;
     last = uofs(p, offsize);
+    if (last < 0 || p + last > e)
+    {
+        gs_throw(-1, "corrupt index header");
+        return 0;
+    }
+
     p += offsize;
     p --; /* stupid offsets */
 
@@ -812,6 +832,7 @@ xps_init_postscript_font(xps_context_t *ctx, xps_font_t *font)
     gs_font_type1 *pt1;
     int cffofs;
     int cfflen;
+    int cffend;
     int code;
 
     /* Find the CFF table and parse it to create a charstring based font */
@@ -822,11 +843,13 @@ xps_init_postscript_font(xps_context_t *ctx, xps_font_t *font)
     if (cffofs < 0)
         return gs_throw(-1, "cannot find CFF table");
 
-    if (cfflen < 0 || cffofs + cfflen > font->length)
+    /* check the table is within the buffer and no integer overflow occurs */
+    cffend = cffofs + cfflen;
+    if (cffend < cffofs || cfflen < 0 || cffend > font->length)
         return gs_throw(-1, "corrupt CFF table location");
 
     font->cffdata = font->data + cffofs;
-    font->cffend = font->data + cffofs + cfflen;
+    font->cffend = font->data + cffend;
 
     font->gsubrs = 0;
     font->subrs = 0;

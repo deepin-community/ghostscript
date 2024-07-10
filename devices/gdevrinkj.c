@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -126,71 +126,26 @@ typedef struct rinkj_device_s {
     char setup_fn[256];
 } rinkj_device;
 
-/*
- * Macro definition for DeviceN procedures
- */
-#define device_procs(get_color_mapping_procs)\
-{	gdev_prn_open,\
-        gx_default_get_initial_matrix,\
-        NULL,				/* sync_output */\
-        /* Since the print_page doesn't alter the device, this device can print in the background */\
-        gdev_prn_bg_output_page,		/* output_page */\
-        rinkj_close_device,		/* close */\
-        NULL,				/* map_rgb_color - not used */\
-        rinkj_map_color_rgb,		/* map_color_rgb */\
-        NULL,				/* fill_rectangle */\
-        NULL,				/* tile_rectangle */\
-        NULL,				/* copy_mono */\
-        NULL,				/* copy_color */\
-        NULL,				/* draw_line */\
-        NULL,				/* get_bits */\
-        rinkj_get_params,		/* get_params */\
-        rinkj_put_params,		/* put_params */\
-        NULL,				/* map_cmyk_color - not used */\
-        NULL,				/* get_xfont_procs */\
-        NULL,				/* get_xfont_device */\
-        NULL,				/* map_rgb_alpha_color */\
-        gx_page_device_get_page_device,	/* get_page_device */\
-        NULL,				/* get_alpha_bits */\
-        NULL,				/* copy_alpha */\
-        NULL,				/* get_band */\
-        NULL,				/* copy_rop */\
-        NULL,				/* fill_path */\
-        NULL,				/* stroke_path */\
-        NULL,				/* fill_mask */\
-        NULL,				/* fill_trapezoid */\
-        NULL,				/* fill_parallelogram */\
-        NULL,				/* fill_triangle */\
-        NULL,				/* draw_thin_line */\
-        NULL,				/* begin_image */\
-        NULL,				/* image_data */\
-        NULL,				/* end_image */\
-        NULL,				/* strip_tile_rectangle */\
-        NULL,				/* strip_copy_rop */\
-        NULL,				/* get_clipping_box */\
-        NULL,				/* begin_typed_image */\
-        NULL,				/* get_bits_rectangle */\
-        NULL,				/* map_color_rgb_alpha */\
-        NULL,				/* create_compositor */\
-        NULL,				/* get_hardware_params */\
-        NULL,				/* text_begin */\
-        NULL,				/* finish_copydevice */\
-        NULL,				/* begin_transparency_group */\
-        NULL,				/* end_transparency_group */\
-        NULL,				/* begin_transparency_mask */\
-        NULL,				/* end_transparency_mask */\
-        NULL,				/* discard_transparency_layer */\
-        get_color_mapping_procs,	/* get_color_mapping_procs */\
-        rinkj_get_color_comp_index,	/* get_color_comp_index */\
-        rinkj_encode_color,		/* encode_color */\
-        rinkj_decode_color		/* decode_color */\
+static void
+spot_cmyk_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, open_device, gdev_prn_open);
+    set_dev_proc(dev, output_page, gdev_prn_bg_output_page);
+    set_dev_proc(dev, close_device, rinkj_close_device);
+    set_dev_proc(dev, map_color_rgb, rinkj_map_color_rgb);
+    set_dev_proc(dev, get_params, rinkj_get_params);
+    set_dev_proc(dev, put_params, rinkj_put_params);
+    set_dev_proc(dev, get_page_device, gx_page_device_get_page_device);
+    set_dev_proc(dev, get_color_mapping_procs, get_rinkj_color_mapping_procs);
+    set_dev_proc(dev, get_color_comp_index, rinkj_get_color_comp_index);
+    set_dev_proc(dev, encode_color, rinkj_encode_color);
+    set_dev_proc(dev, decode_color, rinkj_decode_color);
 }
-
-static const gx_device_procs spot_cmyk_procs = device_procs(get_rinkj_color_mapping_procs);
 
 const rinkj_device gs_rinkj_device =
 {
-    prn_device_body_extended(rinkj_device, spot_cmyk_procs, "rinkj",
+    prn_device_body_extended(rinkj_device,
+         spot_cmyk_initialize_device_procs, "rinkj",
          DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
          X_DPI, Y_DPI,		/* X and Y hardware resolution */
          0, 0, 0, 0,		/* margins */
@@ -218,7 +173,7 @@ const rinkj_device gs_rinkj_device =
  * the color components for the spotrgb device.
  */
 static void
-gray_cs_to_spotrgb_cm(gx_device * dev, frac gray, frac out[])
+gray_cs_to_spotrgb_cm(const gx_device * dev, frac gray, frac out[])
 {
 /* TO_DO_DEVICEN  This routine needs to include the effects of the SeparationOrder array */
     int i = ((rinkj_device *)dev)->separation_names.num_names;
@@ -229,7 +184,7 @@ gray_cs_to_spotrgb_cm(gx_device * dev, frac gray, frac out[])
 }
 
 static void
-rgb_cs_to_spotrgb_cm(gx_device * dev, const gs_gstate *pgs,
+rgb_cs_to_spotrgb_cm(const gx_device * dev, const gs_gstate *pgs,
                                   frac r, frac g, frac b, frac out[])
 {
 /* TO_DO_DEVICEN  This routine needs to include the effects of the SeparationOrder array */
@@ -243,7 +198,7 @@ rgb_cs_to_spotrgb_cm(gx_device * dev, const gs_gstate *pgs,
 }
 
 static void
-cmyk_cs_to_spotrgb_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
+cmyk_cs_to_spotrgb_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 {
 /* TO_DO_DEVICEN  This routine needs to include the effects of the SeparationOrder array */
     int i = ((rinkj_device *)dev)->separation_names.num_names;
@@ -254,7 +209,7 @@ cmyk_cs_to_spotrgb_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[
 }
 
 static void
-gray_cs_to_spotcmyk_cm(gx_device * dev, frac gray, frac out[])
+gray_cs_to_spotcmyk_cm(const gx_device * dev, frac gray, frac out[])
 {
 /* TO_DO_DEVICEN  This routine needs to include the effects of the SeparationOrder array */
     int i = ((rinkj_device *)dev)->separation_names.num_names;
@@ -266,7 +221,7 @@ gray_cs_to_spotcmyk_cm(gx_device * dev, frac gray, frac out[])
 }
 
 static void
-rgb_cs_to_spotcmyk_cm(gx_device * dev, const gs_gstate *pgs,
+rgb_cs_to_spotcmyk_cm(const gx_device * dev, const gs_gstate *pgs,
                                    frac r, frac g, frac b, frac out[])
 {
 /* TO_DO_DEVICEN  This routine needs to include the effects of the SeparationOrder array */
@@ -280,7 +235,7 @@ rgb_cs_to_spotcmyk_cm(gx_device * dev, const gs_gstate *pgs,
 }
 
 static void
-cmyk_cs_to_spotcmyk_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
+cmyk_cs_to_spotcmyk_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 {
 /* TO_DO_DEVICEN  This routine needs to include the effects of the SeparationOrder array */
     rinkj_device *rdev = (rinkj_device *)dev;
@@ -296,7 +251,7 @@ cmyk_cs_to_spotcmyk_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out
 };
 
 static void
-cmyk_cs_to_spotn_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
+cmyk_cs_to_spotn_cm(const gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 {
 /* TO_DO_DEVICEN  This routine needs to include the effects of the SeparationOrder array */
     rinkj_device *rdev = (rinkj_device *)dev;
@@ -313,7 +268,7 @@ cmyk_cs_to_spotn_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 };
 
 static void
-gray_cs_to_spotn_cm(gx_device * dev, frac gray, frac out[])
+gray_cs_to_spotn_cm(const gx_device * dev, frac gray, frac out[])
 {
 /* TO_DO_DEVICEN  This routine needs to include the effects of the SeparationOrder array */
 
@@ -321,7 +276,7 @@ gray_cs_to_spotn_cm(gx_device * dev, frac gray, frac out[])
 }
 
 static void
-rgb_cs_to_spotn_cm(gx_device * dev, const gs_gstate *pgs,
+rgb_cs_to_spotn_cm(const gx_device * dev, const gs_gstate *pgs,
                                    frac r, frac g, frac b, frac out[])
 {
 /* TO_DO_DEVICEN  This routine needs to include the effects of the SeparationOrder array */
@@ -350,10 +305,11 @@ static const gx_cm_color_map_procs spotN_procs = {
  */
 
 static const gx_cm_color_map_procs *
-get_rinkj_color_mapping_procs(const gx_device * dev)
+get_rinkj_color_mapping_procs(const gx_device * dev, const gx_device **tdev)
 {
     const rinkj_device *rdev = (const rinkj_device *)dev;
 
+    *tdev = dev;
     if (rdev->color_model == RINKJ_DEVICE_RGB)
         return &spotRGB_procs;
     else if (rdev->color_model == RINKJ_DEVICE_CMYK)
@@ -653,26 +609,58 @@ rinkj_put_params(gx_device * pdev, gs_param_list * plist)
     /* Separations are only valid with a subtractive color model */
     if (pdev->color_info.polarity == GX_CINFO_POLARITY_SUBTRACTIVE) {
         /*
-         * Process the separation color names.  Remove any names that already
+         * Process the SeparationColorNames.  Remove any names that already
          * match the process color model colorant names for the device.
          */
         if (scna.data != 0) {
-            int i;
-            int num_names = scna.size;
-            fixed_colorant_names_list pcomp_names =
-                                ((rinkj_device *)pdev)->std_colorant_names;
+            int num_names = scna.size, i = 0;
+            fixed_colorant_names_list pcomp_names = pdevn->std_colorant_names;
 
-            for (i = num_spot = 0; i < num_names; i++) {
-                if (!check_process_color_names(pcomp_names, &scna.data[i]))
-                    pdevn->separation_names.names[num_spot++] = &scna.data[i];
+            if (num_spot + num_names > pdev->color_info.max_components) {
+                param_signal_error(plist, "SeparationColorNames", gs_error_rangecheck);
+                return_error(gs_error_rangecheck);
+            }
+            for (i = 0; i < num_names; i++) {
+                /* Verify that the name is not one of our process colorants */
+                if (!check_process_color_names(pcomp_names, &scna.data[i])) {
+                    byte * sep_name;
+                    int name_size = scna.data[i].size;
+                    gs_param_string *new_string;
+
+                    new_string = (gs_param_string *)gs_alloc_bytes(pdev->memory->non_gc_memory, sizeof(gs_param_string), "devicen_put_params_no_sep_order");
+                    if (new_string == NULL) {
+                        param_signal_error(plist, "SeparationColorNames", gs_error_VMerror);
+                        return_error(gs_error_VMerror);
+                    }
+                    /* We have a new separation */
+                    sep_name = (byte *)gs_alloc_bytes(pdev->memory->non_gc_memory,
+                        name_size, "devicen_put_params_no_sep_order");
+                    if (sep_name == NULL) {
+                        gs_free_object(pdev->memory, new_string, "devicen_put_params_no_sep_order");
+                        param_signal_error(plist, "SeparationColorNames", gs_error_VMerror);
+                        return_error(gs_error_VMerror);
+                    }
+                    memcpy(sep_name, scna.data[i].data, name_size);
+                    new_string->size = name_size;
+                    new_string->data = sep_name;
+                    new_string->persistent = true;
+                    if (pdevn->separation_names.names[num_spot] != NULL) {
+                        gs_free_object(pdev->memory->non_gc_memory, (void *)pdevn->separation_names.names[num_spot]->data, "devicen_put_params_no_sep_order");
+                        gs_free_object(pdev->memory->non_gc_memory, (void *)pdevn->separation_names.names[num_spot], "devicen_put_params_no_sep_order");
+                    }
+                    pdevn->separation_names.names[num_spot] = new_string;
+
+                    num_spot++;
+                }
             }
             pdevn->separation_names.num_names = num_spot;
-            if (pdevn->is_open)
-                gs_closedevice(pdev);
         }
     }
     npcmcolors = pdevn->num_std_colorant_names;
     pdevn->color_info.num_components = npcmcolors + num_spot;
+    if (pdevn->color_info.num_components > pdevn->color_info.max_components)
+        pdevn->color_info.num_components = pdevn->color_info.max_components;
+
     /*
      * The DeviceN device can have zero components if nothing has been
      * specified.  This causes some problems so force at least one
@@ -707,11 +695,22 @@ static int
 rinkj_close_device(gx_device *dev)
 {
     rinkj_device * const rdev = (rinkj_device *) dev;
+    int i;
 
     /* ICC link profile only used (and set) if specified on command line */
     if (rdev->icc_link != NULL)
         gscms_release_link(rdev->icc_link);
     rc_decrement(rdev->link_profile, "rinkj_close_device");
+
+    /* Free all the colour separation names */
+    for (i = 0; i < rdev->separation_names.num_names; i++) {
+        if (rdev->separation_names.names[i] != NULL) {
+            gs_free_object(rdev->memory->non_gc_memory, (void *)rdev->separation_names.names[i]->data, "devicen_put_params_no_sep_order");
+            gs_free_object(rdev->memory->non_gc_memory, (void *)rdev->separation_names.names[i], "devicen_put_params_no_sep_order");
+        }
+        rdev->separation_names.names[i] = NULL;
+    }
+    rdev->separation_names.num_names = 0;
 
     return gdev_prn_close(dev);
 }

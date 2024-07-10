@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -220,11 +220,11 @@ alpha_buffer_init(gs_gstate * pgs, fixed extra_x, fixed extra_y, int alpha_bits,
     ibox.q.x = fixed2int_ceiling(bbox.q.x + extra_x) + 1;
     ibox.q.y = fixed2int_ceiling(bbox.q.y + extra_y) + 1;
     (void)dev_proc(dev, dev_spec_op)(dev, gxdso_restrict_bbox, &ibox, sizeof(ibox));
+    if ((ibox.q.y <= ibox.p.y) || (ibox.q.x <= ibox.p.x))
+        return 2;
     width = (ibox.q.x - ibox.p.x) << log2_scale.x;
     raster = bitmap_raster(width);
     band_space = raster << log2_scale.y;
-    if (ibox.q.y <= ibox.p.y)
-        return 2;
     height2 = (ibox.q.y - ibox.p.y);
     height = (abuf_nominal / band_space);
     if (height == 0)
@@ -232,21 +232,28 @@ alpha_buffer_init(gs_gstate * pgs, fixed extra_x, fixed extra_y, int alpha_bits,
     if (height > height2)
         height = height2;
     height <<= log2_scale.y;
+    /* We may have to update the marking parameters if we have a pdf14 device
+       as our target.  Need to do while dev is still active in pgs. Do this
+       before allocating the device to simplify cleanup. */
+    if (dev_proc(dev, dev_spec_op)(dev, gxdso_is_pdf14_device, NULL, 0) > 0) {
+        int code = gs_update_trans_marking_params(pgs);
+        if (code < 0)
+            return code;
+    }
     mem = pgs->memory;
-    mdev = gs_alloc_struct(mem, gx_device_memory, &st_device_memory,
+    mdev = gs_alloc_struct_immovable(mem, gx_device_memory, &st_device_memory,
                            "alpha_buffer_init");
     if (mdev == 0)
         return 0;		/* if no room, don't buffer */
-    /* We may have to update the marking parameters if we have a pdf14 device
-       as our target.  Need to do while dev is still active in pgs */
-    if (dev_proc(dev, dev_spec_op)(dev, gxdso_is_pdf14_device, NULL, 0) > 0) {
-        gs_update_trans_marking_params(pgs);
-    }
     gs_make_mem_abuf_device(mdev, mem, dev, &log2_scale,
                             alpha_bits, ibox.p.x << log2_scale.x, devn);
     mdev->width = width;
     mdev->height = height;
     mdev->bitmap_memory = mem;
+    /* Set the horrible hacky flag that tells people that the width/height here
+     * have been set for *our* convenience, rather than accurately depicting the
+     * size of the device for callers. */
+    mdev->non_strict_bounds = 1;
     if ((*dev_proc(mdev, open_device)) ((gx_device *) mdev) < 0) {
         /* No room for bits, punt. */
         gs_free_object(mem, mdev, "alpha_buffer_init");
@@ -273,10 +280,23 @@ alpha_buffer_release(gs_gstate * pgs, bool newpath)
     return code;
 }
 
+/* Setup for black vector handling */
+static inline bool black_vectors(gs_gstate *pgs, gx_device *dev)
+{
+    if (dev->icc_struct != NULL && dev->icc_struct->blackvector &&
+        pgs->black_textvec_state == NULL) {
+        return gsicc_setup_blacktextvec(pgs, dev, false);
+    }
+    return false;
+}
+
 static int do_fill(gs_gstate *pgs, int rule)
 {
     int code, abits, acode, rcode = 0;
     bool devn;
+    bool black_vector = false;
+    bool in_smask =
+        (dev_proc(pgs->device, dev_spec_op)(pgs->device, gxdso_in_smask_construction, NULL, 0)) > 0;
 
     /* We need to distinguish text from vectors to set the object tag.
 
@@ -294,17 +314,18 @@ static int do_fill(gs_gstate *pgs, int rule)
        handle that, we'll have to add a flag to the path structure, or to the path
        segment structure (depending on how fine grained we require it to be).
      */
-    if (pgs->show_gstate == NULL)
-        ensure_tag_is_set(pgs, pgs->device, GS_PATH_TAG);	/* NB: may unset_dev_color */
-    else
+    if (pgs->show_gstate == NULL && !in_smask) {
+        ensure_tag_is_set(pgs, pgs->device, GS_VECTOR_TAG);	/* NB: may unset_dev_color */
+        black_vector = black_vectors(pgs, pgs->device); /* Set vector fill to black */
+    } else
         ensure_tag_is_set(pgs, pgs->device, GS_TEXT_TAG);	/* NB: may unset_dev_color */
 
     code = gx_set_dev_color(pgs);
     if (code != 0)
-        return code;
+        goto out;
     code = gs_gstate_color_load(pgs);
     if (code < 0)
-        return code;
+        goto out;
 
     if (pgs->overprint || (!pgs->overprint && dev_proc(pgs->device, dev_spec_op)(pgs->device,
         gxdso_overprint_active, NULL, 0))) {
@@ -314,7 +335,7 @@ static int do_fill(gs_gstate *pgs, int rule)
             "[overprint] Fill Overprint\n");
         code = gs_do_set_overprint(pgs);
         if (code < 0)
-            return code;
+            goto out;
 
         op_params.op_state = OP_STATE_FILL;
         gs_gstate_update_overprint(pgs, &op_params);
@@ -330,10 +351,14 @@ static int do_fill(gs_gstate *pgs, int rule)
     if (abits > 1) {
         acode = alpha_buffer_init(pgs, pgs->fill_adjust.x,
                                   pgs->fill_adjust.y, abits, devn);
-        if (acode == 2) /* Special case for no fill required */
-            return 0;
-        if (acode < 0)
-            return acode;
+        if (acode == 2) { /* Special case for no fill required */
+            code = 0;
+            goto out;
+        }
+        if (acode < 0) {
+            code = acode;
+            goto out;
+        }
     } else
         acode = 0;
     code = gx_fill_path(pgs->path, gs_currentdevicecolor_inline(pgs), pgs, rule,
@@ -342,6 +367,12 @@ static int do_fill(gs_gstate *pgs, int rule)
         rcode = alpha_buffer_release(pgs, code >= 0);
     if (code >= 0 && rcode < 0)
         code = rcode;
+
+out:
+    if (black_vector) {
+        /* Restore color */
+        gsicc_restore_blacktextvec(pgs, false);
+    }
 
     return code;
 }
@@ -397,6 +428,10 @@ do_stroke(gs_gstate * pgs)
     int code, abits, acode, rcode = 0;
     bool devn;
     bool is_fill_correct = true;
+    bool black_vector = false;
+    bool in_smask =
+        (dev_proc(pgs->device, dev_spec_op)(pgs->device, gxdso_in_smask_construction, NULL, 0)) > 0;
+
 
     /* We need to distinguish text from vectors to set the object tag.
 
@@ -414,17 +449,18 @@ do_stroke(gs_gstate * pgs)
        handle that, we'll have to add a flag to the path structure, or to the path
        segment structure (depending on how fine grained we require it to be).
      */
-    if (pgs->show_gstate == NULL)
-        ensure_tag_is_set(pgs, pgs->device, GS_PATH_TAG);	/* NB: may unset_dev_color */
-    else
+    if (pgs->show_gstate == NULL && !in_smask) {
+        ensure_tag_is_set(pgs, pgs->device, GS_VECTOR_TAG);	/* NB: may unset_dev_color */
+        black_vector = black_vectors(pgs, pgs->device);
+    } else
         ensure_tag_is_set(pgs, pgs->device, GS_TEXT_TAG);	/* NB: may unset_dev_color */
 
     code = gx_set_dev_color(pgs);
     if (code != 0)
-        return code;
+        goto out;
     code = gs_gstate_color_load(pgs);
     if (code < 0)
-        return code;
+        goto out;
 
 
     if (pgs->stroke_overprint || (!pgs->stroke_overprint && dev_proc(pgs->device, dev_spec_op)(pgs->device,
@@ -446,7 +482,7 @@ do_stroke(gs_gstate * pgs)
             if (!is_fill_correct) {
                 pgs->is_fill_color = true;
             }
-            return code;
+            goto out;
         }
 
         op_params.op_state = OP_STATE_STROKE;
@@ -487,13 +523,15 @@ do_stroke(gs_gstate * pgs)
             if (!is_fill_correct) {
                 pgs->is_fill_color = true;
             }
-            return 0;
+            code = 0;
+            goto out;
         }
         if (acode < 0) {
             if (!is_fill_correct) {
                 pgs->is_fill_color = true;
             }
-            return acode;
+            code = acode;
+            goto out;
         }
         gs_setlinewidth(pgs, new_width);
         scale_dash_pattern(pgs, scale);
@@ -522,6 +560,12 @@ do_stroke(gs_gstate * pgs)
 
     if (!is_fill_correct) {
         pgs->is_fill_color = true;
+    }
+
+out:
+    if (black_vector) {
+        /* Restore color */
+        gsicc_restore_blacktextvec(pgs, false);
     }
     return code;
 }
@@ -603,6 +647,10 @@ static int do_fill_stroke(gs_gstate *pgs, int rule, int *restart)
     int code, abits, acode = 0, rcode = 0;
     bool devn;
     float orig_width, scale, orig_flatness;
+    bool black_vector = false;
+    bool in_smask =
+        (dev_proc(pgs->device, dev_spec_op)(pgs->device, gxdso_in_smask_construction, NULL, 0)) > 0;
+    gs_logical_operation_t orig_lop = pgs->log_op;
 
     /* It is either our first time, or the stroke was a pattern and
        we are coming back from the error if restart < 1 (0 is first
@@ -615,7 +663,7 @@ static int do_fill_stroke(gs_gstate *pgs, int rule, int *restart)
 
             if(gs_currentdevicecolor_inline(pgs)->colors.pattern.p_tile != NULL) {
                 id = gs_currentdevicecolor_inline(pgs)->colors.pattern.p_tile->id;
-                code = gx_pattern_cache_entry_set_lock(pgs, id, true);
+                code = dev_proc(pgs->device, lock_pattern)(pgs->device, pgs, id, true);
             } else {
                 code = 0;
             }
@@ -643,30 +691,31 @@ static int do_fill_stroke(gs_gstate *pgs, int rule, int *restart)
            handle that, we'll have to add a flag to the path structure, or to the path
            segment structure (depending on how fine grained we require it to be).
          */
-        if (pgs->show_gstate == NULL)
-            ensure_tag_is_set(pgs, pgs->device, GS_PATH_TAG);	/* NB: may unset_dev_color */
-        else
+        if (pgs->show_gstate == NULL && !in_smask) {
+            ensure_tag_is_set(pgs, pgs->device, GS_VECTOR_TAG);	/* NB: may unset_dev_color */
+            black_vector = black_vectors(pgs, pgs->device);
+        } else
             ensure_tag_is_set(pgs, pgs->device, GS_TEXT_TAG);	/* NB: may unset_dev_color */
 
         /* if we are at restart == 0, we set the stroke color. */
         code = gx_set_dev_color(pgs);
         if (code != 0)
-            return code;		/* may be gs_error_Remap_color or real error */
+            goto out2;		/* may be gs_error_Remap_color or real error */
         code = gs_gstate_color_load(pgs);
         if (code < 0)
-            return code;
+            goto out2;
         /* If this was a pattern color, make sure and lock it in the pattern_cache */
         if (gx_dc_is_pattern1_color(gs_currentdevicecolor_inline(pgs))) {
             gs_id id;
 
             if(gs_currentdevicecolor_inline(pgs)->colors.pattern.p_tile != NULL) {
                 id = gs_currentdevicecolor_inline(pgs)->colors.pattern.p_tile->id;
-                code = gx_pattern_cache_entry_set_lock(pgs, id, true);
+                code = dev_proc(pgs->device, lock_pattern)(pgs->device, pgs, id, true);
             } else {
                 code = 0;
             }
-	    if (code < 0)
-		return code;	/* lock failed -- tile not in cache? */
+            if (code < 0)
+                goto out2;	/* lock failed -- tile not in cache? */
         }
     }
 
@@ -676,7 +725,7 @@ static int do_fill_stroke(gs_gstate *pgs, int rule, int *restart)
             "[overprint] StrokeFill Stroke Set Overprint\n");
         code = gs_do_set_overprint(pgs);
         if (code < 0)
-            return code;
+            goto out2;
     }
     *restart = 1;		/* finished, successfully with stroke_color */
 
@@ -684,13 +733,13 @@ static int do_fill_stroke(gs_gstate *pgs, int rule, int *restart)
 
     /* Have to set the fill color too */
     if (pgs->show_gstate == NULL)
-        ensure_tag_is_set(pgs, pgs->device, GS_PATH_TAG);	/* NB: may unset_dev_color */
+        ensure_tag_is_set(pgs, pgs->device, GS_VECTOR_TAG);	/* NB: may unset_dev_color */
     else
         ensure_tag_is_set(pgs, pgs->device, GS_TEXT_TAG);	/* NB: may unset_dev_color */
 
     code = gx_set_dev_color(pgs);
     if (code != 0) {
-        return code;
+        goto out2;
     }
     code = gs_gstate_color_load(pgs);
     if (code < 0) {
@@ -728,7 +777,6 @@ static int do_fill_stroke(gs_gstate *pgs, int rule, int *restart)
         fixed extra_adjust;
         float xxyy = fabs(pgs->ctm.xx) + fabs(pgs->ctm.yy);
         float xyyx = fabs(pgs->ctm.xy) + fabs(pgs->ctm.yx);
-        gs_logical_operation_t orig_lop = pgs->log_op;
         pgs->log_op |= lop_pdf14; /* Force stroking to happen all in 1 go */
         scale = (float)(1 << (abits / 2));
         orig_width = gs_currentlinewidth(pgs);
@@ -751,7 +799,6 @@ static int do_fill_stroke(gs_gstate *pgs, int rule, int *restart)
         gs_setlinewidth(pgs, new_width);
         scale_dash_pattern(pgs, scale);
         gs_setflat(pgs, (double)(orig_flatness * scale));
-        pgs->log_op = orig_lop;
     } else
         acode = 0;
     code = gx_fill_stroke_path(pgs, rule);
@@ -761,6 +808,7 @@ static int do_fill_stroke(gs_gstate *pgs, int rule, int *restart)
         scale_dash_pattern(pgs, 1.0 / scale);
         gs_setflat(pgs, orig_flatness);
         acode = alpha_buffer_release(pgs, code >= 0);
+        pgs->log_op = orig_lop;
     }
     if (pgs->is_fill_color) {
         /* The color _should_ be the fill color, so make sure it is unlocked	*/
@@ -769,29 +817,41 @@ static int do_fill_stroke(gs_gstate *pgs, int rule, int *restart)
 
             if(gs_currentdevicecolor_inline(pgs)->colors.pattern.p_tile != NULL) {
                 id = gs_currentdevicecolor_inline(pgs)->colors.pattern.p_tile->id;
-                code = gx_pattern_cache_entry_set_lock(pgs, id, false);
+                code = dev_proc(pgs->device, lock_pattern)(pgs->device, pgs, id, false);
             } else {
                 code = 0;
             }
 	    if (code < 0)
-		return code;	/* lock failed -- tile not in cache? */
+		    goto out2;	/* lock failed -- tile not in cache? */
         }
     }
 out:
+    if (black_vector) {
+        /* Restore color */
+        gsicc_restore_blacktextvec(pgs, false);
+    }
+
     if (gx_dc_is_pattern1_color(gs_swappeddevicecolor_inline(pgs))) {
         gs_id id;
 
         if (gs_swappeddevicecolor_inline(pgs)->colors.pattern.p_tile != NULL) {
             id = gs_swappeddevicecolor_inline(pgs)->colors.pattern.p_tile->id;
-            rcode = gx_pattern_cache_entry_set_lock(pgs, id, false);
-	        if (rcode < 0)
-	            return rcode;	/* unlock failed -- shouldn't be possible */
+            rcode = dev_proc(pgs->device, lock_pattern)(pgs->device, pgs, id, false);
+            if (rcode < 0)
+	        return rcode;	/* unlock failed -- shouldn't be possible */
         } else {
             code = 0;
         }
     }
     if (code >= 0 && acode < 0)
         code = acode;
+    return code;
+
+out2:
+    if (black_vector) {
+        /* Restore color */
+        gsicc_restore_blacktextvec(pgs, false);
+    }
     return code;
 }
 

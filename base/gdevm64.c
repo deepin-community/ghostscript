@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* 64-bit-per-pixel "memory" (stored bitmap) device */
@@ -21,7 +21,9 @@
 #include "gdevmem.h"		/* private definitions */
 
 /* Define debugging statistics. */
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+/* #define COLLECT_STATS_MEM64 */
+
+#ifdef COLLECT_STATS_MEM64
 struct stats_mem64_s {
     long
         fill, fwide, fgray[101], fsetc, fcolor[101], fnarrow[5],
@@ -46,12 +48,20 @@ declare_mem_procs(mem_true64_copy_mono, mem_true64_copy_color, mem_true64_fill_r
 
 /* The device descriptor. */
 const gx_device_memory mem_true64_device =
-mem_full_alpha_device("image64", 64, 0, mem_open,
-                 gx_default_rgb_map_rgb_color, gx_default_rgb_map_color_rgb,
-     mem_true64_copy_mono, mem_true64_copy_color, mem_true64_fill_rectangle,
-                      gx_default_map_cmyk_color, gx_default_copy_alpha,
-                 gx_default_strip_tile_rectangle, mem_default_strip_copy_rop,
-                      mem_get_bits_rectangle);
+    mem_device("image64", 64, 0, mem_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_64 =
+{
+    gx_default_rgb_map_rgb_color,
+    gx_default_rgb_map_color_rgb,
+    mem_true64_fill_rectangle,
+    mem_true64_copy_mono,
+    mem_true64_copy_color,
+    gx_default_copy_alpha,
+    gx_default_strip_tile_rectangle,
+    mem_default_strip_copy_rop2,
+    mem_get_bits_rectangle
+};
 
 /* Convert x coordinate to byte offset in scan line. */
 #undef x_to_byte
@@ -96,7 +106,7 @@ mem_true64_fill_rectangle(gx_device * dev,
      */
     fit_fill_xywh(dev, x, y, w, h);
     INCR(fill);
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef COLLECT_STATS_MEM64
     stats_mem64.ftotal += w;
 #endif
     if (h <= 0)
@@ -104,7 +114,7 @@ mem_true64_fill_rectangle(gx_device * dev,
     if (w >= 5) {
         INCR(fwide);
         setup_rect(dest);
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef COLLECT_STATS_MEM64
         {
             int ci;
             for (ci = 0; ci < prev_count; ++ci)
@@ -343,11 +353,20 @@ declare_mem_procs(mem64_word_copy_mono, mem64_word_copy_color, mem64_word_fill_r
 
 /* Here is the device descriptor. */
 const gx_device_memory mem_true64_word_device =
-mem_full_device("image64w", 64, 0, mem_open,
-                gx_default_rgb_map_rgb_color, gx_default_rgb_map_color_rgb,
-     mem64_word_copy_mono, mem64_word_copy_color, mem64_word_fill_rectangle,
-                gx_default_map_cmyk_color, gx_default_strip_tile_rectangle,
-                gx_no_strip_copy_rop, mem_word_get_bits_rectangle);
+    mem_device("image64w", 64, 0, mem_word_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_64w =
+{
+    gx_default_rgb_map_rgb_color,
+    gx_default_rgb_map_color_rgb,
+    mem64_word_fill_rectangle,
+    mem64_word_copy_mono,
+    mem64_word_copy_color,
+    gx_default_copy_alpha,
+    gx_default_strip_tile_rectangle,
+    gx_no_strip_copy_rop2,
+    mem_word_get_bits_rectangle
+};
 
 /* Fill a rectangle with a color. */
 static int
@@ -356,7 +375,7 @@ mem64_word_fill_rectangle(gx_device * dev, int x, int y, int w, int h,
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     byte *base;
-    uint raster;
+    size_t raster;
 
     fit_fill(dev, x, y, w, h);
     base = scan_line_base(mdev, y);
@@ -375,7 +394,7 @@ mem64_word_copy_mono(gx_device * dev,
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     byte *row;
-    uint raster;
+    size_t raster;
     bool store;
 
     fit_copy(dev, base, sourcex, sraster, id, x, y, w, h);
@@ -397,7 +416,7 @@ mem64_word_copy_color(gx_device * dev,
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     byte *row;
-    uint raster;
+    size_t raster;
 
     fit_copy(dev, base, sourcex, sraster, id, x, y, w, h);
     row = scan_line_base(mdev, y);

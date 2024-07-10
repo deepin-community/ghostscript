@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -428,7 +428,8 @@ static int
 zparse_dsc_comments(i_ctx_t *i_ctx_p)
 {
 #define MAX_DSC_MSG_SIZE (DSC_LINE_LENGTH + 4)	/* Allow for %% and CR/LF */
-    os_ptr const opString = osp;
+    os_ptr op = osp;
+    os_ptr const opString = op;
     os_ptr const opDict = opString - 1;
     uint ssize;
     int comment_code, code;
@@ -439,6 +440,7 @@ zparse_dsc_comments(i_ctx_t *i_ctx_p)
     dsc_data_t * dsc_state = NULL;
     dict_param_list list;
 
+    check_op(2);
     /*
      * Verify operand types and length of DSC comment string.  If a comment
      * is too long then we simply truncate it.  Russell's parser gets to

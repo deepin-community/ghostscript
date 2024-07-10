@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* 2-bit-per-pixel "memory" (stored bitmap) device */
@@ -31,10 +31,20 @@ declare_mem_procs(mem_mapped2_copy_mono, mem_mapped2_copy_color, mem_mapped2_fil
 
 /* The device descriptor. */
 const gx_device_memory mem_mapped2_device =
-mem_device("image2", 2, 0,
-           mem_mapped_map_rgb_color, mem_mapped_map_color_rgb,
-           mem_mapped2_copy_mono, mem_mapped2_copy_color,
-           mem_mapped2_fill_rectangle, mem_gray_strip_copy_rop);
+    mem_device("image2", 2, 0, mem_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_2 =
+{
+    mem_mapped_map_rgb_color,
+    mem_mapped_map_color_rgb,
+    mem_mapped2_fill_rectangle,
+    mem_mapped2_copy_mono,
+    mem_mapped2_copy_color,
+    gx_default_copy_alpha,
+    gx_default_strip_tile_rectangle,
+    mem_gray_strip_copy_rop2,
+    mem_get_bits_rectangle
+};
 
 /* Convert x coordinate to byte offset in scan line. */
 #undef x_to_byte
@@ -157,9 +167,9 @@ mem_mapped2_copy_color(gx_device * dev,
     /* Use monobit copy_mono. */
     /* Patch the width in the device temporarily. */
     dev->width <<= 1;
-    code = (*dev_proc(&mem_mono_device, copy_mono))
-        (dev, base, sourcex << 1, sraster, id,
-         x << 1, y, w << 1, h, (gx_color_index) 0, (gx_color_index) 1);
+    code = mem_mono_copy_mono(dev, base, sourcex << 1, sraster, id,
+                              x << 1, y, w << 1, h,
+                              (gx_color_index) 0, (gx_color_index) 1);
     /* Restore the correct width. */
     dev->width >>= 1;
     return code;
@@ -177,12 +187,20 @@ declare_mem_procs(mem2_word_copy_mono, mem2_word_copy_color, mem2_word_fill_rect
 
 /* Here is the device descriptor. */
 const gx_device_memory mem_mapped2_word_device =
-mem_full_device("image2w", 2, 0, mem_open,
-                mem_mapped_map_rgb_color, mem_mapped_map_color_rgb,
-                mem2_word_copy_mono, mem2_word_copy_color,
-                mem2_word_fill_rectangle, gx_default_map_cmyk_color,
-                gx_default_strip_tile_rectangle, gx_no_strip_copy_rop,
-                mem_word_get_bits_rectangle);
+    mem_device("image2w", 2, 0, mem_word_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_2w =
+{
+    mem_mapped_map_rgb_color,
+    mem_mapped_map_color_rgb,
+    mem2_word_fill_rectangle,
+    mem2_word_copy_mono,
+    mem2_word_copy_color,
+    gx_default_copy_alpha,
+    gx_default_strip_tile_rectangle,
+    gx_no_strip_copy_rop2,
+    mem_word_get_bits_rectangle
+};
 
 /* Fill a rectangle with a color. */
 static int
@@ -191,7 +209,7 @@ mem2_word_fill_rectangle(gx_device * dev, int x, int y, int w, int h,
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     byte *base;
-    uint raster;
+    size_t raster;
 
     fit_fill(dev, x, y, w, h);
     base = scan_line_base(mdev, y);
@@ -212,7 +230,7 @@ mem2_word_copy_mono(gx_device * dev,
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     byte *row;
-    uint raster;
+    size_t raster;
     bool store;
 
     fit_copy(dev, base, sourcex, sraster, id, x, y, w, h);
@@ -238,7 +256,7 @@ mem2_word_copy_color(gx_device * dev,
     /* Use monobit copy_mono. */
     /* Patch the width in the device temporarily. */
     dev->width <<= 1;
-    code = (*dev_proc(&mem_mono_word_device, copy_mono))
+    code = gdev_mem_word_functions_for_bits(1)->copy_mono
         (dev, base, sourcex << 1, sraster, id,
          x << 1, y, w << 1, h, (gx_color_index) 0, (gx_color_index) 1);
     /* Restore the correct width. */

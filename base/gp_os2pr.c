@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -107,9 +107,20 @@ os2_printer_fopen(gx_io_device * iodev, const char *fname, const char *access,
            FILE ** pfile, char *rfname, uint rnamelen)
 {
     os2_printer_t *pr = (os2_printer_t *)iodev->state;
-    char driver_name[256];
+    char driver_name[gp_file_name_sizeof];
     gs_lib_ctx_t *ctx = mem->gs_lib_ctx;
     gs_fs_list_t *fs = ctx->core->fs;
+    const size_t preflen = strlen(iodev->dname);
+    const int size_t = strlen(fname);
+
+    if (preflen + nlen >= gp_file_name_sizeof)
+        return_error(gs_error_invalidaccess);
+
+    memcpy(driver_name, iodev->dname, preflen);
+    memcpy(driver_name + preflen, fname, nlen + 1);
+
+    if (gp_validate_path(mem, driver_name, access) != 0)
+        return gs_error_invalidfileaccess;
 
     /* First we try the open_printer method. */
     /* Note that the loop condition here ensures we don't

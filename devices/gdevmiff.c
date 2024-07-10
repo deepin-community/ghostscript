@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* MIFF (Magick Image File Format - native for ImageMagick) file format driver */
@@ -27,11 +27,14 @@
 static dev_proc_print_page(miff24_print_page);
 
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static const gx_device_procs miff24_procs =
-prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-                gx_default_rgb_map_rgb_color, gx_default_rgb_map_color_rgb);
+static void
+miff24_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb_bg(dev);
+}
+
 const gx_device_printer gs_miff24_device =
-prn_device(miff24_procs, "miff24",
+prn_device(miff24_initialize_device_procs, "miff24",
            DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
            X_DPI, Y_DPI,
            0, 0, 0, 0,		/* margins */

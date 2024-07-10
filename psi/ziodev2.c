@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -75,10 +75,12 @@ zgetdevparams(i_ctx_t *i_ctx_p)
         return_error(gs_error_undefined);
     stack_param_list_write(&list, &o_stack, NULL, iimemory);
     if ((code = gs_getdevparams(iodev, plist)) < 0) {
-        ref_stack_pop(&o_stack, list.count * 2);
+        pop(list.count * 2);
         return code;
     }
     pmark = ref_stack_index(&o_stack, list.count * 2);
+    if (pmark == NULL)
+        return_error(gs_error_stackunderflow);
     make_mark(pmark);
     return 0;
 }
@@ -114,7 +116,7 @@ zputdevparams(i_ctx_t *i_ctx_p)
     iparam_list_release(&list);
     if (code < 0)
         return code;
-    ref_stack_pop(&o_stack, list.count * 2 + 2);
+    pop(list.count * 2 + 2);
     return 0;
 }
 

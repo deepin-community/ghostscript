@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Default device bitmap copying implementation */
@@ -27,21 +27,6 @@
 #include "gxgetbit.h"
 #undef mdev
 #include "gxcpath.h"
-
-/* By default, implement tile_rectangle using strip_tile_rectangle. */
-int
-gx_default_tile_rectangle(gx_device * dev, const gx_tile_bitmap * tile,
-   int x, int y, int w, int h, gx_color_index color0, gx_color_index color1,
-                          int px, int py)
-{
-    gx_strip_bitmap tiles;
-
-    *(gx_tile_bitmap *) & tiles = *tile;
-    tiles.shift = tiles.rep_shift = 0;
-    tiles.num_planes = 1;
-    return (*dev_proc(dev, strip_tile_rectangle))
-        (dev, &tiles, x, y, w, h, color0, color1, px, py);
-}
 
 /* Implement copy_mono by filling lots of small rectangles. */
 /* This is very inefficient, but it works as a default. */
@@ -241,7 +226,7 @@ gx_default_copy_alpha_hl_color(gx_device * dev, const byte * data, int data_x,
                 gb_params.data[j] = 0;
             gb_params.data[k] = gb_buff + k * out_raster;
             code = dev_proc(dev, get_bits_rectangle) (dev, &gb_rect,
-                                                      &gb_params, 0);
+                                                      &gb_params);
             src_planes[k] = gb_params.data[k];
             if (code < 0) {
                 gs_free_object(mem, gb_buff, "copy_alpha_hl_color");
@@ -370,6 +355,7 @@ gx_default_copy_alpha(gx_device * dev, const byte * data, int data_x,
         int code = 0;
         gx_color_value color_cv[GX_DEVICE_COLOR_MAX_COMPONENTS];
         int ry, lx;
+        gs_int_rect rect;
 
         fit_copy(dev, data, data_x, raster, id, x, y, width, height);
         row = data;
@@ -381,6 +367,8 @@ gx_default_copy_alpha(gx_device * dev, const byte * data, int data_x,
             goto out;
         }
         (*dev_proc(dev, decode_color)) (dev, color, color_cv);
+        rect.p.x = 0;
+        rect.q.x = dev->width;
         for (ry = y; ry < y + height; row += raster, ++ry) {
             byte *line;
             int sx, rx;
@@ -389,10 +377,23 @@ gx_default_copy_alpha(gx_device * dev, const byte * data, int data_x,
             int l_dbit = 0;
             byte l_dbyte = ((l_dbit) ? (byte)(*(l_dptr) & (0xff00 >> (l_dbit))) : 0);
             int l_xprev = x;
+            gs_get_bits_params_t params;
 
-            code = (*dev_proc(dev, get_bits)) (dev, ry, lin, &line);
+            params.options = (GB_ALIGN_STANDARD |
+                              (GB_RETURN_COPY | GB_RETURN_POINTER) |
+                              GB_OFFSET_0 |
+                              GB_RASTER_STANDARD | GB_PACKING_CHUNKY |
+                              GB_COLORS_NATIVE | GB_ALPHA_NONE);
+            params.x_offset = 0;
+            params.raster = bitmap_raster(dev->width * dev->color_info.depth);
+            params.data[0] = lin;
+            rect.p.y = ry;
+            rect.q.y = ry+1;
+            code = (*dev_proc(dev, get_bits_rectangle))(dev, &rect,
+                                                        &params);
             if (code < 0)
                 break;
+            line = params.data[0];
             lx = x;
             for (sx = data_x, rx = x; sx < data_x + width; ++sx, ++rx) {
                 gx_color_index previous = gx_no_color_index;
@@ -530,17 +531,6 @@ gx_default_copy_alpha(gx_device * dev, const byte * data, int data_x,
 }
 
 int
-gx_no_copy_rop(gx_device * dev,
-             const byte * sdata, int sourcex, uint sraster, gx_bitmap_id id,
-               const gx_color_index * scolors,
-             const gx_tile_bitmap * texture, const gx_color_index * tcolors,
-               int x, int y, int width, int height,
-               int phase_x, int phase_y, gs_logical_operation_t lop)
-{
-    return_error(gs_error_unknownerror);	/* not implemented */
-}
-
-int
 gx_default_fill_mask(gx_device * orig_dev,
                      const byte * data, int dx, int raster, gx_bitmap_id id,
                      int x, int y, int w, int h,
@@ -644,27 +634,7 @@ gx_default_strip_tile_rectangle(gx_device * dev, const gx_strip_bitmap * tiles,
     }
 #endif
 
-    if (dev_proc(dev, tile_rectangle) != gx_default_tile_rectangle) {
-        if (shift == 0) {	/*
-                                 * Temporarily patch the tile_rectangle procedure in the
-                                 * device so we don't get into a recursion loop if the
-                                 * device has a tile_rectangle procedure that conditionally
-                                 * calls the strip_tile_rectangle procedure.
-                                 */
-            dev_proc_tile_rectangle((*tile_proc)) =
-                dev_proc(dev, tile_rectangle);
-            int code = 0;
-
-            set_dev_proc(dev, tile_rectangle, gx_default_tile_rectangle);
-            code = (*tile_proc)
-                (dev, (const gx_tile_bitmap *)tiles, x, y, w, h,
-                 color0, color1, px, py);
-            set_dev_proc(dev, tile_rectangle, tile_proc);
-            return code;
-        }
-        /* We should probably optimize this case too, for the benefit */
-        /* of window systems, but we don't yet. */
-    } {				/*
+    {				/*
                                  * Note: we can't do the following computations until after
                                  * the fit_fill_xy.
                                  */
@@ -794,12 +764,13 @@ gx_default_strip_tile_rectangle(gx_device * dev, const gx_strip_bitmap * tiles,
 }
 
 int
-gx_no_strip_copy_rop(gx_device * dev,
+gx_no_strip_copy_rop2(gx_device * dev,
              const byte * sdata, int sourcex, uint sraster, gx_bitmap_id id,
                      const gx_color_index * scolors,
            const gx_strip_bitmap * textures, const gx_color_index * tcolors,
                      int x, int y, int width, int height,
-                     int phase_x, int phase_y, gs_logical_operation_t lop)
+                     int phase_x, int phase_y, gs_logical_operation_t lop,
+                     uint planar_height)
 {
     return_error(gs_error_unknownerror);	/* not implemented */
 }

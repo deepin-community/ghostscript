@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -568,7 +568,7 @@ gs_cmap_ToUnicode_alloc(gs_memory_t *mem, int id, int num_codes, int key_size, i
         char sid[10], *pref = "aux-";
         int sid_len, pref_len = strlen(pref);
 
-        gs_sprintf(sid, "%d", id);
+        gs_snprintf(sid, sizeof(sid), "%d", id);
         sid_len = strlen(sid);
         name_len = pref_len + sid_len;
         cmap_name = gs_alloc_string(mem, name_len, "gs_cmap_ToUnicode_alloc");
@@ -586,6 +586,7 @@ gs_cmap_ToUnicode_alloc(gs_memory_t *mem, int id, int num_codes, int key_size, i
                                   "gs_cmap_ToUnicode_alloc");
     if (map == NULL) {
         gs_cmap_free(*ppcmap, mem);
+        *ppcmap = NULL;
         return_error(gs_error_VMerror);
     }
     memset(map, 0, (size_t)num_codes * (value_size + 2));

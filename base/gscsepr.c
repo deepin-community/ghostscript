@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -172,7 +172,7 @@ gx_install_Separation(gs_color_space * pcs, gs_gstate * pgs)
          */
         if (dev_proc(pgs->device, update_spot_equivalent_colors))
            code = dev_proc(pgs->device, update_spot_equivalent_colors)
-                                                        (pgs->device, pgs);
+                                                        (pgs->device, pgs, pcs);
     }
     return code;
 }
@@ -186,7 +186,7 @@ gx_set_overprint_Separation(const gs_color_space * pcs, gs_gstate * pgs)
     if (pcmap->use_alt_cspace)
         return gx_set_no_overprint(pgs);
     else {
-        gs_overprint_params_t   params;
+        gs_overprint_params_t params = { 0 };
 
         params.retain_any_comps = (((pgs->overprint && pgs->is_fill_color) ||
                                    (pgs->stroke_overprint && !pgs->is_fill_color)) &&
@@ -210,11 +210,13 @@ gx_set_overprint_Separation(const gs_color_space * pcs, gs_gstate * pgs)
 
 /* Finalize contents of a Separation color space. */
 static void
-gx_final_Separation(const gs_color_space * pcs)
+gx_final_Separation(gs_color_space * pcs)
 {
     rc_adjust_const(pcs->params.separation.map, -1,
                     "gx_adjust_Separation");
+    pcs->params.separation.map = NULL;
     gs_free_object(pcs->params.separation.mem, pcs->params.separation.sep_name, "gx_final_Separation");
+    pcs->params.separation.sep_name = NULL;
 }
 
 /* ------ Constructors/accessors ------ */
@@ -454,9 +456,11 @@ check_Separation_component_name(const gs_color_space * pcs, gs_gstate * pgs)
     pcolor_component_map->sep_type = pcs->params.separation.sep_type;
     /*
      * If this is a None or All separation then we do not need to
-     * use the alternate color space.
-     */
-    if (pcs->params.separation.sep_type != SEP_OTHER) {
+     * use the alternate color space.  Also if the named color
+     * profile supports the component, don't use the alternate
+     * tint transform. */
+    if (pcs->params.separation.sep_type != SEP_OTHER ||
+        gsicc_support_named_color(pcs, pgs)) {
         pcolor_component_map->use_alt_cspace = false;
         return 0;
     }

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -33,15 +33,6 @@
  * for more information about streams.
  */
 typedef struct stream_s stream;
-
-/* We really want our offset type to be 64 bit for large file support
- * but this allows a particular port to specficy a prefered data type
- */
-#ifdef GS_OFFSET_T
-typedef GS_OFFSET_T gs_offset_t;
-#else
-typedef int64_t gs_offset_t;
-#endif
 
 /*
  * A stream_state records the state specific to a given variety of stream.
@@ -115,35 +106,28 @@ typedef union stream_cursor_s {
  * This allows localized disabling of the "array bounds" compiler
  * warning for this one specific case.
  */
-static inline void
-stream_cursor_read_init(stream_cursor_read *r, const byte *buf, size_t length)
-{
 #ifdef __GNUC__
 #  pragma GCC diagnostic push
 #  pragma GCC diagnostic ignored "-Warray-bounds"
 #endif
+static inline void
+stream_cursor_read_init(stream_cursor_read *r, const byte *buf, size_t length)
+{
     /* starting pos for pointer is always one position back */
     r->ptr = buf - 1;
     r->limit = r->ptr + length;
-#ifdef __GNUC__
-#  pragma GCC diagnostic pop
-#endif
 }
 
 static inline void
 stream_cursor_write_init(stream_cursor_write *w, const byte *buf, size_t length)
 {
-#ifdef __GNUC__
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Warray-bounds"
-#endif
     /* starting pos for pointer is always one position back */
     w->ptr = (byte *)buf - 1;
     w->limit = (byte *)w->ptr + length;
+}
 #ifdef __GNUC__
 #  pragma GCC diagnostic pop
 #endif
-}
 
 /*
  * Define the prototype for the procedures known to both the generic

@@ -31,13 +31,8 @@
 
 #include "gdevprn.h"
 
-#if GS_VERSION_MAJOR >= 8
 #define lprn_dev_proc_image_out(proc)\
     void proc(gx_device_printer *, gp_file *, int, int, int, int)
-#else
-#define lprn_dev_proc_image_out(proc)\
-  void proc(P6(gx_device_printer *, gp_file *, int, int, int, int))
-#endif
 
 #define dev_proc_image_out(proc) lprn_dev_proc_image_out(proc)
 
@@ -118,9 +113,6 @@
         ),\
        lp_duplex_device_body_rest_(print_page_copies, image_out)\
 }
-
-#define lprn_procs(p_open, p_output_page, p_close)\
-  prn_params_procs(p_open, p_output_page, p_close, lprn_get_params, lprn_put_params)
 
 typedef struct _Bubble
 {

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -36,22 +36,14 @@ dev_proc_close_device(default_subclass_close_device);
 dev_proc_map_rgb_color(default_subclass_map_rgb_color);
 dev_proc_map_color_rgb(default_subclass_map_color_rgb);
 dev_proc_fill_rectangle(default_subclass_fill_rectangle);
-dev_proc_tile_rectangle(default_subclass_tile_rectangle);
 dev_proc_copy_mono(default_subclass_copy_mono);
 dev_proc_copy_color(default_subclass_copy_color);
-dev_proc_draw_line(default_subclass_draw_line);
-dev_proc_get_bits(default_subclass_get_bits);
 dev_proc_get_params(default_subclass_get_params);
 dev_proc_put_params(default_subclass_put_params);
 dev_proc_map_cmyk_color(default_subclass_map_cmyk_color);
-dev_proc_get_xfont_procs(default_subclass_get_xfont_procs);
-dev_proc_get_xfont_device(default_subclass_get_xfont_device);
-dev_proc_map_rgb_alpha_color(default_subclass_map_rgb_alpha_color);
 dev_proc_get_page_device(default_subclass_get_page_device);
 dev_proc_get_alpha_bits(default_subclass_get_alpha_bits);
 dev_proc_copy_alpha(default_subclass_copy_alpha);
-dev_proc_get_band(default_subclass_get_band);
-dev_proc_copy_rop(default_subclass_copy_rop);
 dev_proc_fill_path(default_subclass_fill_path);
 dev_proc_stroke_path(default_subclass_stroke_path);
 dev_proc_fill_mask(default_subclass_fill_mask);
@@ -59,19 +51,15 @@ dev_proc_fill_trapezoid(default_subclass_fill_trapezoid);
 dev_proc_fill_parallelogram(default_subclass_fill_parallelogram);
 dev_proc_fill_triangle(default_subclass_fill_triangle);
 dev_proc_draw_thin_line(default_subclass_draw_thin_line);
-dev_proc_begin_image(default_subclass_begin_image);
-dev_proc_image_data(default_subclass_image_data);
-dev_proc_end_image(default_subclass_end_image);
 dev_proc_strip_tile_rectangle(default_subclass_strip_tile_rectangle);
-dev_proc_strip_copy_rop(default_subclass_strip_copy_rop);
 dev_proc_get_clipping_box(default_subclass_get_clipping_box);
 dev_proc_begin_typed_image(default_subclass_begin_typed_image);
 dev_proc_get_bits_rectangle(default_subclass_get_bits_rectangle);
-dev_proc_map_color_rgb_alpha(default_subclass_map_color_rgb_alpha);
-dev_proc_create_compositor(default_subclass_create_compositor);
+dev_proc_composite(default_subclass_composite_front);
+dev_proc_composite(default_subclass_composite);
 dev_proc_get_hardware_params(default_subclass_get_hardware_params);
 dev_proc_text_begin(default_subclass_text_begin);
-dev_proc_finish_copydevice(default_subclass_finish_copydevice);
+dev_proc_initialize_device_procs(default_subclass_initialize_device_procs);
 dev_proc_begin_transparency_group(default_subclass_begin_transparency_group);
 dev_proc_end_transparency_group(default_subclass_end_transparency_group);
 dev_proc_begin_transparency_mask(default_subclass_begin_transparency_mask);
@@ -81,7 +69,6 @@ dev_proc_get_color_mapping_procs(default_subclass_get_color_mapping_procs);
 dev_proc_get_color_comp_index(default_subclass_get_color_comp_index);
 dev_proc_encode_color(default_subclass_encode_color);
 dev_proc_decode_color(default_subclass_decode_color);
-dev_proc_pattern_manage(default_subclass_pattern_manage);
 dev_proc_fill_rectangle_hl_color(default_subclass_fill_rectangle_hl_color);
 dev_proc_include_color_space(default_subclass_include_color_space);
 dev_proc_fill_linear_color_scanline(default_subclass_fill_linear_color_scanline);
@@ -103,7 +90,11 @@ dev_proc_copy_alpha_hl_color(default_subclass_copy_alpha_hl_color);
 dev_proc_process_page(default_subclass_process_page);
 dev_proc_transform_pixel_region(default_subclass_transform_pixel_region);
 dev_proc_fill_stroke_path(default_subclass_fill_stroke_path);
-
+dev_proc_lock_pattern(default_subclass_lock_pattern);
+dev_page_proc_install(default_subclass_install);
+dev_page_proc_begin_page(default_subclass_begin_page);
+dev_page_proc_end_page(default_subclass_end_page);
 
 void default_subclass_finalize(const gs_memory_t *cmem, void *vptr);
-#endif /* gdev_obj_filter_INCLUDED */
+
+#endif /* gdev_default_subclass_INCLUDED */

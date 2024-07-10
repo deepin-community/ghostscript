@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -47,22 +47,34 @@ struct gx_device_tfax_s {
                                 /* The type and range of FillOrder follows TIFF 6 spec  */
     bool  BigEndian;            /* true = big endian; false = little endian*/
     bool UseBigTIFF;
-    uint16 Compression;         /* same values as TIFFTAG_COMPRESSION */
+    uint16_t Compression;         /* same values as TIFFTAG_COMPRESSION */
     bool write_datetime;
     TIFF *tif;                  /* For TIFF output only */
 };
 typedef struct gx_device_tfax_s gx_device_tfax;
 
 /* Define procedures that adjust the paper size. */
-static const gx_device_procs gdev_tfax_std_procs =
 /* FIXME: From initial analysis this is NOT safe for bg_printing, but might be fixable */
-    prn_params_procs(tfax_open, gdev_prn_output_page_seekable, tfax_close,
-                     tfax_get_params, tfax_put_params);
+static void
+tfax_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
+
+    set_dev_proc(dev, open_device, tfax_open);
+    set_dev_proc(dev, output_page, gdev_prn_output_page_seekable);
+    set_dev_proc(dev, close_device, tfax_close);
+    set_dev_proc(dev, get_params, tfax_get_params);
+    set_dev_proc(dev, put_params, tfax_put_params);
+}
+
 
 #define TFAX_DEVICE(dname, print_page, compr)\
 {\
-    FAX_DEVICE_BODY(gx_device_tfax, gdev_tfax_std_procs, dname, print_page),\
-    TIFF_DEFAULT_STRIP_SIZE     /* strip size byte count */,\
+    FAX_DEVICE_BODY(gx_device_tfax, tfax_initialize_device_procs, dname, print_page),\
+    /* We want Fax output to be contained in one strip because apparently 'many' fax readers have\
+     * problems reading TIFF images in strips (see commit 0abc209b8460396cdece8fc824c053a2662c4cbf\
+     */\
+    0     /* strip size byte count */,\
     ARCH_IS_BIG_ENDIAN          /* default to native endian (i.e. use big endian iff the platform is so*/,\
     false,                      /* default to not using bigtiff */\
     compr,\
@@ -151,7 +163,7 @@ tfax_put_params(gx_device * dev, gs_param_list * plist)
     bool big_endian = tfdev->BigEndian;
     bool usebigtiff = tfdev->UseBigTIFF;
     bool write_datetime = tfdev->write_datetime;
-    uint16 compr = tfdev->Compression;
+    uint16_t compr = tfdev->Compression;
     gs_param_string comprstr;
 
     switch (code = param_read_long(plist, (param_name = "MaxStripSize"), &mss)) {
@@ -258,7 +270,7 @@ static dev_proc_print_page(tifflzw_print_page);
 static dev_proc_print_page(tiffpack_print_page);
 
 const gx_device_tfax gs_tifflzw_device = {
-    prn_device_std_body(gx_device_tfax, gdev_tfax_std_procs, "tifflzw",
+    prn_device_std_body(gx_device_tfax, tfax_initialize_device_procs, "tifflzw",
                         DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                         X_DPI, Y_DPI,
                         0, 0, 0, 0, /* margins */
@@ -274,7 +286,7 @@ const gx_device_tfax gs_tifflzw_device = {
 };
 
 const gx_device_tfax gs_tiffpack_device = {
-    prn_device_std_body(gx_device_tfax, gdev_tfax_std_procs, "tiffpack",
+    prn_device_std_body(gx_device_tfax, tfax_initialize_device_procs, "tiffpack",
                         DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
                         X_DPI, Y_DPI,
                         0, 0, 0, 0, /* margins */

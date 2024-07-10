@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -83,6 +83,7 @@ gs_glyph_cache *
 gs_glyph_cache__alloc(gs_font_type42 *pfont, stream *s,
                         get_glyph_data_from_file read_data)
 {
+    int code;
     gs_memory_t *mem = pfont->memory->stable_memory;
     gs_glyph_cache *gdcache = (gs_glyph_cache *)gs_alloc_struct(mem,
             gs_glyph_cache, &st_glyph_cache, "gs_glyph_cache");
@@ -99,7 +100,11 @@ gs_glyph_cache__alloc(gs_font_type42 *pfont, stream *s,
     */
     gdcache->memory = mem;
     gdcache->read_data = read_data;
-    gs_font_notify_register((gs_font *)pfont, gs_glyph_cache__release, (void *)gdcache);
+    code = gs_font_notify_register((gs_font *)pfont, gs_glyph_cache__release, (void *)gdcache);
+    if (code < 0) {
+        gs_free_object(mem, gdcache, "gs_glyph_cache__alloc");
+        gdcache = NULL;
+    }
     return gdcache;
 }
 

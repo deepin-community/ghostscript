@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -53,12 +53,6 @@ public_st_device_printer();
 
 /* ---------------- Standard device procedures ---------------- */
 
-/* Define the standard printer procedure vector. */
-const gx_device_procs prn_std_procs =
-    prn_procs(gdev_prn_open, gdev_prn_output_page, gdev_prn_close);
-const gx_device_procs prn_bg_procs =
-    prn_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close);
-
 /* Forward references */
 int gdev_prn_maybe_realloc_memory(gx_device_printer *pdev,
                                   gdev_space_params *old_space,
@@ -70,6 +64,7 @@ gdev_prn_output_page_aux(gx_device * pdev, int num_copies, int flush, bool seeka
 
 extern dev_proc_open_device(pattern_clist_open_device);
 extern dev_proc_open_device(clist_open);
+extern dev_proc_close_device(clist_close);
 
 /* The function run in a background thread */
 static void prn_print_page_in_background(void *data);
@@ -230,10 +225,11 @@ gdev_prn_tear_down(gx_device *pdev, byte **the_memory)
 
     if (PRINTER_IS_CLIST(ppdev)) {
         /* Close cmd list device & point to the storage */
-        (*gs_clist_device_procs.close_device)( (gx_device *)pcldev );
+        clist_close( (gx_device *)pcldev );
         *the_memory = ppdev->buf;
         ppdev->buf = 0;
         ppdev->buffer_space = 0;
+        pmemdev->base = 0;		/* in case finalize tries to free this */
         was_command_list = true;
 
         prn_finish_bg_print(ppdev);
@@ -282,6 +278,7 @@ gdev_prn_allocate(gx_device *pdev, gdev_space_params *new_space_params,
     bool save_is_command_list = false; /* Quiet compiler */
     bool size_ok = 0;
     int ecode = 0;
+    int code;
     int pass;
     gs_memory_t *buffer_memory =
         (ppdev->buffer_memory == 0 ? pdev->memory->non_gc_memory :
@@ -305,8 +302,8 @@ gdev_prn_allocate(gx_device *pdev, gdev_space_params *new_space_params,
     /* Re/allocate memory */
     ppdev->orig_procs = pdev->procs;
     for ( pass = 1; pass <= (reallocate ? 2 : 1); ++pass ) {
-        ulong mem_space;
-        ulong pdf14_trans_buffer_size = 0;
+        size_t mem_space;
+        size_t pdf14_trans_buffer_size = 0;
         byte *base = 0;
         bool bufferSpace_is_default = false;
         gdev_space_params space_params;
@@ -335,10 +332,15 @@ gdev_prn_allocate(gx_device *pdev, gdev_space_params *new_space_params,
         memset(ppdev->skip, 0, sizeof(ppdev->skip));
         size_ok = ppdev->printer_procs.buf_procs.size_buf_device
             (&buf_space, pdev, NULL, pdev->height, false) >= 0;
+
+        /* Make sure we won't overflow a size_t, if we do then we'll use a clist below */
+        if (ARCH_MAX_SIZE_T - buf_space.bits < buf_space.line_ptrs)
+            size_ok = 0;
+
         mem_space = buf_space.bits + buf_space.line_ptrs;
         if (ppdev->page_uses_transparency) {
             pdf14_trans_buffer_size = (ESTIMATED_PDF14_ROW_SPACE(max(1, pdev->width), pdev->color_info.num_components, deep ? 16 : 8) >> 3);
-            if (new_height < (max_ulong - mem_space) / pdf14_trans_buffer_size) {
+            if (new_height < (max_size_t - mem_space) / pdf14_trans_buffer_size) {
                 pdf14_trans_buffer_size *= pdev->height;
             } else {
                 size_ok = 0;
@@ -379,8 +381,9 @@ gdev_prn_allocate(gx_device *pdev, gdev_space_params *new_space_params,
             */
             if (reallocate) {
                 gs_free_object(buffer_memory, the_memory, "printer_buffer");
+                the_memory = NULL;
             }
-            base = gs_alloc_bytes(buffer_memory, (uint)mem_space, "printer_buffer");
+            base = gs_alloc_bytes(buffer_memory, mem_space, "printer_buffer");
             if (base == 0)
                 is_command_list = true;
             else
@@ -435,8 +438,12 @@ gdev_prn_allocate(gx_device *pdev, gdev_space_params *new_space_params,
             if (ecode == 0)
                 ecode = code;
 
-            if (code >= 0 || (reallocate && pass > 1))
-                ppdev->procs = gs_clist_device_procs;
+            if (code >= 0 || (reallocate && pass > 1)) {
+                ppdev->initialize_device_procs = clist_initialize_device_procs;
+                /* Hacky - we know this can't fail. */
+                (void)ppdev->initialize_device_procs((gx_device *)ppdev);
+                gx_device_fill_in_procs((gx_device *)ppdev);
+            }
         } else {
             /* Render entirely in memory. */
             gx_device *bdev = (gx_device *)pmemdev;
@@ -455,6 +462,8 @@ gdev_prn_allocate(gx_device *pdev, gdev_space_params *new_space_params,
                 gs_free_object(buffer_memory, base, "printer buffer");
                 pdev->procs = ppdev->orig_procs;
                 ppdev->orig_procs.open_device = 0;	/* prevent uninit'd restore of procs */
+                gs_free_object(pdev->memory->non_gc_memory, ppdev->bg_print, "prn bg_print");
+                ppdev->bg_print = NULL;
                 return_error(code);
             }
         }
@@ -475,14 +484,10 @@ gdev_prn_allocate(gx_device *pdev, gdev_space_params *new_space_params,
         COPY_PROC(get_params);
         COPY_PROC(put_params);
         COPY_PROC(map_cmyk_color);
-        COPY_PROC(get_xfont_procs);
-        COPY_PROC(get_xfont_device);
-        COPY_PROC(map_rgb_alpha_color);
         /* All printers are page devices, even if they didn't use the */
         /* standard macros for generating their procedure vectors. */
         set_dev_proc(ppdev, get_page_device, gx_page_device_get_page_device);
         COPY_PROC(get_clipping_box);
-        COPY_PROC(map_color_rgb_alpha);
         COPY_PROC(get_hardware_params);
         COPY_PROC(get_color_mapping_procs);
         COPY_PROC(get_color_comp_index);
@@ -496,14 +501,20 @@ gdev_prn_allocate(gx_device *pdev, gdev_space_params *new_space_params,
 #undef COPY_PROC
         /* If using a command list, already opened the device. */
         if (is_command_list)
-            return ecode;
+            code = ecode;
         else
-            return (*dev_proc(pdev, open_device))(pdev);
+            /* If this open_device fails, do we need to free everything? */
+            code = (*dev_proc(pdev, open_device))(pdev);
     } else {
         pdev->procs = ppdev->orig_procs;
         ppdev->orig_procs.open_device = 0;	/* prevent uninit'd restore of procs */
-        return ecode;
+        code = ecode;
     }
+    if (code < 0) {
+          gs_free_object(pdev->memory->non_gc_memory, ppdev->bg_print, "prn bg_print");
+          ppdev->bg_print = NULL;
+    }
+    return code;
 }
 
 int
@@ -584,8 +595,9 @@ gdev_prn_get_param(gx_device *dev, char *Param, void *list)
     }
     if (strcmp(Param, "BandListStorage") == 0) {
         gs_param_string bls;
+        gs_lib_ctx_core_t *core = dev->memory->gs_lib_ctx->core;
         /* Force the default to 'memory' if clist file I/O is not included in this build */
-        if (clist_io_procs_file_global == NULL)
+        if (core->clist_io_procs_file == NULL)
             ppdev->BLS_force_memory = true;
         if (ppdev->BLS_force_memory) {
             bls.data = (byte *)"memory";
@@ -633,6 +645,7 @@ gdev_prn_get_params(gx_device * pdev, gs_param_list * plist)
     gs_param_string bls;
     gs_param_string saved_pages;
     bool pageneutralcolor = false;
+    gs_lib_ctx_core_t *core = pdev->memory->gs_lib_ctx->core;
 
     if (pdev->icc_struct != NULL)
         pageneutralcolor = pdev->icc_struct->pageneutralcolor;
@@ -650,7 +663,7 @@ gdev_prn_get_params(gx_device * pdev, gs_param_list * plist)
         return code;
 
     /* Force the default to 'memory' if clist file I/O is not included in this build */
-    if (clist_io_procs_file_global == NULL)
+    if (core->clist_io_procs_file == NULL)
         ppdev->BLS_force_memory = true;
     if (ppdev->BLS_force_memory) {
         bls.data = (byte *)"memory";
@@ -713,6 +726,7 @@ gdev_prn_put_params(gx_device * pdev, gs_param_list * plist)
     gs_param_dict mdict;
     gs_param_string saved_pages;
     bool pageneutralcolor = false;
+    gs_lib_ctx_core_t *core = ppdev->memory->gs_lib_ctx->core;
 
     memset(&saved_pages, 0, sizeof(gs_param_string));
     save_sp = ppdev->space_params;
@@ -755,7 +769,7 @@ gdev_prn_put_params(gx_device * pdev, gs_param_list * plist)
         case 0:
             /* Only accept 'file' if the file procs are include in the build */
             if ((bls.size > 1) && (bls.data[0] == 'm' ||
-                 (clist_io_procs_file_global != NULL && bls.data[0] == 'f')))
+                 (core->clist_io_procs_file != NULL && bls.data[0] == 'f')))
                 break;
             /* fall through */
         default:
@@ -1188,11 +1202,18 @@ gx_render_plane_init(gx_render_plane_t *render_plane, const gx_device *dev,
     int num_planes = dev->color_info.num_components;
     int plane_depth = dev->color_info.depth / num_planes;
 
-    if (index < 0 || index >= num_planes)
+    if (index < -1 || index >= num_planes)
         return_error(gs_error_rangecheck);
     render_plane->index = index;
-    render_plane->depth = plane_depth;
-    render_plane->shift = plane_depth * (num_planes - 1 - index);
+    if (index == -1) {
+        /* No plane, chunky results required. */
+        render_plane->depth = dev->color_info.depth;
+        render_plane->shift = 0;
+    } else {
+        /* A single plane */
+        render_plane->depth = plane_depth;
+        render_plane->shift = plane_depth * (num_planes - 1 - index);
+    }
     return 0;
 }
 
@@ -1255,6 +1276,7 @@ gdev_prn_open_printer_seekable(gx_device *pdev, bool binary_mode,
               && !IS_LIBCTX_STDERR(pdev->memory, gp_get_file(ppdev->file))) {
 
                 code = gx_device_close_output_file(pdev, ppdev->fname, ppdev->file);
+                ppdev->file = NULL;
                 if (code < 0)
                     return code;
             }
@@ -1380,15 +1402,15 @@ gx_default_create_buf_device(gx_device **pbdev, gx_device *target, int y,
         depth = render_plane->depth;
     else {
         depth = target->color_info.depth;
-        if (target->is_planar)
-            depth /= target->color_info.num_components;
+        if (target->num_planar_planes)
+            depth /= target->num_planar_planes;
     }
 
     mdproto = gdev_mem_device_for_bits(depth);
     if (mdproto == 0)
         return_error(gs_error_rangecheck);
     if (mem) {
-        mdev = gs_alloc_struct(mem, gx_device_memory, &st_device_memory,
+        mdev = gs_alloc_struct_immovable(mem, gx_device_memory, &st_device_memory,
                                "create_buf_device");
         if (mdev == 0)
             return_error(gs_error_VMerror);
@@ -1399,6 +1421,9 @@ gx_default_create_buf_device(gx_device **pbdev, gx_device *target, int y,
         dev_t_proc_dev_spec_op((*orig_dso), gx_device) = dev_proc(mdev, dev_spec_op);
         /* The following is a special hack for setting up printer devices. */
         assign_dev_procs(mdev, mdproto);
+        mdev->initialize_device_procs = mdproto->initialize_device_procs;
+        mdev->initialize_device_procs((gx_device *)mdev);
+        /* We know mdev->procs.initialize_device is NULL! */
         /* Do not override the dev_spec_op! */
         dev_proc(mdev, dev_spec_op) = orig_dso;
         check_device_separable((gx_device *)mdev);
@@ -1415,14 +1440,22 @@ gx_default_create_buf_device(gx_device **pbdev, gx_device *target, int y,
 #endif
         gx_device_fill_in_procs((gx_device *)mdev);
     } else {
-        gs_make_mem_device(mdev, mdproto, mem, (color_usage == NULL ? 1 : 0),
-                           target);
+        gs_devn_params* pdevn_params;
+
+        gs_make_mem_device(mdev, mdproto, mem, (color_usage == NULL ? 1 : 0), target);
+        /* mem devices may need to refer to the target's devn_params struct */
+        /* if the device has separations already defined (by SeparationOrderNames), we   */
+        /* need to use them so the colorants are in the same order as the target device. */
+        pdevn_params = dev_proc(target, ret_devn_params)(target);
+        if (pdevn_params != NULL) {
+            mdev->procs.ret_devn_params = gx_forward_ret_devn_params;
+        }
     }
     mdev->width = target->width;
     mdev->band_y = y;
     mdev->log2_align_mod = target->log2_align_mod;
     mdev->pad = target->pad;
-    mdev->is_planar = target->is_planar;
+    mdev->num_planar_planes = target->num_planar_planes;
     /*
      * The matrix in the memory device is irrelevant,
      * because all we do with the device is call the device-level
@@ -1471,8 +1504,9 @@ gx_default_size_buf_device(gx_device_buf_space_t *space, gx_device *target,
     mdev.color_info.depth =
         (render_plane && render_plane->index >= 0 ? render_plane->depth :
          target->color_info.depth);
+    mdev.color_info.num_components = target->color_info.num_components;
     mdev.width = target->width;
-    mdev.is_planar = target->is_planar;
+    mdev.num_planar_planes = target->num_planar_planes;
     mdev.pad = target->pad;
     mdev.log2_align_mod = target->log2_align_mod;
     if (gdev_mem_bits_size(&mdev, target->width, height, &(space->bits)) < 0)
@@ -1509,8 +1543,8 @@ gx_default_setup_buf_device(gx_device *bdev, byte *buffer, int raster,
          */
         ptrs = (byte **)
             gs_alloc_byte_array(mdev->memory,
-                                (mdev->is_planar ?
-                                 full_height * mdev->color_info.num_components :
+                                (mdev->num_planar_planes ?
+                                 full_height * mdev->num_planar_planes :
                                  setup_height),
                                 sizeof(byte *), "setup_buf_device");
         if (ptrs == 0)
@@ -1580,7 +1614,7 @@ gdev_prn_get_lines(gx_device_printer *pdev, int y, int height,
     params.x_offset = 0;
     params.raster = bytes_per_line;
     code = dev_proc(pdev, get_bits_rectangle)
-        ((gx_device *)pdev, &rect, &params, NULL);
+        ((gx_device *)pdev, &rect, &params);
     if (code < 0 && actual_buffer) {
         /*
          * RETURN_POINTER might not be implemented for this
@@ -1589,7 +1623,7 @@ gdev_prn_get_lines(gx_device_printer *pdev, int y, int height,
         params.options &= ~(GB_RETURN_POINTER | GB_RASTER_ALL);
         params.options |= GB_RETURN_COPY | GB_RASTER_SPECIFIED;
         code = dev_proc(pdev, get_bits_rectangle)
-            ((gx_device *)pdev, &rect, &params, NULL);
+            ((gx_device *)pdev, &rect, &params);
     }
     if (code < 0)
         return code;
@@ -1604,14 +1638,35 @@ gdev_prn_get_lines(gx_device_printer *pdev, int y, int height,
 int
 gdev_prn_get_bits(gx_device_printer * pdev, int y, byte * str, byte ** actual_data)
 {
-    int code = (*dev_proc(pdev, get_bits)) ((gx_device *) pdev, y, str, actual_data);
+    int code;
     uint line_size = gdev_prn_raster(pdev);
     int last_bits = -(pdev->width * pdev->color_info.depth) & 7;
+    gs_int_rect rect;
+    gs_get_bits_params_t params;
 
+    rect.p.x = 0;
+    rect.p.y = y;
+    rect.q.x = pdev->width;
+    rect.q.y = y+1;
+
+    params.options = (GB_ALIGN_ANY |
+                      GB_RETURN_COPY |
+                      GB_OFFSET_0 |
+                      GB_RASTER_STANDARD | GB_PACKING_CHUNKY |
+                      GB_COLORS_NATIVE | GB_ALPHA_NONE);
+    if (actual_data)
+        params.options |=  GB_RETURN_POINTER;
+    params.x_offset = 0;
+    params.raster = bitmap_raster(pdev->width * pdev->color_info.depth);
+    params.data[0] = str;
+    code = (*dev_proc(pdev, get_bits_rectangle))((gx_device *)pdev, &rect,
+                                                 &params);
     if (code < 0)
         return code;
+    if (actual_data)
+        *actual_data = params.data[0];
     if (last_bits != 0) {
-        byte *dest = (actual_data != 0 ? *actual_data : str);
+        byte *dest = (actual_data != NULL ? *actual_data : str);
 
         dest[line_size - 1] &= 0xff << last_bits;
     }
@@ -1625,10 +1680,13 @@ int
 gdev_prn_copy_scan_lines(gx_device_printer * pdev, int y, byte * str, uint size)
 {
     uint line_size = gdev_prn_raster(pdev);
-    int requested_count = size / line_size;
+    int requested_count = 0;
     int i, count;
     int code = 0;
     byte *dest = str;
+
+    if (line_size != 0)
+        requested_count = size / line_size;
 
     /* Clamp count between 0 and remaining lines on page so we don't return < 0 */
     /* unless gdev_prn_get_bits returns an error */
@@ -1706,4 +1764,149 @@ dmprintf4(pdev->memory, "w=%d/%d, h=%d/%d\n", old_width, new_width, old_height, 
         /* band files may not be open. */
     }
     return code;
+}
+
+void
+gdev_prn_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, open_device, gdev_prn_open);
+    set_dev_proc(dev, close_device, gdev_prn_close);
+    set_dev_proc(dev, output_page, gdev_prn_output_page);
+    set_dev_proc(dev, get_params, gdev_prn_get_params);
+    set_dev_proc(dev, put_params, gdev_prn_put_params);
+    set_dev_proc(dev, get_page_device, gx_page_device_get_page_device);
+    set_dev_proc(dev, dev_spec_op, gdev_prn_dev_spec_op);
+    set_dev_proc(dev, map_rgb_color, gdev_prn_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gdev_prn_map_color_rgb);
+    set_dev_proc(dev, encode_color, gdev_prn_map_rgb_color);
+    set_dev_proc(dev, decode_color, gdev_prn_map_color_rgb);
+}
+
+void gdev_prn_initialize_device_procs_bg(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, output_page, gdev_prn_bg_output_page);
+}
+
+void
+gdev_prn_initialize_device_procs_mono(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, gdev_prn_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gdev_prn_map_color_rgb);
+    set_dev_proc(dev, encode_color, gdev_prn_map_rgb_color);
+    set_dev_proc(dev, decode_color, gdev_prn_map_color_rgb);
+}
+
+void gdev_prn_initialize_device_procs_mono_bg(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_mono(dev);
+
+    set_dev_proc(dev, output_page, gdev_prn_bg_output_page);
+}
+
+void
+gdev_prn_initialize_device_procs_gray(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, gx_default_gray_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gx_default_gray_map_color_rgb);
+    set_dev_proc(dev, encode_color, gx_default_gray_encode_color);
+    set_dev_proc(dev, decode_color, gx_default_gray_decode_color);
+}
+
+void gdev_prn_initialize_device_procs_gray_bg(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_gray(dev);
+
+    set_dev_proc(dev, output_page, gdev_prn_bg_output_page);
+}
+
+void gdev_prn_initialize_device_procs_rgb(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, gx_default_rgb_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gx_default_rgb_map_color_rgb);
+    set_dev_proc(dev, encode_color, gx_default_rgb_map_rgb_color);
+    set_dev_proc(dev, decode_color, gx_default_rgb_map_color_rgb);
+}
+
+void gdev_prn_initialize_device_procs_rgb_bg(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_rgb(dev);
+
+    set_dev_proc(dev, output_page, gdev_prn_bg_output_page);
+}
+
+void
+gdev_prn_initialize_device_procs_gray8(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_rgb_color, gx_default_8bit_map_gray_color);
+    set_dev_proc(dev, map_color_rgb, gx_default_8bit_map_color_gray);
+    set_dev_proc(dev, encode_color, gx_default_8bit_map_gray_color);
+    set_dev_proc(dev, decode_color, gx_default_8bit_map_color_gray);
+}
+
+void gdev_prn_initialize_device_procs_gray8_bg(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_gray8(dev);
+
+    set_dev_proc(dev, output_page, gdev_prn_bg_output_page);
+}
+
+void gdev_prn_initialize_device_procs_cmyk1(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_cmyk_color, cmyk_1bit_map_cmyk_color);
+    set_dev_proc(dev, map_color_rgb, cmyk_1bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, cmyk_1bit_map_cmyk_color);
+    set_dev_proc(dev, decode_color, cmyk_1bit_map_color_cmyk);
+}
+
+void gdev_prn_initialize_device_procs_cmyk1_bg(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_cmyk1(dev);
+
+    set_dev_proc(dev, output_page, gdev_prn_bg_output_page);
+}
+
+void gdev_prn_initialize_device_procs_cmyk8(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_cmyk_color, cmyk_8bit_map_cmyk_color);
+    set_dev_proc(dev, map_color_rgb, cmyk_8bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, cmyk_8bit_map_cmyk_color);
+    set_dev_proc(dev, decode_color, cmyk_8bit_map_color_cmyk);
+}
+
+void gdev_prn_initialize_device_procs_cmyk8_bg(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_cmyk8(dev);
+
+    set_dev_proc(dev, output_page, gdev_prn_bg_output_page);
+}
+
+void gdev_prn_initialize_device_procs_cmyk16(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, map_cmyk_color, cmyk_16bit_map_cmyk_color);
+    set_dev_proc(dev, map_color_rgb, cmyk_16bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, cmyk_16bit_map_cmyk_color);
+    set_dev_proc(dev, decode_color, cmyk_16bit_map_color_cmyk);
+}
+
+void gdev_prn_initialize_device_procs_cmyk16_bg(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_cmyk16(dev);
+
+    set_dev_proc(dev, output_page, gdev_prn_bg_output_page);
 }

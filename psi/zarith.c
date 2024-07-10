@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -37,6 +37,7 @@ zop_add(i_ctx_t *i_ctx_p)
     register os_ptr op = osp;
     float result;
 
+    check_op(2);
     switch (r_type(op)) {
     default:
         return_op_typecheck(op);
@@ -123,6 +124,7 @@ zdiv(i_ctx_t *i_ctx_p)
     os_ptr op1 = op - 1;
     float result;
 
+    check_op(2);
     /* We can't use the non_int_cases macro, */
     /* because we have to check explicitly for op == 0. */
     switch (r_type(op)) {
@@ -333,6 +335,7 @@ zop_sub(i_ctx_t *i_ctx_p)
 {
     register os_ptr op = osp;
 
+    check_op(2);
     switch (r_type(op)) {
     default:
         return_op_typecheck(op);
@@ -400,6 +403,7 @@ zidiv(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(2);
     check_type(*op, t_integer);
     check_type(op[-1], t_integer);
     if (sizeof(ps_int) && gs_currentcpsimode(imemory)) {
@@ -428,9 +432,10 @@ zmod(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(2);
     check_type(*op, t_integer);
     check_type(op[-1], t_integer);
-    if (op->value.intval == 0)
+    if (op->value.intval == 0 || op[-1].value.intval == MIN_PS_INT)
         return_error(gs_error_undefinedresult);
     op[-1].value.intval %= op->value.intval;
     pop(1);
@@ -443,6 +448,7 @@ zneg(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     switch (r_type(op)) {
         default:
             return_op_typecheck(op);
@@ -472,6 +478,7 @@ zabs(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     switch (r_type(op)) {
         default:
             return_op_typecheck(op);
@@ -493,6 +500,7 @@ zceiling(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     switch (r_type(op)) {
         default:
             return_op_typecheck(op);
@@ -509,6 +517,7 @@ zfloor(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     switch (r_type(op)) {
         default:
             return_op_typecheck(op);
@@ -525,6 +534,7 @@ zround(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     switch (r_type(op)) {
         default:
             return_op_typecheck(op);
@@ -541,6 +551,7 @@ ztruncate(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     switch (r_type(op)) {
         default:
             return_op_typecheck(op);
@@ -562,6 +573,7 @@ zbitadd(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(2);
     check_type(*op, t_integer);
     check_type(op[-1], t_integer);
     op[-1].value.intval += op->value.intval;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -346,7 +346,7 @@ type1_cis_get_metrics(const gs_type1_state * pcis, double psbw[4])
  * This is exported only for the benefit of font copying.
  */
 int
-gs_type1_piece_codes(/*const*/ gs_font_type1 *pfont,
+gs_type1_piece_codes(/*const*/ gs_font_type1 *pfont, /* lgtm[cpp/use-of-goto] */
                      const gs_glyph_data_t *pgd, gs_char *chars)
 {
     gs_type1_data *const pdata = &pfont->data;
@@ -459,6 +459,7 @@ gs_type1_piece_codes(/*const*/ gs_font_type1 *pfont,
             else {
                 c = fixed2int_var(*csp) + pdata->gsubrNumberBias;
             }
+            CS_CHECK_IPSTACK(ipsp + 1, ipstack);
             code = pdata->procs.subr_data
                 (pfont, c, true, &ipsp[1].cs_data);
             if (code < 0)
@@ -479,6 +480,7 @@ gs_type1_piece_codes(/*const*/ gs_font_type1 *pfont,
             else {
                 c = fixed2int_var(*csp) + pdata->subroutineNumberBias;
             }
+            CS_CHECK_IPSTACK(ipsp + 1, ipstack);
             code = pdata->procs.subr_data
                 (pfont, c, false, &ipsp[1].cs_data);
             if (code < 0)
@@ -498,6 +500,7 @@ c_return:
             else
                 call_depth--;
             gs_glyph_data_free(&ipsp->cs_data, "gs_type1_piece_codes");
+            CS_CHECK_IPSTACK(ipsp, ipstack);
             --ipsp;
             if (ipsp < ipstack)
                 return (gs_note_error(gs_error_invalidfont));
@@ -545,21 +548,26 @@ c_return:
             case ce1_seac:
                 goto do_seac;
             case ce1_callothersubr:
-                switch (fixed2int_var(*csp)) {
-                default:
-                    goto out;
-                case 3:
-                    if (csp >= &(cstack[1]))
-                        csp -= 2;
-                    goto top;
-                case 12:
-                case 13:
-                case 14:
-                case 15:
-                case 16:
-                case 17:
-                case 18:
-                    cnext;
+                if (CS_CHECK_CSTACK_BOUNDS(csp, cstack)) {
+                    switch (fixed2int_var(*csp)) {
+                    default:
+                        goto out;
+                    case 3:
+                        if (csp >= &(cstack[1]))
+                            csp -= 2;
+                        goto top;
+                    case 12:
+                    case 13:
+                    case 14:
+                    case 15:
+                    case 16:
+                    case 17:
+                    case 18:
+                        cnext;
+                    }
+                }
+                else {
+                    return_error(gs_error_invalidfont);
                 }
             }
         }

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Canon LBP-8II and LIPS III driver */
@@ -48,15 +48,17 @@ static dev_proc_print_page(lips3_print_page);
 #endif
 
 const gx_device_printer far_data gs_lbp8_device =
-  prn_device(prn_bg_procs, "lbp8",	/* The print_page proc is compatible with allowing bg printing */
+  /* The print_page proc is compatible with allowing bg printing */
+  prn_device(gdev_prn_initialize_device_procs_mono_bg, "lbp8",
         DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
         X_DPI, Y_DPI,
         0.16, 0.2, 0.32, 0.21,		/* margins: left, bottom, right, top */
         1, lbp8_print_page);
 
 #ifdef NOCONTRIB
+/* The print_page proc is compatible with allowing bg printing */
 const gx_device_printer far_data gs_lips3_device =
-  prn_device(prn_bg_procs, "lips3",	/* The print_page proc is compatible with allowing bg printing */
+  prn_device(gdev_prn_initialize_device_procs_mono_bg, "lips3",
         82,				/* width_10ths, 8.3" */
         117,				/* height_10ths, 11.7" */
         X_DPI, Y_DPI,

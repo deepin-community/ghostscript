@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2023 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 # of the license contained in the file LICENSE in this distribution.
 #
 # Refer to licensing information at http://www.artifex.com or contact
-# Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-# CA 94945, U.S.A., +1(415)492-9861, for further information.
+# Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+# CA 94129, USA, for further information.
 #
 # Partial makefile common to all Unix and Desqview/X configurations,
 # containing the `install' targets.
@@ -146,29 +146,17 @@ install-resdata1 :
 install-iccdata1 :
 
 # install html documentation
-DOC_PAGES=index.html API.htm C-style.htm Develop.htm DLL.htm Fonts.htm Install.htm Lib.htm \
-          News.htm Psfiles.htm Readme.htm sample_downscale_device.htm Source.htm \
-          thirdparty.htm Use.htm WhatIsGS.htm Commprod.htm Deprecated.htm \
-          Devices.htm Drivers.htm History9.htm Language.htm Make.htm Ps2epsi.htm \
-          Ps-style.htm Release.htm SavedPages.htm subclass.htm Unix-lpr.htm \
-          VectorDevices.htm gs-style.css index.js pscet_status.txt style.css \
-          gdevds32.c COPYING \
+DOC_PAGES=index.html News.html COPYING Ghostscript.pdf \
           GS9_Color_Management.pdf
 
-DOC_PAGE_IMAGES=Artifex_logo.png  favicon.png  ghostscript_logo.png  hamburger-light.png  x-light.png
-
-install-doc: $(PSDOCDIR)/News.htm
+install-doc: $(PSDOCDIR)/News.html
 	-mkdir -p $(DESTDIR)$(docdir)
-	-mkdir -p $(DESTDIR)$(docdir)/images
 	$(SH) -c 'for f in $(DOC_PAGES) ;\
 	do if ( test -f $(PSDOCDIR)/$$f ); then $(INSTALL_DATA) $(PSDOCDIR)/$$f $(DESTDIR)$(docdir); fi;\
 	done'
-	$(SH) -c 'for f in $(DOC_PAGE_IMAGES) ;\
-	do if ( test -f $(PSDOCDIR)/images/$$f ); then $(INSTALL_DATA) $(PSDOCDIR)/images/$$f $(DESTDIR)$(docdir)/images; fi;\
-	done'
 
 # install the man pages for each locale
-MAN_LCDIRS=. de
+MAN_LCDIRS=.
 MAN1_LINKS_PS2PS=eps2eps
 MAN1_LINKS_PS2PDF=ps2pdf12 ps2pdf13 ps2pdf14
 MAN1_LINKS_GSLP=gsbj gsdj gsdj500 gslj

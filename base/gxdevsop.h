@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -20,6 +20,7 @@
 #  define gxdevsop_INCLUDED
 
 #include "gxdevcli.h"
+#include "gsovrc.h"
 
 /* This file enumerates a series of device specific operations, that can be
  * performed using the 'dev_spec_op' procedure in the gs_device structure.
@@ -134,6 +135,39 @@ typedef struct pattern_accum_param_t {
     int pinst_id;
 }pattern_accum_param_s;
 
+/* Structure used for device specific color setting */
+typedef struct color_replace_s {
+    gx_device_color *pdc;
+    const gs_color_space *pcs;
+    const gs_client_color *pcc;
+    const gs_gstate *pgs;  /* Perhaps needed for named color profile information */
+    cmm_profile_t *pdf14_iccprofile;
+} color_replace_t;
+
+/* Operation for pdf14 device to perform when in fill stroke
+   commands occurring in gdevabuf.c (alphabits) device. This
+   lets us get the pdf14 device setup for the stroke fill
+   operation, and to clean up following the operation */
+typedef enum {
+    OP_FS_TRANS_PREFILL,
+    OP_FS_TRANS_PRESTROKE,
+    OP_FS_TRANS_POSTSTROKE,
+    OP_FS_TRANS_CLEANUP
+} OP_FS_TRANS;
+
+/* Structure used for overprint communication coming from alpha buffer to owner */
+typedef struct overprint_abuf_state_s {
+    /* Client filled data that changes each call. */
+    OP_FS_TRANS op_trans; /* What are we doing? */
+    /* Client filled data that remains constant. */
+    const gs_gstate *pgs;          /* From client (abuf) */
+    gx_path *ppath;
+    const gx_clip_path *pcpath;
+    gs_log2_scale_point alpha_buf_path_scale;
+    /* Callee storage. */
+    unsigned char storage[256];
+} overprint_abuf_state_t;
+
 enum {
     /* All gxdso_ keys must be defined in this structure.
      * Do NOT rely on your particular gxdso_ having a particular value.
@@ -226,6 +260,8 @@ enum {
      *   pointer to the pdf14 device (may be a child of the original device)
      */
     gxdso_is_pdf14_device,
+
+    gxdso_supports_pattern_transparency,
 
     /* gxdso_device_child:
      *      data = pointer to gxdso_device_child_request struct
@@ -328,6 +364,13 @@ enum {
     gxdso_JPEG_passthrough_begin,
     gxdso_JPEG_passthrough_data,
     gxdso_JPEG_passthrough_end,
+    /* And similarly JPX passthrough requests/control. Currently used for the pdfwrite family only.
+     */
+    gxdso_JPX_passthrough_query,
+    gxdso_JPX_passthrough_begin,
+    gxdso_JPX_passthrough_data,
+    gxdso_JPX_passthrough_end,
+
     gxdso_supports_iccpostrender,
     /* Retrieve the last device in a device chain
        (either forwarding or subclass devices).
@@ -344,7 +387,7 @@ enum {
     gxdso_is_encoding_direct,
     /* gxdso_event_info:
      *     data = dev_param_req_t
-     *     size = sizeof(dev_param-req_t
+     *     size = sizeof(dev_param_req_t)
      * Passes a single name in request->Param, naming the event which occurred.
      * Used to send a warning to pdfwrite that some event has happened we want to know about.
      * Currently this is used in pdf_font.ps to signal that a substittue font has been
@@ -429,6 +472,55 @@ enum {
 
     /* Determine if a given device is a clist one. Returns 1 if it is. */
     gxdso_is_clist_device,
+
+    /* Determine if a given device is a null device. Returns 1 if it is. */
+    gxdso_is_null_device,
+
+    /* Get information about pdf14 device overprint simulation state
+     *     data = unsigned char[2], [0] is overprint_sim_push [1] is num_spot_colors_int
+     *     size = sizeof(unsigned char[2])
+     * Returns 1 if returned values are valid
+     * 0 otherwise.
+     */
+    gxdso_overprintsim_state,
+
+    /* Used for handing state settings between the abuf device and the
+     * transparency and overprint compositor.
+     *     data = pointer to overprint_abuf_state_t structure.
+     *            op_trans will be OP_FS_TRANS_PREFILL on the first call.
+     *            In normal operation it will then be OP_FS_TRANS_PRESTROKE
+     *            and then OP_FS_TRANS_POSTSTROKE on subsequent calls. The
+     *            contents of the structure will otherwise remain constant
+     *            between calls.
+     *            In the event of an error return from this call, no further
+     *            calls will be made on with this param block (i.e. the
+     *            callee must tidy itself up).
+     *            In the event of an error in the caller between calls to
+     *            this, an OP_FS_TRANS_CLEANUP call will be made.
+     *     size = size of structure
+     * Returns error. */
+    gxdso_abuf_optrans,
+
+    /* Color replacement method.  Intercepts remap color method(s) to
+     *  enable the device map source colors to device colors directly
+     *  in a method defined in the device.
+     *       data = color_replace_t
+     *       size = sizeof(color_replace_t)
+     *
+     *  Returns 0 is no replacment is made.
+     *  Returns >0 if replacement occurred. */
+    gxdso_replacecolor,
+
+    /* Used solely (for now at least) by pdfwrite. We need to tell pdfwrite that Image and Form
+     * XObjects, have an /OC entry and what the object number of the optional content entry is.
+     * We should already have defined the optional content dictionary using a pdfmark.
+     */
+    gxdso_pending_optional_content,
+
+    /* Called to give a device the chance to update the color information after put_params
+     * has reset it. This enables device specific changes to not interfere when devices are
+     * cloned for NumRenderingThreads etc. */
+    gxdso_adjust_colors,
 
     /* Add new gxdso_ keys above this. */
     gxdso_pattern__LAST

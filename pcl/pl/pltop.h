@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -38,9 +38,6 @@ typedef struct pl_interp_characteristics_s
     const char *language;       /* generic language should correspond with
                                    HP documented PJL name */
     int (*auto_sense)(const char *string, int length);      /* routine used to detect language - returns a score: 0 is definitely not, 100 is definitely yes. */
-    const char *manufacturer;   /* manuf str */
-    const char *version;        /* version str */
-    const char *build_date;     /* build date str */
 } pl_interp_characteristics_t;
 
 /*
@@ -155,6 +152,13 @@ typedef int (*pl_interp_proc_dnit_job_t) (pl_interp_implementation_t *);
 int pl_deallocate_interp_instance(pl_interp_implementation_t *);
 typedef int (*pl_interp_proc_deallocate_interp_instance_t) (pl_interp_implementation_t *);
 
+typedef enum {
+    PL_RESET_RESOURCES = 1
+} pl_interp_reset_reason;
+
+int pl_reset(pl_interp_implementation_t *, pl_interp_reset_reason reason);
+typedef int (*pl_interp_proc_reset_t)(pl_interp_implementation_t *, pl_interp_reset_reason);
+
 /*
  * Define a generic interpreter implementation
  */
@@ -179,6 +183,7 @@ struct pl_interp_implementation_s
     pl_interp_proc_dnit_job_t proc_dnit_job;
     pl_interp_proc_deallocate_interp_instance_t
         proc_deallocate_interp_instance;
+    pl_interp_proc_reset_t reset;
     void *interp_client_data;
 };
 

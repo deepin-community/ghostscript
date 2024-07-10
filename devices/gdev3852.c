@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* IBM 3852 JetPrinter color ink jet driver for Ghostscript */
@@ -39,14 +39,23 @@ Modified by L. Peter Deutsch <ghost@aladdin.com> 1999-01-10 to remove _ss
 /* Should = 96 (KMG) */
 #define LINE_SIZE ((X_DPI * 86 / 10 + 63) / 64 * 8)
 
+static void
+jetp3852_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs(dev);
+
+    set_dev_proc(dev, output_page, gdev_prn_bg_output_page);
+    set_dev_proc(dev, map_rgb_color, gdev_pcl_3bit_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gdev_pcl_3bit_map_color_rgb);
+    set_dev_proc(dev, encode_color, gdev_pcl_3bit_map_rgb_color);
+    set_dev_proc(dev, decode_color, gdev_pcl_3bit_map_color_rgb);
+}
+
 /* The device descriptor */
 static dev_proc_print_page(jetp3852_print_page);
 /* Since the 'print_page' does not change the device, this device can print in the background */
-static gx_device_procs jetp3852_procs =
-  prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-    gdev_pcl_3bit_map_rgb_color, gdev_pcl_3bit_map_color_rgb);
 const gx_device_printer far_data gs_jetp3852_device =
-  prn_device(jetp3852_procs, "jetp3852",
+  prn_device(jetp3852_initialize_device_procs, "jetp3852",
         86,				/* width_10ths, 8.6" (?) */
         110,				/* height_10ths, 11" */
         X_DPI, Y_DPI,

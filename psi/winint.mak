@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2023 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 # of the license contained in the file LICENSE in this distribution.
 #
 # Refer to licensing information at http://www.artifex.com or contact
-# Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-# CA 94945, U.S.A., +1(415)492-9861, for further information.
+# Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+# CA 94129, USA, for further information.
 #
 #
 # Common interpreter makefile section for 32-bit MS Windows.
@@ -26,16 +26,18 @@
 # Define the location of the NSIS makensis installer utility
 !ifndef MAKENSIS_XE
 !if $(BUILD_SYSTEM) == 64
-MAKENSIS_XE="C:\Program Files (x86)\NSIS\makensis.exe"
+MAKENSIS_XE="C:\Program Files (x86)\NSIS-3.0\makensis.exe"
 !else
-MAKENSIS_XE="C:\Program Files\NSIS\makensis.exe"
+MAKENSIS_XE="C:\Program Files\NSIS-3.0\makensis.exe"
 !endif
 !endif
 
 !ifdef WIN64
 NSISTARGET=gs$(GS_VERSION)w64
+VCREDIST=vcredist_x64.exe
 !else
 NSISTARGET=gs$(GS_VERSION)w32
+VCREDIST=vcredist_x86.exe
 !endif
 
 # Define the C++ compiler invocation for library modules.
@@ -83,7 +85,7 @@ $(GS_OBJ).res: $(PSSRC)dwmain.rc $(dwres_h) $(ICONS) $(WININT_MAK)
 	$(ECHOGS_XE) -w $(PSGEN)_exe.rc -x 23 define -s gstext_ico $(GLGENDIR)\gswin.ico
 	$(ECHOGS_XE) -a $(PSGEN)_exe.rc -x 23 define -s gsgraph_ico $(GLGENDIR)\gswin.ico
 	$(ECHOGS_XE) -a $(PSGEN)_exe.rc -R $(PSSRC)dwmain.rc
-	$(RCOMP) -dGS_DOT_VERSION=$(GS_DOT_VERSION) -dGS_VERSION_MAJOR=$(GS_VERSION_MAJOR) -dGS_VERSION_MINOR=$(GS_VERSION_MINOR) -i$(PSSRCDIR) -i$(PSGENDIR) -i$(GLSRCDIR) $(i_INCDIR) -r $(RO_)$(GS_OBJ).res $(PSGEN)_exe.rc
+	$(RCOMP) -dGS_DOT_VERSION=$(GS_DOT_VERSION) -dGS_VERSION_MAJOR=$(GS_VERSION_MAJOR) -dGS_VERSION_MINOR=$(GS_VERSION_MINOR) -dGS_VERSION_PATCH=$(GS_VERSION_PATCH)  -i$(PSSRCDIR) -i$(PSGENDIR) -i$(GLSRCDIR) $(i_INCDIR) -r $(RO_)$(GS_OBJ).res $(PSGEN)_exe.rc
 	del $(PSGEN)_exe.rc
 
 # resources for main program (includes dialogs)
@@ -91,7 +93,7 @@ $(GSDLL_OBJ).res: $(PSSRC)gsdll32.rc $(gp_mswin_h) $(ICONS) $(WININT_MAK)
 	$(ECHOGS_XE) -w $(PSGEN)_dll.rc -x 23 define -s gstext_ico $(GLGENDIR)\gswin.ico
 	$(ECHOGS_XE) -a $(PSGEN)_dll.rc -x 23 define -s gsgraph_ico $(GLGENDIR)\gswin.ico
 	$(ECHOGS_XE) -a $(PSGEN)_dll.rc -R $(PSSRC)gsdll32.rc
-	$(RCOMP) -dGS_DOT_VERSION=$(GS_DOT_VERSION) -dGS_VERSION_MAJOR=$(GS_VERSION_MAJOR) -dGS_VERSION_MINOR=$(GS_VERSION_MINOR) -i$(PSSRCDIR) -i$(PSGENDIR) -i$(GLSRCDIR) $(i_INCDIR) -r $(RO_)$(GSDLL_OBJ).res $(PSGEN)_dll.rc
+	$(RCOMP) -dGS_DOT_VERSION=$(GS_DOT_VERSION) -dGS_VERSION_MAJOR=$(GS_VERSION_MAJOR) -dGS_VERSION_MINOR=$(GS_VERSION_MINOR) -dGS_VERSION_PATCH=$(GS_VERSION_PATCH)  -i$(PSSRCDIR) -i$(PSGENDIR) -i$(GLSRCDIR) $(i_INCDIR) -r $(RO_)$(GSDLL_OBJ).res $(PSGEN)_dll.rc
 	del $(PSGEN)_dll.rc
 
 
@@ -185,8 +187,11 @@ $(PSOBJ)zwinutf8.$(OBJ) : $(PSSRC)zwinutf8.c $(OP)\
 
 # -------------------- NSIS Installer -------------------------------- #
 nsis: $(PSSRC)nsisinst.nsi $(GSCONSOLE_XE) $(GS_ALL) $(GS_XE) $(GSDLL_DLL) $(BINDIR)\$(GSDLL).lib \
+      "$(VCINSTALLDIR)Redist\MSVC\$(MS_TOOLSET_VERSION)\$(VCREDIST)" \
       $(WININT_MAK)
-	$(MAKENSIS_XE) -NOCD -DTARGET=$(NSISTARGET) -DVERSION=$(GS_DOT_VERSION) -DCOMPILE_INITS=$(COMPILE_INITS) $(PSSRC)nsisinst.nsi
+	$(CP_) "$(VCINSTALLDIR)Redist\MSVC\$(MS_TOOLSET_VERSION)\$(VCREDIST)" .
+	$(MAKENSIS_XE) -NOCD -DVCREDIST=$(VCREDIST) -DTARGET=$(NSISTARGET) -DVERSION=$(GS_DOT_VERSION) -DCOMPILE_INITS=$(COMPILE_INITS) $(PSSRC)nsisinst.nsi
+	-del $(VCREDIST)
 !if defined(KEYFILE) && defined(KEYPWORD) && defined(TIMESTAMP)
         signtool sign -f $(KEYFILE) /p $(KEYPWORD) /t $(TIMESTAMP) $(NSISTARGET)$(XE)
 !endif

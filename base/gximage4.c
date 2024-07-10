@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -35,7 +35,7 @@ static image_proc_sput(gx_image4_sput);
 static image_proc_sget(gx_image4_sget);
 static image_proc_release(gx_image4_release);
 const gx_image_type_t gs_image_type_4 = {
-    &st_gs_image4, gx_begin_image4, gx_data_image_source_size,
+    &st_gs_image4, gx_begin_image4,
     gx_image4_sput, gx_image4_sget, gx_image4_release, 4
 };
 /*
@@ -66,7 +66,7 @@ gx_begin_image4(gx_device * dev,
                 const gx_drawing_color * pdcolor, const gx_clip_path * pcpath,
                 gs_memory_t * mem, gx_image_enum_common_t ** pinfo)
 {
-    gx_image_enum *penum;
+    gx_image_enum *penum = NULL;
     const gs_image4_t *pim = (const gs_image4_t *)pic;
     int code = gx_image_enum_alloc(pic, prect, mem, &penum);
 
@@ -109,6 +109,7 @@ gx_begin_image4(gx_device * dev,
     if (code >= 0)
         *pinfo = (gx_image_enum_common_t *)penum;
     else {
+        /* penum is freed in by gx_image_enum_begin */
         *pinfo = NULL;
     }
     return code;

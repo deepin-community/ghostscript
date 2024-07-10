@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -111,6 +111,8 @@ pcl_pattern_free_pattern(gs_memory_t * pmem,
 {
     pcl_pattern_t *pptrn = (pcl_pattern_t *) pvptrn;
 
+    if (pptrn == NULL)
+        return;
     free_pattern_rendering(pmem, pptrn);
     if (pptrn->ppat_data != 0)
         pcl_pattern_data_release(pptrn->ppat_data);
@@ -391,6 +393,7 @@ download_pcl_pattern(pcl_args_t * pargs, pcl_state_t * pcs)
     depth = puptrn0->depth & 0xf;
     pixinfo.pix_depth = depth;
     pixinfo.raster = (pixinfo.size.x * depth + 7) / 8;
+    pixinfo.id = gx_no_bitmap_id;
     rsize = pixinfo.raster * pixinfo.size.y;
     dsize = min(count - ndsize, rsize);
 

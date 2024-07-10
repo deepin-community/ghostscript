@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -39,7 +39,7 @@ typedef struct gx_device_X_s {
     bool is_buffered;
     bool IsPageDevice;
     byte *buffer;		/* full-window image */
-    long buffer_size;
+    size_t buffer_size;
     gx_device_color_info        orig_color_info;
 
     /* An XImage object for writing bitmap images to the screen */
@@ -227,6 +227,19 @@ dev_proc_map_rgb_color(gdev_x_map_rgb_color);  /* gdevxcmp.c */
 dev_proc_map_color_rgb(gdev_x_map_color_rgb);  /* gdevxcmp.c */
 dev_proc_get_params(gdev_x_get_params);  /* gdevxini.c */
 dev_proc_put_params(gdev_x_put_params);  /* gdevxini.c */
-dev_proc_finish_copydevice(gdev_x_finish_copydevice);  /* gdevxini.c */
+dev_proc_initialize_device_procs(gdev_x_initialize_device_procs);  /* gdevxini.c */
+dev_proc_open_device(x_open);
+dev_proc_get_initial_matrix(x_get_initial_matrix);
+dev_proc_sync_output(x_sync);
+dev_proc_output_page(x_output_page);
+dev_proc_close_device(x_close);
+dev_proc_fill_rectangle(x_fill_rectangle);
+dev_proc_copy_mono(x_copy_mono);
+dev_proc_copy_color(x_copy_color);
+dev_proc_get_page_device(x_get_page_device);
+dev_proc_strip_tile_rectangle(x_strip_tile_rectangle);
+dev_proc_get_bits_rectangle(x_get_bits_rectangle);
+dev_proc_fillpage(x_fillpage);
+
 
 #endif /* gdevx_INCLUDED */

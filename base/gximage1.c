@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -34,7 +34,7 @@ static image_proc_sput(gx_image1_sput);
 static image_proc_sget(gx_image1_sget);
 static image_proc_release(gx_image1_release);
 const gx_image_type_t gs_image_type_1 = {
-    &st_gs_image1, gx_begin_image1, gx_data_image_source_size,
+    &st_gs_image1, gx_begin_image1,
     gx_image1_sput, gx_image1_sget, gx_image1_release, 1
 };
 static image_proc_sput(gx_image1_mask_sput);
@@ -44,7 +44,7 @@ static image_proc_sget(gx_image1_mask_sget);
  * worry about releasing the color space.
  */
 const gx_image_type_t gs_image_type_mask1 = {
-    &st_gs_image1, gx_begin_image1, gx_data_image_source_size,
+    &st_gs_image1, gx_begin_image1,
     gx_image1_mask_sput, gx_image1_mask_sget, gx_image_default_release, 1
 };
 
@@ -59,6 +59,7 @@ gs_image_t_init_adjust(gs_image_t * pim, gs_color_space * color_space,
     pim->type = (pim->ImageMask ? &gs_image_type_mask1 : &gs_image_type_1);
     pim->Alpha = gs_image_alpha_none;
     pim->image_parent_type = gs_image_type1;
+    pim->imagematrices_are_untrustworthy = 0;
 }
 void
 gs_image_t_init_mask_adjust(gs_image_t * pim, bool write_1s, bool adjust)
@@ -96,6 +97,7 @@ gx_begin_image1(gx_device * dev,
     if (code >= 0)
         *pinfo = (gx_image_enum_common_t *)penum;
     else {
+        /* penum is freed in by gx_image_enum_begin */
         *pinfo = NULL;
     }
     return code;

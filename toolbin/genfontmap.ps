@@ -1,5 +1,5 @@
 %!PS
-% Copyright (C) 2001-2021 Artifex Software, Inc.
+% Copyright (C) 2001-2023 Artifex Software, Inc.
 % All Rights Reserved.
 %
 % This software is provided AS-IS with no warranty, either express or
@@ -10,8 +10,8 @@
 % of the license contained in the file LICENSE in this distribution.
 %
 % Refer to licensing information at http://www.artifex.com or contact
-% Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-% CA 94945, U.S.A., +1(415)492-9861, for further information.
+% Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+% CA 94129, USA, for further information.
 %
 
 % Create a Fontmap format file after scanning the FONTPATH directories
@@ -58,8 +58,10 @@ QUIET not {
 
 % Create an array so we can sort it
 
+mark
 Fontmap { [ 3 1 roll ] } forall
-count array astore
+.nativeFontmap { [ 3 1 roll ] } forall
+counttomark array astore exch pop
 
 % sort the array
 { 0 get 100 string cvs exch 0 get 100 string cvs gt } .sort
@@ -75,6 +77,6 @@ count array astore
 flush
 
 (\ngenfontmap completed OK. ) =error
-Fontmap length Initial_count sub 10 string cvs =error
+Fontmap length .nativeFontmap length add Initial_count sub 10 string cvs =error
 ( new fonts added.\n\n) =error
 quit

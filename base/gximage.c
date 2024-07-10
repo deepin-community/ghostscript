@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -28,7 +28,6 @@
 /* ---------------- Generic image support ---------------- */
 
 /* Structure descriptors */
-public_st_gs_image_common();
 public_st_gs_data_image();
 public_st_gs_pixel_image();
 
@@ -37,6 +36,7 @@ void
 gs_image_common_t_init(gs_image_common_t * pic)
 {
     gs_make_identity(&pic->ImageMatrix);
+    pic->imagematrices_are_untrustworthy = false;
 }
 void
 gs_data_image_t_init(gs_data_image_t * pim, int num_components)
@@ -54,6 +54,7 @@ gs_data_image_t_init(gs_data_image_t * pim, int num_components)
             pim->Decode[i] = 1, pim->Decode[i + 1] = 0;
     }
     pim->Interpolate = false;
+    pim->imagematrices_are_untrustworthy = false;
 }
 void
 gs_pixel_image_t_init(gs_pixel_image_t * pim,
@@ -89,6 +90,8 @@ gx_image_enum_common_init(gx_image_enum_common_t * piec,
     piec->dev = dev;
     piec->id = gs_next_ids(dev->memory, 1);
     piec->skipping = false;
+    piec->pgs = NULL;
+
     switch (format) {
         case gs_image_format_chunky:
             piec->num_planes = 1;
@@ -109,18 +112,6 @@ gx_image_enum_common_init(gx_image_enum_common_t * piec,
     }
     for (i = 0; i < piec->num_planes; ++i)
         piec->plane_widths[i] = pic->Width;
-    return 0;
-}
-
-/* Compute the source size of an ordinary image with explicit data. */
-int
-gx_data_image_source_size(const gs_gstate * pgs,
-                          const gs_image_common_t * pim, gs_int_point * psize)
-{
-    const gs_data_image_t *pdi = (const gs_data_image_t *)pim;
-
-    psize->x = pdi->Width;
-    psize->y = pdi->Height;
     return 0;
 }
 

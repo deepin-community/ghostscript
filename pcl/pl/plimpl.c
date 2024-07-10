@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -31,6 +31,8 @@ extern pl_interp_implementation_t pxl_implementation;
 
 extern pl_interp_implementation_t xps_implementation;
 
+extern pl_interp_implementation_t pdf_implementation;
+
 extern pl_interp_implementation_t svg_implementation;
 
 extern pl_interp_implementation_t ps_implementation;
@@ -49,6 +51,10 @@ extern pl_interp_implementation_t jp2k_implementation;
 
 extern pl_interp_implementation_t png_implementation;
 
+extern pl_interp_implementation_t so_implementation;
+
+extern pl_interp_implementation_t txt_implementation;
+
 /* Zero-terminated list of pointers to implementations */
 pl_interp_implementation_t *pdl_implementations[] = {
     &pjl_implementation,
@@ -58,6 +64,9 @@ pl_interp_implementation_t *pdl_implementations[] = {
 #endif
 #ifdef XPS_INCLUDED
     &xps_implementation,
+#endif
+#ifdef PDF_INCLUDED
+    &pdf_implementation,
 #endif
 #ifdef PSI_INCLUDED
     &ps_implementation,
@@ -82,6 +91,12 @@ pl_interp_implementation_t *pdl_implementations[] = {
 #endif
 #ifdef PNG_INCLUDED
     &png_implementation,
+#endif
+#ifdef SO_INCLUDED
+    &so_implementation,
+#endif
+#ifdef TXT_INCLUDED
+    &txt_implementation,
 #endif
     0
 };

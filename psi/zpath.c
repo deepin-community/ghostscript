@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -89,6 +89,7 @@ common_to(i_ctx_t *i_ctx_p,
     double opxy[2];
     int code;
 
+    check_op(2);
     if ((code = num_params(op, 2, opxy)) < 0 ||
         (code = (*add_proc)(igs, opxy[0], opxy[1])) < 0
         )
@@ -120,6 +121,7 @@ common_curve(i_ctx_t *i_ctx_p,
     double opxy[6];
     int code;
 
+    check_op(6);
     if ((code = num_params(op, 6, opxy)) < 0)
         return code;
     code = (*add_proc)(igs, opxy[0], opxy[1], opxy[2], opxy[3], opxy[4], opxy[5]);

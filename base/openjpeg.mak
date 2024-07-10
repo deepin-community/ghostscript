@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2023 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 # of the license contained in the file LICENSE in this distribution.
 #
 # Refer to licensing information at http://www.artifex.com or contact
-# Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-# CA 94945, U.S.A., +1(415)492-9861, for further information.
+# Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+# CA 94129, USA, for further information.
 #
 
 # makefile for Luratech lwf_jp2 library code.
@@ -47,6 +47,7 @@ open_jpeg_OBJS = \
 	$(OPEN_JPEG_OBJ)$(OPEN_JPEG_PREFIX)dwt.$(OBJ)		\
 	$(OPEN_JPEG_OBJ)$(OPEN_JPEG_PREFIX)event.$(OBJ)			\
 	$(OPEN_JPEG_OBJ)$(OPEN_JPEG_PREFIX)function_list.$(OBJ)			\
+	$(OPEN_JPEG_OBJ)$(OPEN_JPEG_PREFIX)ht_dec.$(OBJ)		\
 	$(OPEN_JPEG_OBJ)$(OPEN_JPEG_PREFIX)image.$(OBJ)			\
 	$(OPEN_JPEG_OBJ)$(OPEN_JPEG_PREFIX)invert.$(OBJ)			\
 	$(OPEN_JPEG_OBJ)$(OPEN_JPEG_PREFIX)j2k.$(OBJ)		\
@@ -139,6 +140,9 @@ $(OPEN_JPEG_OBJ)$(OPEN_JPEG_PREFIX)event.$(OBJ) : $(OPEN_JPEG_SRC)event.c $(open
 
 $(OPEN_JPEG_OBJ)$(OPEN_JPEG_PREFIX)function_list.$(OBJ) : $(OPEN_JPEG_SRC)function_list.c $(open_jpeg_HDRS) $(OPEN_JPEG_DEP)
 	$(OPEN_JPEG_CC) $(OPEN_JPEG_O)function_list.$(OBJ) $(C_) $(OPEN_JPEG_SRC)function_list.c
+
+$(OPEN_JPEG_OBJ)$(OPEN_JPEG_PREFIX)ht_dec.$(OBJ) : $(OPEN_JPEG_SRC)ht_dec.c $(open_jpeg_HDRS) $(OPEN_JPEG_DEP)
+	$(OPEN_JPEG_CC) $(OPEN_JPEG_O)ht_dec.$(OBJ) $(C_) $(OPEN_JPEG_SRC)ht_dec.c
 
 $(OPEN_JPEG_OBJ)$(OPEN_JPEG_PREFIX)image.$(OBJ) : $(OPEN_JPEG_SRC)image.c $(open_jpeg_HDRS) $(OPEN_JPEG_DEP)
 	$(OPEN_JPEG_CC) $(OPEN_JPEG_O)image.$(OBJ) $(C_) $(OPEN_JPEG_SRC)image.c

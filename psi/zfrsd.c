@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -143,6 +143,7 @@ zreusablestream(i_ctx_t *i_ctx_p)
     bool close_source;
     int code;
 
+    check_op(2);
     check_type(*op, t_boolean);
     close_source = op->value.boolval;
     if (r_has_type(source_op, t_string)) {
@@ -458,8 +459,12 @@ s_aos_process(stream_state * st, stream_cursor_read * ignore_pr,
     blk_off = pos % ss->blk_sz;
     blk_cnt = r_size(&ss->blocks);
     count = blk_i < blk_cnt - 1 ? ss->blk_sz : ss->blk_sz_last;
-    blk_ref = ss->blocks.value.refs;
-    data = blk_ref[blk_i].value.bytes;
+    blk_ref = &ss->blocks.value.refs[blk_i];
+
+    if (!r_has_type_attrs(blk_ref, t_string, a_read) || r_size(blk_ref) != count)
+        return ERRC;
+
+    data = blk_ref->value.bytes;
 
     if (max_count > count - blk_off) {
         max_count = count - blk_off;

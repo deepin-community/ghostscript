@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -144,6 +144,7 @@ xps_true_callback_glyph_name(gs_font *pfont, gs_glyph glyph, gs_const_string *ps
     int numGlyphs;
     uint glyph_name_index;
     const byte *postp; /* post table pointer */
+    xps_font_t *font = pfont->client_data;
 
     if (glyph >= GS_MIN_GLYPH_INDEX) {
         glyph -= GS_MIN_GLYPH_INDEX;
@@ -190,7 +191,7 @@ xps_true_callback_glyph_name(gs_font *pfont, gs_glyph glyph, gs_const_string *ps
     {
         /* Invent a name if we don't know the table format. */
         char buf[32];
-        gs_sprintf(buf, "glyph%d", (int)glyph);
+        gs_snprintf(buf, sizeof(buf), "glyph%d", (int)glyph);
 
         /* Ugly hackery. see comment below, after 'not mac' this ends up as a memory leak.
          * The PostScript interpreter adds the strings it creates to the PostScript name table
@@ -261,8 +262,10 @@ xps_true_callback_glyph_name(gs_font *pfont, gs_glyph glyph, gs_const_string *ps
             return gs_throw(-1, "data out of range");
 
         /* sigh - we have to allocate a copy of the data - by the
-         * time a high level device makes use of it the font data
-         * may be freed. This is a necessary leak. */
+           time a high level device makes use of it the font data
+           may be freed.  Track the allocated memory in our
+           font 'wrapper' so we can free it when we free tha font wrapper.
+         */
         mydata = gs_alloc_bytes(pfont->memory, pstr->size + 1, "glyph to name");
         if ( mydata == 0 )
             return -1;
@@ -271,6 +274,34 @@ xps_true_callback_glyph_name(gs_font *pfont, gs_glyph glyph, gs_const_string *ps
 
         mydata[pstr->size] = 0;
 
+        if (font->names == NULL) {
+            font->names = (char **)gs_alloc_bytes(pfont->memory, 256 * sizeof (char *), "names storage");
+            if (font->names == NULL) {
+                gs_free_object(pfont->memory, (byte *)pstr->data, "free string on error");
+                pstr->data = NULL;
+                pstr->size = 0;
+                return -1;
+            }
+            font->max_name_index = 255;
+            font->next_name_index = 0;
+            memset(font->names, 0x00, 256 * sizeof (char *));
+        }
+        if (font->next_name_index > font->max_name_index) {
+            char **temp = NULL;
+            temp = (char **)gs_alloc_bytes(pfont->memory, (font->max_name_index + 256) * sizeof (char *), "names storage");
+            if (temp == NULL) {
+                gs_free_object(pfont->memory, (byte *)pstr->data, "free string on error");
+                pstr->data = NULL;
+                pstr->size = 0;
+                return -1;
+            }
+            memset(temp, 0x00, (font->max_name_index + 256) * sizeof (char *));
+            memcpy(temp, font->names, font->max_name_index * sizeof(char *));
+            gs_free_object(pfont->memory, (void *)font->names, "realloc names storage");
+            font->names = temp;
+            font->max_name_index += 256;
+        }
+        font->names[font->next_name_index++] = (char *)pstr->data;
         return 0;
     }
 }
@@ -424,7 +455,9 @@ xps_init_truetype_font(xps_context_t *ctx, xps_font_t *font)
         p42->data.string_proc = xps_true_callback_string_proc;
         p42->data.proc_data = font;
 
-        gs_type42_font_init(p42, font->subfontid);
+        code = gs_type42_font_init(p42, font->subfontid);
+        if (code < 0)
+            return code;
         p42->data.get_glyph_index = xps_true_get_glyph_index;
     }
 

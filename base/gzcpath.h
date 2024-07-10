@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -22,23 +22,6 @@
 
 #include "gxcpath.h"
 #include "gzpath.h"
-
-/*
- * The reference counting considerations for clip paths are the same as
- * for paths.  We need a separate reference count for the clip list,
- * since its existence and lifetime are not necessarily the same as
- * those of the path.
- */
-
-typedef struct gx_clip_rect_list_s {
-    rc_header rc;
-    gx_clip_list list;
-} gx_clip_rect_list;
-
-#define private_st_clip_rect_list()	/* in gxcpath.c */\
-  gs_private_st_ptrs_add0(st_clip_rect_list, gx_clip_rect_list,\
-    "gx_clip_rect_list", clip_rect_list_enum_ptrs, clip_rect_list_reloc_ptrs,\
-    st_clip_list, list)
 
 /*
  * When the clip path consists of the intersection of two or more
@@ -79,6 +62,9 @@ struct gx_clip_path_s {
     gs_id id;
     /* The last rectangle we accessed while using this clip_path */
     gx_clip_rect *cached;
+    /* The fill adjust to be used if the path is valid. If the
+     * path is not valid, always use 0,0. */
+    gs_fixed_point path_fill_adjust;
 };
 
 extern_st(st_clip_path);

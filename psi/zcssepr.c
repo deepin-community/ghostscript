@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -67,6 +67,7 @@ zsetoverprint(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     check_type(*op, t_boolean);
     gs_setoverprint(igs, op->value.boolval);
     pop(1);
@@ -90,6 +91,7 @@ zsetstrokeoverprint(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     check_type(*op, t_boolean);
     gs_setstrokeoverprint(igs, op->value.boolval);
     pop(1);
@@ -113,6 +115,7 @@ zsetfilloverprint(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
 
+    check_op(1);
     check_type(*op, t_boolean);
     gs_setfilloverprint(igs, op->value.boolval);
     pop(1);
@@ -136,7 +139,10 @@ zsetoverprintmode(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
     int param;
-    int code = int_param(op, max_int, &param);
+    int code;
+
+    check_op(1);
+    code = int_param(op, max_int, &param);
 
     if (code < 0 || (code = gs_setoverprintmode(igs, param)) < 0)
         return code;

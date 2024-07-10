@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -120,114 +120,84 @@ private_st_clist_icctable();
 /* Forward declarations of driver procedures */
 dev_proc_open_device(clist_open);
 dev_proc_output_page(clist_output_page);
-static dev_proc_close_device(clist_close);
-static dev_proc_get_band(clist_get_band);
+dev_proc_close_device(clist_close);
 /* Driver procedures defined in other files are declared in gxcldev.h. */
 
 /* Other forward declarations */
 static int clist_put_current_params(gx_device_clist_writer *cldev);
 
-/* The device procedures */
-const gx_device_procs gs_clist_device_procs = {
-    clist_open,
-    gx_forward_get_initial_matrix,
-    gx_default_sync_output,
-    clist_output_page,
-    clist_close,
-    gx_forward_map_rgb_color,
-    gx_forward_map_color_rgb,
-    clist_fill_rectangle,
-    gx_default_tile_rectangle,
-    clist_copy_mono,
-    clist_copy_color,
-    gx_default_draw_line,
-    gx_default_get_bits,
-    gx_forward_get_params,
-    gx_forward_put_params,
-    gx_forward_map_cmyk_color,
-    gx_forward_get_xfont_procs,
-    gx_forward_get_xfont_device,
-    gx_forward_map_rgb_alpha_color,
-    gx_forward_get_page_device,
-    gx_forward_get_alpha_bits,
-    clist_copy_alpha,
-    clist_get_band,
-    gx_default_copy_rop,
-    clist_fill_path,
-    clist_stroke_path,
-    clist_fill_mask,
-    clist_fill_trapezoid,
-    clist_fill_parallelogram,
-    clist_fill_triangle,
-    gx_default_draw_thin_line,
-    gx_default_begin_image,
-    gx_default_image_data,
-    gx_default_end_image,
-    clist_strip_tile_rectangle,
-    clist_strip_copy_rop,
-    gx_forward_get_clipping_box,
-    clist_begin_typed_image,
-    clist_get_bits_rectangle,
-    gx_forward_map_color_rgb_alpha,
-    clist_create_compositor,
-    gx_forward_get_hardware_params,
-    gx_default_text_begin,
-    gx_default_finish_copydevice,
-    gx_default_begin_transparency_group,                       /* begin_transparency_group */
-    gx_default_end_transparency_group,                       /* end_transparency_group */
-    gx_default_begin_transparency_mask,                       /* begin_transparency_mask */
-    gx_default_end_transparency_mask,                       /* end_transparency_mask */
-    gx_default_discard_transparency_layer,                       /* discard_transparency_layer */
-    gx_forward_get_color_mapping_procs,
-    gx_forward_get_color_comp_index,
-    gx_forward_encode_color,
-    gx_forward_decode_color,
-    gx_default_pattern_manage,                       /* pattern_manage */
-    clist_fill_rectangle_hl_color,
-    gx_default_include_color_space,
-    gx_default_fill_linear_color_scanline,
-    clist_fill_linear_color_trapezoid,
-    clist_fill_linear_color_triangle,
-    gx_forward_update_spot_equivalent_colors,
-    gx_forward_ret_devn_params,
-    clist_fillpage,
-    gx_default_push_transparency_state,                      /* push_transparency_state */
-    gx_default_pop_transparency_state,                      /* pop_transparency_state */
-    gx_default_put_image,                      /* put_image */
-    clist_dev_spec_op,
-    clist_copy_planes,         /* copy planes */
-    gx_default_get_profile,
-    gx_default_set_graphics_type_tag,
-    clist_strip_copy_rop2,
-    clist_strip_tile_rect_devn,
-    clist_copy_alpha_hl_color,
-    clist_process_page,
-    gx_default_transform_pixel_region,
-    clist_fill_stroke_path,
-};
+void
+clist_initialize_device_procs(gx_device *dev)
+{
+    set_dev_proc(dev, open_device, clist_open);
+    set_dev_proc(dev, get_initial_matrix, gx_forward_get_initial_matrix);
+    set_dev_proc(dev, sync_output, gx_default_sync_output);
+    set_dev_proc(dev, output_page, clist_output_page);
+    set_dev_proc(dev, close_device, clist_close);
+    set_dev_proc(dev, map_rgb_color, gx_forward_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gx_forward_map_color_rgb);
+    set_dev_proc(dev, fill_rectangle, clist_fill_rectangle);
+    set_dev_proc(dev, copy_mono, clist_copy_mono);
+    set_dev_proc(dev, copy_color, clist_copy_color);
+    set_dev_proc(dev, get_params, gx_forward_get_params);
+    set_dev_proc(dev, put_params, gx_forward_put_params);
+    set_dev_proc(dev, map_cmyk_color, gx_forward_map_cmyk_color);
+    set_dev_proc(dev, get_page_device, gx_forward_get_page_device);
+    set_dev_proc(dev, get_alpha_bits, gx_forward_get_alpha_bits);
+    set_dev_proc(dev, copy_alpha, clist_copy_alpha);
+    set_dev_proc(dev, fill_path, clist_fill_path);
+    set_dev_proc(dev, stroke_path, clist_stroke_path);
+    set_dev_proc(dev, fill_mask, clist_fill_mask);
+    set_dev_proc(dev, fill_trapezoid, clist_fill_trapezoid);
+    set_dev_proc(dev, fill_parallelogram, clist_fill_parallelogram);
+    set_dev_proc(dev, fill_triangle, clist_fill_triangle);
+    set_dev_proc(dev, strip_tile_rectangle, clist_strip_tile_rectangle);
+    set_dev_proc(dev, get_clipping_box, gx_forward_get_clipping_box);
+    set_dev_proc(dev, begin_typed_image, clist_begin_typed_image);
+    set_dev_proc(dev, get_bits_rectangle, clist_get_bits_rectangle);
+    set_dev_proc(dev, composite, clist_composite);
+    set_dev_proc(dev, get_hardware_params, gx_forward_get_hardware_params);
+    set_dev_proc(dev, get_color_mapping_procs, gx_forward_get_color_mapping_procs);
+    set_dev_proc(dev, get_color_comp_index, gx_forward_get_color_comp_index);
+    set_dev_proc(dev, encode_color, gx_forward_encode_color);
+    set_dev_proc(dev, decode_color, gx_forward_decode_color);
+    set_dev_proc(dev, fill_rectangle_hl_color, clist_fill_rectangle_hl_color);
+    set_dev_proc(dev, fill_linear_color_trapezoid, clist_fill_linear_color_trapezoid);
+    set_dev_proc(dev, fill_linear_color_triangle, clist_fill_linear_color_triangle);
+    set_dev_proc(dev, update_spot_equivalent_colors, gx_forward_update_spot_equivalent_colors);
+    set_dev_proc(dev, ret_devn_params, gx_forward_ret_devn_params);
+    set_dev_proc(dev, fillpage, clist_fillpage);
+    set_dev_proc(dev, dev_spec_op, clist_dev_spec_op);
+    set_dev_proc(dev, copy_planes, clist_copy_planes);
+    set_dev_proc(dev, strip_copy_rop2, clist_strip_copy_rop2);
+    set_dev_proc(dev, strip_tile_rect_devn, clist_strip_tile_rect_devn);
+    set_dev_proc(dev, copy_alpha_hl_color, clist_copy_alpha_hl_color);
+    set_dev_proc(dev, process_page, clist_process_page);
+    set_dev_proc(dev, fill_stroke_path, clist_fill_stroke_path);
+    set_dev_proc(dev, lock_pattern, clist_lock_pattern);
+}
 
 /*------------------- Choose the implementation -----------------------
 
-   For chossing the clist i/o implementation by makefile options
-   we define global variables, which are initialized with
-   file/memory io procs when they are included into the build.
- */
-const clist_io_procs_t *clist_io_procs_file_global = NULL;
-const clist_io_procs_t *clist_io_procs_memory_global = NULL;
-
+   For choosing the clist i/o implementation by makefile options we
+   define global variables (in gs_lib_ctx_core_t), which are
+   initialized with file/memory io procs when they are included into
+   the build.
+*/
 void
 clist_init_io_procs(gx_device_clist *pclist_dev, bool in_memory)
 {
+    gs_lib_ctx_core_t *core = pclist_dev->common.memory->gs_lib_ctx->core;
 #ifdef PACIFY_VALGRIND
-    VALGRIND_HG_DISABLE_CHECKING(&clist_io_procs_file_global, sizeof(clist_io_procs_file_global));
-    VALGRIND_HG_DISABLE_CHECKING(&clist_io_procs_memory_global, sizeof(clist_io_procs_memory_global));
+    VALGRIND_HG_DISABLE_CHECKING(&core->clist_io_procs_file, sizeof(core->clist_io_procs_file));
+    VALGRIND_HG_DISABLE_CHECKING(&core->clist_io_procs_memory, sizeof(core->clist_io_procs_memory));
 #endif
-    /* if clist_io_procs_file_global is NULL, then BAND_LIST_STORAGE=memory */
+    /* if core->clist_io_procs_file is NULL, then BAND_LIST_STORAGE=memory */
     /* was specified in the build, and "file" is not available */
-    if (in_memory || clist_io_procs_file_global == NULL)
-        pclist_dev->common.page_info.io_procs = clist_io_procs_memory_global;
+    if (in_memory || core->clist_io_procs_file == NULL)
+        pclist_dev->common.page_info.io_procs = core->clist_io_procs_memory;
     else
-        pclist_dev->common.page_info.io_procs = clist_io_procs_file_global;
+        pclist_dev->common.page_info.io_procs = core->clist_io_procs_file;
 }
 
 /* ------ Define the command set and syntax ------ */
@@ -247,11 +217,11 @@ clist_init_io_procs(gx_device_clist *pclist_dev, bool in_memory)
 /*
  * Calculate the desired size for the tile cache.
  */
-static uint
-clist_tile_cache_size(const gx_device * target, uint data_size)
+static size_t
+clist_tile_cache_size(const gx_device * target, size_t data_size)
 {
-    uint bits_size =
-    (data_size / 5) & -align_cached_bits_mod;   /* arbitrary */
+    size_t bits_size =
+    (data_size / 5) & ~(align_cached_bits_mod-1);   /* arbitrary */
 
     if (!gx_device_must_halftone(target)) {     /* No halftones -- cache holds only Patterns & characters. */
         bits_size -= bits_size >> 2;
@@ -268,12 +238,12 @@ clist_tile_cache_size(const gx_device * target, uint data_size)
  * tile_max_count, tile_table, chunk (structure), bits (structure).
  */
 static int
-clist_init_tile_cache(gx_device * dev, byte * init_data, ulong data_size)
+clist_init_tile_cache(gx_device * dev, byte * init_data, size_t data_size)
 {
     gx_device_clist_writer * const cdev =
         &((gx_device_clist *)dev)->writer;
     byte *data = init_data;
-    uint bits_size = data_size;
+    size_t bits_size = data_size;
     /*
      * Partition the bits area between the hash table and the actual
      * bitmaps.  The per-bitmap overhead is about 24 bytes; if the
@@ -283,11 +253,11 @@ clist_init_tile_cache(gx_device * dev, byte * init_data, ulong data_size)
      * are tall), which gives us a guideline for the size of the hash
      * table.
      */
-    uint avg_char_size =
-        (uint)(dev->HWResolution[0] * dev->HWResolution[1] *
+    size_t avg_char_size =
+        (size_t)(dev->HWResolution[0] * dev->HWResolution[1] *
                (0.5 * 10 / 72 * 10 / 72 / 8)) + 24;
-    uint hc = bits_size / avg_char_size;
-    uint hsize;
+    size_t hc = bits_size / avg_char_size;
+    size_t hsize;
 
     while ((hc + 1) & hc)
         hc |= hc >> 1;          /* make mask (power of 2 - 1) */
@@ -312,27 +282,27 @@ clist_init_tile_cache(gx_device * dev, byte * init_data, ulong data_size)
 
 /*
  * Initialize the allocation for the bands.  Requires: target.  Sets:
- * page_band_height (=page_info.band_params.BandHeight), nbands.
+ * page_info.band_params.BandHeight (=page_info.band_params.BandHeight), nbands.
  */
 static int
-clist_init_bands(gx_device * dev, gx_device_memory *bdev, uint data_size,
+clist_init_bands(gx_device * dev, gx_device_memory *bdev, size_t data_size,
                  int band_width, int band_height)
 {
     gx_device_clist_writer * const cdev =
         &((gx_device_clist *)dev)->writer;
     int nbands;
-    ulong space;
+    size_t space;
 
     if (dev_proc(dev, open_device) == pattern_clist_open_device) {
         /* We don't need bands really. */
-        cdev->page_band_height = dev->height;
+        cdev->page_info.band_params.BandHeight = dev->height;
         cdev->nbands = 1;
         return 0;
     }
     if (gdev_mem_data_size(bdev, band_width, band_height, &space) < 0 ||
         space > data_size)
         return_error(gs_error_rangecheck);
-    cdev->page_band_height = band_height;
+    cdev->page_info.band_params.BandHeight = band_height;
     nbands = (cdev->target->height + band_height - 1) / band_height;
     cdev->nbands = nbands;
 #ifdef DEBUG
@@ -365,11 +335,11 @@ clist_minimum_buffer(int nbands) {
  * when writing.  Requires: nbands.  Sets: states, cbuf, cend, band_range_list.
  */
 static int
-clist_init_states(gx_device * dev, byte * init_data, uint data_size)
+clist_init_states(gx_device * dev, byte * init_data, size_t data_size)
 {
     gx_device_clist_writer * const cdev =
         &((gx_device_clist *)dev)->writer;
-    ulong state_size = cdev->nbands * (ulong) sizeof(gx_clist_state);
+    size_t state_size = cdev->nbands * sizeof(gx_clist_state);
     /* Align to the natural boundary for ARM processors, bug 689600 */
     intptr_t alignment = (-(intptr_t)init_data) & (sizeof(init_data) - 1);
 
@@ -386,11 +356,11 @@ clist_init_states(gx_device * dev, byte * init_data, uint data_size)
 
 /*
  * Initialize all the data allocations.  Requires: target.  Sets:
- * page_tile_cache_size, page_info.band_params.BandWidth,
+ * page_info.tile_cache_size, page_info.band_params.BandWidth,
  * page_info.band_params.BandBufferSpace, + see above.
  */
 static int
-clist_init_data(gx_device * dev, byte * init_data, uint data_size)
+clist_init_data(gx_device * dev, byte * init_data, size_t data_size)
 {
     gx_device_clist_writer * const cdev =
         &((gx_device_clist *)dev)->writer;
@@ -400,13 +370,13 @@ clist_init_data(gx_device * dev, byte * init_data, uint data_size)
         cdev->page_info.band_params.BandWidth = max(target->width, cdev->band_params.BandWidth);
     int band_height = cdev->band_params.BandHeight;
     bool page_uses_transparency = cdev->page_uses_transparency;
-    const uint band_space =
+    const size_t band_space =
     cdev->page_info.band_params.BandBufferSpace =
         (cdev->band_params.BandBufferSpace ?
          cdev->band_params.BandBufferSpace : data_size);
     byte *data = init_data;
-    uint size = band_space;
-    uint bits_size;
+    size_t size = band_space;
+    size_t bits_size;
     gx_device_memory bdev;
     gx_device *pbdev = (gx_device *)&bdev;
     int code;
@@ -435,14 +405,14 @@ clist_init_data(gx_device * dev, byte * init_data, uint data_size)
         cdev->disable_mask |= clist_disable_copy_alpha;
     if (dev_proc(cdev, open_device) == pattern_clist_open_device) {
         bits_size = data_size / 2;
-        cdev->page_line_ptrs_offset = 0;
+        cdev->page_info.line_ptrs_offset = 0;
     } else {
         if (band_height) {
             /*
              * The band height is fixed, so the band buffer requirement
              * is completely determined.
              */
-            ulong band_data_size;
+            size_t band_data_size;
             int adjusted;
 
             adjusted = (dev_proc(dev, dev_spec_op)(dev, gxdso_adjust_bandheight, NULL, band_height));
@@ -496,7 +466,7 @@ clist_init_data(gx_device * dev, byte * init_data, uint data_size)
         }
         /* The above calculated bits_size's include space for line ptrs. What is
          * the offset for the line_ptrs within the buffer? */
-        if (gdev_mem_bits_size(&bdev, band_width, band_height, &cdev->page_line_ptrs_offset) < 0)
+        if (gdev_mem_bits_size(&bdev, band_width, band_height, &cdev->page_info.line_ptrs_offset) < 0)
             return_error(gs_error_VMerror);
     }
     cdev->pdf14_trans_group_level = -1;	/* to prevent any initial op except PUSH_DEVICE */
@@ -507,7 +477,7 @@ clist_init_data(gx_device * dev, byte * init_data, uint data_size)
             pbdev->finalize(pbdev);
         return code;
     }
-    cdev->page_tile_cache_size = bits_size;
+    cdev->page_info.tile_cache_size = bits_size;
     data += bits_size;
     size -= bits_size;
     code = clist_init_bands(dev, &bdev, size, band_width, band_height);
@@ -547,6 +517,8 @@ clist_reset(gx_device * dev)
     cdev->band_range_list->head = cdev->band_range_list->tail = 0;
     cdev->band_range_min = 0;
     cdev->band_range_max = nbands - 1;
+    if_debug2m('L', cdev->memory, "[L]Resetting: Band range(%d,%d)\n",
+               cdev->band_range_min, cdev->band_range_max);
     {
         int band;
         gx_clist_state *states = cdev->states;
@@ -637,7 +609,7 @@ clist_emit_page_header(gx_device *dev)
 static void
 clist_reset_page(gx_device_clist_writer *cwdev)
 {
-    cwdev->page_bfile_end_pos = 0;
+    cwdev->page_info.bfile_end_pos = 0;
 }
 
 /* Open the device's bandfiles */
@@ -651,19 +623,19 @@ clist_open_output_file(gx_device *dev)
 
     if (cdev->do_not_open_or_close_bandfiles)
         return 0; /* external bandfile open/close managed externally */
-    cdev->page_cfile = 0;       /* in case of failure */
-    cdev->page_bfile = 0;       /* ditto */
+    cdev->page_info.cfile = 0;       /* in case of failure */
+    cdev->page_info.bfile = 0;       /* ditto */
     code = clist_init(dev);
     if (code < 0)
         return code;
     snprintf(fmode, sizeof(fmode), "w+%s", gp_fmode_binary_suffix);
-    cdev->page_cfname[0] = 0;   /* create a new file */
-    cdev->page_bfname[0] = 0;   /* ditto */
+    cdev->page_info.cfname[0] = 0;   /* create a new file */
+    cdev->page_info.bfname[0] = 0;   /* ditto */
     clist_reset_page(cdev);
-    if ((code = cdev->page_info.io_procs->fopen(cdev->page_cfname, fmode, &cdev->page_cfile,
+    if ((code = cdev->page_info.io_procs->fopen(cdev->page_info.cfname, fmode, &cdev->page_info.cfile,
                             cdev->bandlist_memory, cdev->bandlist_memory,
                             true)) < 0 ||
-        (code = cdev->page_info.io_procs->fopen(cdev->page_bfname, fmode, &cdev->page_bfile,
+        (code = cdev->page_info.io_procs->fopen(cdev->page_info.bfname, fmode, &cdev->page_info.bfile,
                             cdev->bandlist_memory, cdev->bandlist_memory,
                             false)) < 0
         ) {
@@ -737,11 +709,12 @@ clist_open(gx_device *dev)
 errxit:
     /* prevent leak */
     gs_free_object(cdev->memory->non_gc_memory, cdev->cache_chunk, "free tile cache for clist");
+    dev->is_open = save_is_open;
     cdev->cache_chunk = NULL;
     return code;
 }
 
-static int
+int
 clist_close(gx_device *dev)
 {
     int i;
@@ -815,21 +788,21 @@ clist_finish_page(gx_device *dev, bool flush)
         crdev->icc_table = NULL;
     }
     if (flush) {
-        if (cdev->page_cfile != 0) {
-            code = cdev->page_info.io_procs->rewind(cdev->page_cfile, true, cdev->page_cfname);
+        if (cdev->page_info.cfile != 0) {
+            code = cdev->page_info.io_procs->rewind(cdev->page_info.cfile, true, cdev->page_info.cfname);
             if (code < 0) return code;
         }
-        if (cdev->page_bfile != 0) {
-            code = cdev->page_info.io_procs->rewind(cdev->page_bfile, true, cdev->page_bfname);
+        if (cdev->page_info.bfile != 0) {
+            code = cdev->page_info.io_procs->rewind(cdev->page_info.bfile, true, cdev->page_info.bfname);
             if (code < 0) return code;
         }
         cdev->page_info.bfile_end_pos = 0;
         clist_reset_page(cdev);
     } else {
-        if (cdev->page_cfile != 0)
-            cdev->page_info.io_procs->fseek(cdev->page_cfile, 0L, SEEK_END, cdev->page_cfname);
-        if (cdev->page_bfile != 0)
-            cdev->page_info.io_procs->fseek(cdev->page_bfile, 0L, SEEK_END, cdev->page_bfname);
+        if (cdev->page_info.cfile != 0)
+            cdev->page_info.io_procs->fseek(cdev->page_info.cfile, 0L, SEEK_END, cdev->page_info.cfname);
+        if (cdev->page_info.bfile != 0)
+            cdev->page_info.io_procs->fseek(cdev->page_info.bfile, 0L, SEEK_END, cdev->page_info.bfname);
     }
     code = clist_init(dev);             /* reinitialize */
     if (code >= 0)
@@ -874,33 +847,35 @@ clist_end_page(gx_device_clist_writer * cldev)
              */
             memset(&cb, 0, sizeof(cb)); /* Zero the block, including any padding */
             cb.band_min = cb.band_max = cmd_band_end;
-            cb.pos = (cldev->page_cfile == 0 ? 0 : cldev->page_info.io_procs->ftell(cldev->page_cfile));
-            code = cldev->page_info.io_procs->fwrite_chars(&cb, sizeof(cb), cldev->page_bfile);
+            cb.pos = (cldev->page_info.cfile == 0 ? 0 : cldev->page_info.io_procs->ftell(cldev->page_info.cfile));
+            if_debug3m('l', cldev->memory, "[l]writing end for bands (%d,%d) at %"PRId64"\n",
+                       cb.band_min, cb.band_max, cb.pos);
+            code = cldev->page_info.io_procs->fwrite_chars(&cb, sizeof(cb), cldev->page_info.bfile);
             if (code > 0)
                 code = 0;
         }
     }
     if (code >= 0) {
         ecode |= code;
-        cldev->page_bfile_end_pos = cldev->page_info.io_procs->ftell(cldev->page_bfile);
+        cldev->page_info.bfile_end_pos = cldev->page_info.io_procs->ftell(cldev->page_info.bfile);
     } else
         ecode = code;
 
     /* Reset warning margin to 0 to release reserve memory if mem files */
-    if (cldev->page_bfile != 0)
-        cldev->page_info.io_procs->set_memory_warning(cldev->page_bfile, 0);
-    if (cldev->page_cfile != 0)
-        cldev->page_info.io_procs->set_memory_warning(cldev->page_cfile, 0);
+    if (cldev->page_info.bfile != 0)
+        cldev->page_info.io_procs->set_memory_warning(cldev->page_info.bfile, 0);
+    if (cldev->page_info.cfile != 0)
+        cldev->page_info.io_procs->set_memory_warning(cldev->page_info.cfile, 0);
 
 #ifdef DEBUG
     if (gs_debug_c('l') | gs_debug_c(':')) {
         if (cb.pos <= 0xFFFFFFFF)
             dmlprintf2(cldev->memory, "[:]clist_end_page at cfile=%lu, bfile=%lu\n",
-                  (unsigned long)cb.pos, (unsigned long)cldev->page_bfile_end_pos);
+                  (unsigned long)cb.pos, (unsigned long)cldev->page_info.bfile_end_pos);
         else
             dmlprintf3(cldev->memory, "[:]clist_end_page at cfile=%lu%0lu, bfile=%lu\n",
                 (unsigned long) (cb.pos >> 32), (unsigned long) (cb.pos & 0xFFFFFFFF),
-                (unsigned long)cldev->page_bfile_end_pos);
+                (unsigned long)cldev->page_info.bfile_end_pos);
     }
 #endif
     if (cldev->page_uses_transparency && gs_debug[':']) {
@@ -930,7 +905,7 @@ gx_color_index2usage(gx_device *dev, gx_color_index color)
 
     for (i = 0; i < dev->color_info.num_components; i++) {
         if (color & dev->color_info.comp_mask[i])
-            bits |= (1<<i);
+            bits |= (((gx_color_usage_bits)1) << i);
     }
     return bits;
 }
@@ -964,22 +939,6 @@ clist_put_current_params(gx_device_clist_writer *cldev)
 }
 
 /* ---------------- Driver interface ---------------- */
-
-static int
-clist_get_band(gx_device * dev, int y, int *band_start)
-{
-    gx_device_clist_writer * const cdev =
-        &((gx_device_clist *)dev)->writer;
-    int band_height = cdev->page_band_height;
-    int start;
-
-    if (y < 0)
-        y = 0;
-    else if (y >= dev->height)
-        y = dev->height;
-    *band_start = start = y - y % band_height;
-    return min(dev->height - start, band_height);
-}
 
 /* ICC table operations.  See gxclist.h for details */
 /* This checks the table for a hash code entry */
@@ -1090,7 +1049,7 @@ int64_t
 clist_icc_addprofile(gx_device_clist_writer *cldev, cmm_profile_t *iccprofile, int *size)
 {
 
-    clist_file_ptr cfile = cldev->page_cfile;
+    clist_file_ptr cfile = cldev->page_info.cfile;
     int64_t fileposit;
 #if defined(DEBUG) || defined(PACIFY_VALGRIND)
     gsicc_serialized_profile_t profile_data = { 0 };
@@ -1242,7 +1201,7 @@ clist_writer_color_usage(gx_device_clist_writer *cldev, int y, int height,
 {
         gx_color_usage_bits or = 0;
         bool slow_rop = false;
-        int i, band_height = cldev->page_band_height;
+        int i, band_height = cldev->page_info.band_params.BandHeight;
         int start = y / band_height, end = (y + height) / band_height;
 
         for (i = start; i < end; ++i) {
@@ -1386,7 +1345,7 @@ clist_make_accum_device(gs_memory_t *mem, gx_device *target, const char *dname, 
             return 0;
         memset(cdev, 0, sizeof(*cdev));
         cwdev->params_size = sizeof(gx_device_clist);
-        cwdev->static_procs = NULL;
+        cwdev->initialize_device_procs = clist_initialize_device_procs;
         cwdev->dname = dname;
         cwdev->memory = mem->stable_memory;
         cwdev->stype = &st_device_clist;
@@ -1406,14 +1365,15 @@ clist_make_accum_device(gs_memory_t *mem, gx_device *target, const char *dname, 
             cwdev->height = target->height;
         }
         cwdev->LeadingEdge = target->LeadingEdge;
-        cwdev->is_planar = target->is_planar;
+        cwdev->num_planar_planes = target->num_planar_planes;
         cwdev->HWResolution[0] = target->HWResolution[0];
         cwdev->HWResolution[1] = target->HWResolution[1];
         cwdev->icc_cache_cl = NULL;
         cwdev->icc_table = NULL;
         cwdev->UseCIEColor = target->UseCIEColor;
         cwdev->LockSafetyParams = true;
-        cwdev->procs = gs_clist_device_procs;
+        cwdev->initialize_device_procs((gx_device *)cwdev);
+        gx_device_fill_in_procs((gx_device *)cwdev);
         gx_device_copy_color_params((gx_device *)cwdev, target);
         rc_assign(cwdev->target, target, "clist_make_accum_device");
         clist_init_io_procs(cdev, use_memory_clist);
@@ -1430,6 +1390,7 @@ clist_make_accum_device(gs_memory_t *mem, gx_device *target, const char *dname, 
         set_dev_proc(cwdev, set_graphics_type_tag, gx_forward_set_graphics_type_tag);
         cwdev->graphics_type_tag = target->graphics_type_tag;		/* initialize to same as target */
         cwdev->interpolate_control = target->interpolate_control;	/* initialize to same as target */
+        cwdev->non_strict_bounds = target->non_strict_bounds;	        /* initialize to same as target */
 
         /* to be set by caller: cwdev->finalize = finalize; */
 
@@ -1483,10 +1444,10 @@ clist_mutate_to_clist(gx_device_clist_mutatable  *pdev,
                       bool                        bufferSpace_is_exact,
                 const gx_device_buf_procs_t      *buf_procs,
                       dev_proc_dev_spec_op(dev_spec_op),
-                      uint                        min_buffer_space)
+                      size_t                      min_buffer_space)
 {
     gx_device *target = (gx_device *)pdev;
-    uint space;
+    size_t space;
     int code;
     gx_device_clist *const pclist_dev = (gx_device_clist *)pdev;
     gx_device_clist_common * const pcldev = &pclist_dev->common;
@@ -1550,7 +1511,7 @@ open_c:
                       pdev->clist_disable_mask,
                       pdev->page_uses_transparency,
                       pdev->page_uses_overprint);
-    code = (*gs_clist_device_procs.open_device)( (gx_device *)pcldev );
+    code = clist_open( (gx_device *)pcldev );
     if (code < 0) {
         /* If there wasn't enough room, and we haven't */
         /* already shrunk the buffer, try enlarging it. */
@@ -1585,5 +1546,7 @@ open_c:
             pdev->buf = NULL;
         }
     }
+    if (code < 0)
+        pdev->is_open = save_is_open;
     return code;
 }

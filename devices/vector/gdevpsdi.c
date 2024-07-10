@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -269,7 +269,7 @@ setup_image_compression(psdf_binary_writer *pbw, const psdf_image_params *pdip,
         templat = lossless_template;
     if (dict != NULL) /* Some interpreters don't supply filter parameters. */
         gs_c_param_list_read(dict);	/* ensure param list is in read mode */
-    if (templat == 0 || pdev->JPEG_PassThrough)	/* no compression */
+    if (templat == 0 || pdev->JPEG_PassThrough || pdev->JPX_PassThrough)	/* no compression */
         return 0;
     if (pim->Width < 200 && pim->Height < 200) /* Prevent a fixed overflow. */
         if (pim->Width * pim->Height * Colors * pim->BitsPerComponent <= 160)
@@ -886,8 +886,10 @@ new_setup_image_filters(gx_device_psdf * pdev, psdf_binary_writer * pbw,
             resolution = resolutiony;
     }
 
-    if (bpc != bpc_out)
+    if (bpc != bpc_out) {
         pdev->JPEG_PassThrough = 0;
+        pdev->JPX_PassThrough = 0;
+    }
 
     if (ncomp == 1 && pim->ColorSpace && pim->ColorSpace->type->index != gs_color_space_index_Indexed) {
         /* Monochrome, gray, or mask */
@@ -906,6 +908,7 @@ new_setup_image_filters(gx_device_psdf * pdev, psdf_binary_writer * pbw,
                 params.Dict = pdev->params.GrayImage.Dict;
             }
             pdev->JPEG_PassThrough = 0;
+            pdev->JPX_PassThrough = 0;
             code = setup_downsampling(pbw, &params, pim, pgs, resolution, lossless);
         } else {
             code = setup_image_compression(pbw, &params, pim, pgs, lossless);
@@ -919,6 +922,7 @@ new_setup_image_filters(gx_device_psdf * pdev, psdf_binary_writer * pbw,
             params.Depth = (colour_conversion ? 8 : bpc_out);
         if (do_downsample(&params, pim, resolution)) {
             pdev->JPEG_PassThrough = 0;
+            pdev->JPX_PassThrough = 0;
             code = setup_downsampling(pbw, &params, pim, pgs, resolution, lossless);
         } else {
             code = setup_image_compression(pbw, &params, pim, pgs, lossless);

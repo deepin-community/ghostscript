@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* 32-bit-per-pixel "memory" (stored bitmap) device */
@@ -30,11 +30,20 @@ declare_mem_procs(mem_true32_copy_mono, mem_true32_copy_color, mem_true32_fill_r
 
 /* The device descriptor. */
 const gx_device_memory mem_true32_device =
-mem_full_device("image32", 24, 8, mem_open,
-                gx_default_map_rgb_color, gx_default_map_color_rgb,
-     mem_true32_copy_mono, mem_true32_copy_color, mem_true32_fill_rectangle,
-            gx_default_cmyk_map_cmyk_color, gx_default_strip_tile_rectangle,
-                mem_default_strip_copy_rop, mem_get_bits_rectangle);
+    mem_device("image32", 24, 8, mem_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_32 =
+{
+    gx_default_map_rgb_color,
+    gx_default_map_color_rgb,
+    mem_true32_fill_rectangle,
+    mem_true32_copy_mono,
+    mem_true32_copy_color,
+    gx_default_copy_alpha,
+    gx_default_strip_tile_rectangle,
+    mem_default_strip_copy_rop2,
+    mem_get_bits_rectangle
+};
 
 /* Convert x coordinate to byte offset in scan line. */
 #undef x_to_byte
@@ -248,11 +257,20 @@ declare_mem_procs(mem32_word_copy_mono, mem32_word_copy_color, mem32_word_fill_r
 
 /* Here is the device descriptor. */
 const gx_device_memory mem_true32_word_device =
-mem_full_device("image32w", 24, 8, mem_open,
-                gx_default_map_rgb_color, gx_default_map_color_rgb,
-     mem32_word_copy_mono, mem32_word_copy_color, mem32_word_fill_rectangle,
-            gx_default_cmyk_map_cmyk_color, gx_default_strip_tile_rectangle,
-                gx_no_strip_copy_rop, mem_word_get_bits_rectangle);
+    mem_device("image32w", 24, 8, mem_word_dev_initialize_device_procs);
+
+const gdev_mem_functions gdev_mem_fns_32w =
+{
+    gx_default_map_rgb_color,
+    gx_default_map_color_rgb,
+    mem32_word_fill_rectangle,
+    mem32_word_copy_mono,
+    mem32_word_copy_color,
+    gx_default_copy_alpha,
+    gx_default_strip_tile_rectangle,
+    gx_no_strip_copy_rop2,
+    mem_word_get_bits_rectangle
+};
 
 /* Fill a rectangle with a color. */
 static int
@@ -282,7 +300,7 @@ mem32_word_copy_color(gx_device * dev,
 {
     gx_device_memory * const mdev = (gx_device_memory *)dev;
     byte *row;
-    uint raster;
+    size_t raster;
 
     fit_copy(dev, base, sourcex, sraster, id, x, y, w, h);
     row = scan_line_base(mdev, y);

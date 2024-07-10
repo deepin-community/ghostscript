@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Artifex Software, Inc.
+# Copyright (C) 2001-2023 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
 # of the license contained in the file LICENSE in this distribution.
 #
 # Refer to licensing information at http://www.artifex.com or contact
-# Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-# CA 94945, U.S.A., +1(415)492-9861, for further information.
+# Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+# CA 94129, USA, for further information.
 #
 
 # makefile for the lcms2mt library code.
@@ -166,8 +166,15 @@ $(LCMS2OBJ)cmswtpnt.$(OBJ) : $(LCMS2SRC)cmswtpnt.c $(LCMS2_DEPS)
 $(LCMS2OBJ)cmsvirt.$(OBJ) : $(LCMS2SRC)cmsvirt.c $(LCMS2_DEPS)
 	$(LCMS2_CC) $(LCMS2O_)cmsvirt.$(OBJ) $(C_) $(LCMS2SRC)cmsvirt.c
 
-$(LCMS2OBJ)cmsxform.$(OBJ) : $(LCMS2SRC)cmsxform.c $(LCMS2_DEPS)
-	$(LCMS2_CC) $(LCMS2O_)cmsxform.$(OBJ) $(C_) $(LCMS2SRC)cmsxform.c
+$(LCMS2OBJ)cmsxform_0.$(OBJ) : $(LCMS2SRC)cmsxform.c $(LCMS2_DEPS)
+	$(LCMS2_CC) $(LCMS2O_)cmsxform_0.$(OBJ) $(C_) $(LCMS2SRC)cmsxform.c
+
+$(LCMS2OBJ)cmsxform_1.$(OBJ) : $(LCMS2SRC)cmsxform.c $(CAL_SRC)$(D)cal_cms.h $(LCMS2_DEPS)
+	$(LCMS2_CC) $(LCMS2O_)cmsxform_1.$(OBJ) $(I_)$(CAL_SRC)$(_I) $(D_)WITH_CAL$(_D) $(C_) $(LCMS2SRC)cmsxform.c
+
+$(LCMS2OBJ)cmsxform.$(OBJ) : $(LCMS2OBJ)cmsxform_$(WITH_CAL).$(OBJ) $(AK) \
+ $(LIB_MAK) $(MAKEDIRS)
+	$(CP_) $(LCMS2OBJ)cmsxform_$(WITH_CAL).$(OBJ) $(LCMS2OBJ)cmsxform.$(OBJ)
 
 $(LCMS2OBJ)cmsalpha.$(OBJ) : $(LCMS2SRC)cmsalpha.c $(LCMS2_DEPS)
 	$(LCMS2_CC) $(LCMS2O_)cmsalpha.$(OBJ) $(C_) $(LCMS2SRC)cmsalpha.c

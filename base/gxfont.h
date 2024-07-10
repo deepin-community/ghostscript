@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -97,6 +97,9 @@ typedef struct gs_font_info_s {
     gs_const_string FullName;
 #define FONT_INFO_EMBEDDING_RIGHTS 0x4000
     int EmbeddingRights;
+#define FONT_INFO_EMBEDDED 0x8000
+    /* Indicates the font was embedded in the (PDF!) input job */
+    int FontEmbedded;
 } gs_font_info_t;
 
 #define public_st_gs_font_info() /* in gsfont.c */\

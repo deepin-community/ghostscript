@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -97,9 +97,9 @@ pjl_proc_get_named_resource_size(pl_interp_implementation_t * pli, char *name)
 
 int
 pjl_proc_get_named_resource(pl_interp_implementation_t * pli, char *name,
-                            byte * data)
+                            byte * data, long int datasize)
 {
-    return pjl_get_named_resource(pli->interp_client_data, name, data);
+    return pjl_get_named_resource(pli->interp_client_data, name, data, datasize);
 }
 
 int

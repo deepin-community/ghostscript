@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -23,6 +23,8 @@
 #include "gsparams.h"
 #include "string_.h"
 #include <ctype.h>	/* for isalpha, etc. */
+
+extern dev_proc_open_device(clist_open);
 
 /* Save the current clist state into a saved page structure,
  * and optionally stashes the files into the given save_files
@@ -44,8 +46,8 @@ do_page_save(gx_device_printer * pdev, gx_saved_page * page, clist_file_ptr *sav
     page->tag = pdev->graphics_type_tag;
     page->io_procs = cdev->common.page_info.io_procs;
     /* Save the page information. */
-    strncpy(page->cfname, pcldev->page_info.cfname, sizeof(page->cfname)-1);
-    strncpy(page->bfname, pcldev->page_info.bfname, sizeof(page->bfname)-1);
+    memcpy(page->cfname, pcldev->page_info.cfname, sizeof(page->cfname));
+    memcpy(page->bfname, pcldev->page_info.bfname, sizeof(page->bfname));
     page->bfile_end_pos = pcldev->page_info.bfile_end_pos;
     if (save_files != NULL) {
       save_files[0] =  pcldev->page_info.cfile;
@@ -56,6 +58,8 @@ do_page_save(gx_device_printer * pdev, gx_saved_page * page, clist_file_ptr *sav
     pcldev->page_info.cfname[0] = 0;
     pcldev->page_info.bfname[0] = 0;
     page->tile_cache_size = pcldev->page_info.tile_cache_size;
+    page->line_ptrs_offset = pcldev->page_info.line_ptrs_offset;
+    page->num_planar_planes = pcldev->num_planar_planes;
     page->band_params = pcldev->page_info.band_params;
     /* Now serialize and save the rest of the information from the device params */
     /* we count on this to correctly set the color_info, devn_params and icc_struct */
@@ -106,7 +110,7 @@ params_out:
         }
     }
     /* Now re-open the clist device so that we get new files for the next page */
-    return (*gs_clist_device_procs.open_device) ((gx_device *) pdev);
+    return clist_open((gx_device *) pdev);
 }
 
 /* Save a page. The elements are allocated by this function in non_gc_memory */
@@ -393,16 +397,6 @@ do_page_load(gx_device_printer *pdev, gx_saved_page *page, clist_file_ptr *save_
     gs_c_param_list paramlist;
     gs_devn_params *pdevn_params;
 
-    /* fetch and put the params we saved with the page */
-    gs_c_param_list_write(&paramlist, pdev->memory);
-    if ((code = gs_param_list_unserialize((gs_param_list *)&paramlist, page->paramlist)) < 0)
-        goto out;
-    gs_c_param_list_read(&paramlist);
-    code = gs_putdeviceparams((gx_device *)pdev, (gs_param_list *)&paramlist);
-    gs_c_param_list_release(&paramlist);
-    if (code < 0) {
-        goto out;
-    }
     /* if this is a DeviceN device (that supports spot colors), we need to load the */
     /* devn_params saved in the page (num_separations, separations[])               */
     if ((pdevn_params = dev_proc(pdev, ret_devn_params)((gx_device *)pdev)) != NULL) {
@@ -425,6 +419,16 @@ do_page_load(gx_device_printer *pdev, gx_saved_page *page, clist_file_ptr *save_
             memcpy(pdevn_params->separations.names[i].data, page->separation_names[i],
                    page->separation_name_sizes[i]);
         }
+    }
+    /* fetch and put the params we saved with the page */
+    gs_c_param_list_write(&paramlist, pdev->memory);
+    if ((code = gs_param_list_unserialize((gs_param_list *)&paramlist, page->paramlist)) < 0)
+        goto out;
+    gs_c_param_list_read(&paramlist);
+    code = gs_putdeviceparams((gx_device *)pdev, (gs_param_list *)&paramlist);
+    gs_c_param_list_release(&paramlist);
+    if (code < 0) {
+        goto out;
     }
     if (code > 0)
         if ((code = gs_opendevice((gx_device *)pdev)) < 0)
@@ -449,6 +453,8 @@ do_page_load(gx_device_printer *pdev, gx_saved_page *page, clist_file_ptr *save_
     crdev->page_info.bfile_end_pos = page->bfile_end_pos;
     crdev->page_info.band_params = page->band_params;
     crdev->graphics_type_tag = page->tag;
+    crdev->page_info.line_ptrs_offset = page->line_ptrs_offset;
+    crdev->num_planar_planes = page->num_planar_planes;
 
     crdev->yplane.index = -1;
     crdev->pages = NULL;
@@ -458,8 +464,8 @@ do_page_load(gx_device_printer *pdev, gx_saved_page *page, clist_file_ptr *save_
     crdev->ymin = crdev->ymax = 0;      /* invalidate buffer contents to force rasterizing */
 
     /* We probably don't need to copy in the filenames, but do it in case something expects it */
-    strncpy(crdev->page_info.cfname, page->cfname, sizeof(crdev->page_info.cfname)-1);
-    strncpy(crdev->page_info.bfname, page->bfname, sizeof(crdev->page_info.bfname)-1);
+    memcpy(crdev->page_info.cfname, page->cfname, sizeof(crdev->page_info.cfname));
+    memcpy(crdev->page_info.bfname, page->bfname, sizeof(crdev->page_info.bfname));
     if (save_files != NULL)
     {
         crdev->page_info.cfile = save_files[0];
@@ -763,6 +769,8 @@ gx_saved_pages_list_print(gx_device_printer *pdev, gx_saved_pages_list *list,
 
                     /* print the saved page from the current curr_elem */
 
+                    if (gs_debug_c(':'))
+                        dmprintf1(pdev->memory, "Printing page %d\n", curr_page);
                     if ((code = gx_output_saved_page(pdev, curr_elem->page)) < 0)
                         goto out;
 
@@ -779,7 +787,7 @@ gx_saved_pages_list_print(gx_device_printer *pdev, gx_saved_pages_list *list,
                             break;
                         curr_elem = curr_elem->prev;
                         /* Below is not needed since we never print reverse even/odd */
-                        if (page_skip < -1)
+                        if (page_skip < -1) /* lgtm [cpp/constant-comparison] */
                             curr_elem = curr_elem->prev;
                     }
                     if (curr_elem == NULL) {

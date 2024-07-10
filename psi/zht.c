@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -126,11 +126,14 @@ static int
 zsetscreen(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
-    gs_screen_halftone screen;
+    gs_screen_halftone screen = { 0 };
     gx_ht_order order;
     int code = zscreen_params(op, &screen);
     gs_memory_t *mem;
-    int space_index = r_space_index(op);
+    int space_index;
+
+    check_op(3);
+    space_index = r_space_index(op);
 
     if (code < 0)
         return code;
@@ -221,7 +224,7 @@ set_screen_continue(i_ctx_t *i_ctx_p)
     code = gs_screen_next(senum, value);
     if (code < 0)
         return code;
-    pop(1);
+    ref_stack_pop(&o_stack, 1);
     return screen_sample(i_ctx_p);
 }
 /* Finish setscreen. */

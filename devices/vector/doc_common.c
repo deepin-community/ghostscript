@@ -1,9 +1,24 @@
+/* Copyright (C) 2018-2023 Artifex Software, Inc.
+   All Rights Reserved.
+
+   This software is provided AS-IS with no warranty, either express or
+   implied.
+
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
+*/
+
 #include "doc_common.h"
 
 #include "gxfont.h"
 #include "gserrors.h"
 #include "gxfcid.h"
-#include "gdevagl.h"
+#include "gsagl.h"
 #include "gxdevcli.h"
 #include "gxgstate.h"
 
@@ -32,6 +47,7 @@ font_orig_matrix(const gs_font *font, gs_glyph cid, gs_matrix *pmat)
     case ft_encrypted2:
     case ft_CID_encrypted:
     case ft_user_defined:
+    case ft_PDF_user_defined:
     case ft_PCL_user_defined:
     case ft_GL2_stick_user_defined:
     case ft_GL2_531:
@@ -428,7 +444,7 @@ int txt_get_unicode(gx_device *dev, gs_font *font, gs_glyph glyph, gs_char ch, u
                     }
                 }
             }
-            if (length == 0) {
+            if (code >= 0 && length == 0) {
                 single_glyph_list_t *sentry = SingleGlyphList;
                 double_glyph_list_t *dentry = DoubleGlyphList;
                 treble_glyph_list_t *tentry = TrebleGlyphList;
@@ -512,6 +528,14 @@ int txt_get_unicode(gx_device *dev, gs_font *font, gs_glyph glyph, gs_char ch, u
     } else {
         char *b, *u;
         int l = length - 1;
+
+        /* Real Unicode values should be at least 2 bytes. In fact I think the code assumes exactly
+         * 2 bytes. If we got an odd number, give up and return the character code.
+         */
+        if (length & 1) {
+            *Buffer = fallback;
+            return 1;
+        }
 
         unicode = (ushort *)gs_alloc_bytes(dev->memory, length, "temporary Unicode array");
         length = font->procs.decode_glyph((gs_font *)font, glyph, ch, unicode, length);

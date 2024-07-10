@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -374,6 +374,15 @@ typedef struct gs_param_list_procs_s {
 #define param_commit(plist)\
          (*(plist)->procs->commit)(plist)
 
+         /*
+          * Read the value of a previously signalled error.  (Only used when reading.)
+          */
+#define param_proc_read_signalled_error(proc)\
+         int proc(gs_param_list *, gs_param_name)
+         param_proc_read_signalled_error((*read_signalled_error));
+#define param_read_signalled_error(plist, pkey)\
+         (*(plist)->procs->read_signalled_error)(plist, pkey)
+
 } gs_param_list_procs;
 
 /* Transmit typed parameters. */
@@ -477,7 +486,8 @@ typedef struct gs_param_item_s {
  * the optional default_obj, the item isn't transferred.
  */
 int gs_param_read_items(gs_param_list * plist, void *obj,
-                        const gs_param_item_t * items);
+                        const gs_param_item_t * items,
+                        gs_memory_t *mem);
 int gs_param_write_items(gs_param_list * plist, const void *obj,
                          const void *default_obj,
                          const gs_param_item_t * items);
@@ -560,6 +570,7 @@ void gs_c_param_list_write(gs_c_param_list *, gs_memory_t *);
 void gs_c_param_list_write_more(gs_c_param_list *); /* switch back to writing, no init */
 void gs_c_param_list_read(gs_c_param_list *);	/* switch to reading */
 void gs_c_param_list_release(gs_c_param_list *);
+void gs_c_param_list_free(gs_memory_t *, gs_c_param_list *, client_name_t);
 
 /* Given a string to parse (a list of key/value pairs), parse it and add
  * what we find to the supplied param list. Note that p is corrupted

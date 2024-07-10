@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -271,7 +271,6 @@ struct gx_device_color_s {
             ushort num_components;
             byte c_base[GX_DEVICE_COLOR_MAX_COMPONENTS];
             uint c_level[GX_DEVICE_COLOR_MAX_COMPONENTS];
-            ushort /*gx_color_value */ alpha;
 #if GX_DEVICE_COLOR_MAX_COMPONENTS <= ARCH_SIZEOF_SHORT * 8
             ushort plane_mask;
 #else
@@ -371,14 +370,12 @@ struct gx_device_color_saved_s {
         struct _svcol {
             byte    c_base[GX_DEVICE_COLOR_MAX_COMPONENTS];
             uint    c_level[GX_DEVICE_COLOR_MAX_COMPONENTS];
-            ushort  alpha;
         }               colored;
         struct _svdevn {
             ushort values[GX_DEVICE_COLOR_MAX_COMPONENTS];
         } devn;
         struct _pattern {
             gs_id id;
-            gs_int_point phase;
         }		pattern;
         struct _pattern2 {
             gs_id id;

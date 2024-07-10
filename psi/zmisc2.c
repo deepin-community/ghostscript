@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -53,6 +53,7 @@ zsetlanguagelevel(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
     int code = 0;
 
+    check_op(1);
     check_type(*op, t_integer);
     if (op->value.intval != LANGUAGE_LEVEL) {
         code = set_language_level(i_ctx_p, (int)op->value.intval);
@@ -121,6 +122,8 @@ set_language_level(i_ctx_t *i_ctx_p, int new_level)
                 if (code > 0) {
                     if (!r_has_type(pdict, t_dictionary))
                         return_error(gs_error_typecheck);
+                    if (pgdict == NULL)
+                        return_error(gs_error_stackunderflow);
                     *pgdict = *pdict;
                 }
                 /* Set other flags for Level 2 operation. */
@@ -147,8 +150,12 @@ set_language_level(i_ctx_t *i_ctx_p, int new_level)
                  * in globaldict.  This will slow down future lookups, but
                  * we don't care.
                  */
-                int index = dict_first(pgdict);
+                int index = 0;
                 ref elt[2];
+
+                if (pgdict == NULL)
+                    return_error(gs_error_stackunderflow);
+                index = dict_first(pgdict);
 
                 while ((index = dict_next(pgdict, index, &elt[0])) >= 0)
                     if (r_has_type(&elt[0], t_name))

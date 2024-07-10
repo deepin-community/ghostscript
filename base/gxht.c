@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -219,12 +219,31 @@ gx_dc_ht_binary_load(gx_device_color * pdevc, const gs_gstate * pgs,
                      gx_device * dev, gs_color_select_t select)
 {
     int component_index = pdevc->colors.binary.b_index;
-    const gx_ht_order *porder =
-        (component_index < 0 ?
-         &pdevc->colors.binary.b_ht->order :
-         &pdevc->colors.binary.b_ht->components[component_index].corder);
-    gx_ht_cache *pcache = porder->cache;
+    const gx_ht_order *porder;
+    gx_ht_cache *pcache;
 
+    if (component_index < 0) {
+        porder = &pdevc->colors.binary.b_ht->order;
+    } else {
+        int i = 0;
+
+        /* Ensure the halftone saved in the device colour matches one of the
+         * object-type device halftones. It should not be possible for this not
+         * to be the case, but an image with a procedural data source which executes
+         * more grestores than gsaves can restore away the halftone that was in
+         * force at the start of the image, while we're trying to still use it.
+         * If that happens we cna't do anything but throw an error.
+         */
+        for (i=0;i < HT_OBJTYPE_COUNT;i++) {
+            if (pdevc->colors.binary.b_ht == pgs->dev_ht[i])
+                break;
+        }
+        if (i == HT_OBJTYPE_COUNT)
+            return_error(gs_error_unknownerror);
+        porder = &pdevc->colors.binary.b_ht->components[component_index].corder;
+
+    }
+    pcache = porder->cache;
     if (pcache->order.bit_data != porder->bit_data)
         gx_ht_init_cache(pgs->memory, pcache, porder);
     /*
@@ -301,17 +320,7 @@ gx_dc_ht_binary_fill_rectangle(const gx_device_color * pdevc, int x, int y,
         lop = rop3_use_D_when_T_1(lop);
     if (source == NULL)
         set_rop_no_source(source, no_source, dev);
-    if (source->planar_height == 0)
-        return (*dev_proc(dev, strip_copy_rop))
-                             (dev, source->sdata,
-                              source->sourcex, source->sraster, source->id,
-                              (source->use_scolors ? source->scolors : NULL),
-                              &pdevc->colors.binary.b_tile->tiles,
-                              pdevc->colors.binary.color,
-                              x, y, w, h, pdevc->phase.x, pdevc->phase.y,
-                              lop);
-    else
-        return (*dev_proc(dev, strip_copy_rop2))
+    return (*dev_proc(dev, strip_copy_rop2))
                              (dev, source->sdata,
                               source->sourcex, source->sraster, source->id,
                               (source->use_scolors ? source->scolors : NULL),
@@ -362,10 +371,14 @@ gx_dc_ht_binary_equal(const gx_device_color * pdevc1,
  * The binary halftone tile is never transmitted as part of the string
  * representation, so there is also no flag bit for it.
  */
-static const int   dc_ht_binary_has_color0 = 0x01;
-static const int   dc_ht_binary_has_color1 = 0x02;
-static const int   dc_ht_binary_has_level = 0x04;
-static const int   dc_ht_binary_has_index = 0x08;
+enum {
+    dc_ht_binary_has_color0 = 0x01,
+    dc_ht_binary_has_color1 = 0x02,
+    dc_ht_binary_has_level = 0x04,
+    dc_ht_binary_has_index = 0x08,
+    dc_ht_binary_has_phase_x = 0x10,
+    dc_ht_binary_has_phase_y = 0x20,
+};
 
 /*
  * Serialize a binany halftone device color.
@@ -431,7 +444,7 @@ gx_dc_ht_binary_write(
                                  &tmp_size );
         req_size += tmp_size;
     }
-    if ( psdc == 0                                                      ||
+    if ( psdc == NULL ||
          pdevc->colors.binary.color[1] != psdc->colors.binary.b_color[1]  ) {
         flag_bits |= dc_ht_binary_has_color1;
         tmp_size = 0;
@@ -442,16 +455,28 @@ gx_dc_ht_binary_write(
         req_size += tmp_size;
     }
 
-    if ( psdc == 0                                                  ||
+    if ( psdc == NULL ||
          pdevc->colors.binary.b_level != psdc->colors.binary.b_level  ) {
         flag_bits |= dc_ht_binary_has_level;
         req_size += enc_u_sizew(pdevc->colors.binary.b_level);
     }
 
-    if ( psdc == 0                                                  ||
+    if ( psdc == NULL ||
          pdevc->colors.binary.b_index != psdc->colors.binary.b_index  ) {
         flag_bits |= dc_ht_binary_has_index;
         req_size += 1;
+    }
+
+    if ( psdc == NULL ||
+         pdevc->phase.x != psdc->phase.x ) {
+        flag_bits |= dc_ht_binary_has_phase_x;
+        req_size += enc_u_sizew(pdevc->phase.x);
+    }
+
+    if ( psdc == NULL ||
+         pdevc->phase.y != psdc->phase.y ) {
+        flag_bits |= dc_ht_binary_has_phase_y;
+        req_size += enc_u_sizew(pdevc->phase.y);
     }
 
     /* check if there is anything to be done */
@@ -494,6 +519,10 @@ gx_dc_ht_binary_write(
         enc_u_putw(pdevc->colors.binary.b_level, pdata);
     if ((flag_bits & dc_ht_binary_has_index) != 0)
         *pdata++ = pdevc->colors.binary.b_index;
+    if ((flag_bits & dc_ht_binary_has_phase_x) != 0)
+        enc_u_putw(pdevc->phase.x, pdata);
+    if ((flag_bits & dc_ht_binary_has_phase_y) != 0)
+        enc_u_putw(pdevc->phase.y, pdata);
 
     *psize = pdata - pdata0;
     return 0;
@@ -538,7 +567,9 @@ gx_dc_ht_binary_read(
     int64_t		    offset,
     const byte *            pdata,
     uint                    size,
-    gs_memory_t *           mem )       /* ignored */
+    gs_memory_t *           mem,        /* ignored */
+    int                     x0,
+    int                     y0)
 {
     gx_device_color         devc;
     const byte *            pdata0 = pdata;
@@ -555,9 +586,9 @@ gx_dc_ht_binary_read(
     devc.type = gx_dc_type_ht_binary;
 
     /* the halftone is always taken from the gs_gstate */
-    devc.colors.binary.b_ht = pgs->dev_ht;
+    devc.colors.binary.b_ht = pgs->dev_ht[HT_OBJTYPE_DEFAULT];
 
-    /* cache is not porvided until the device color is used */
+    /* cache is not provided until the device color is used */
     devc.colors.binary.b_tile = 0;
 
     /* verify the minimum amount of information */
@@ -588,7 +619,7 @@ gx_dc_ht_binary_read(
         pdata += code;
     }
     if ((flag_bits & dc_ht_binary_has_level) != 0) {
-        const byte *    pdata_start = pdata;
+        const byte *pdata_start = pdata;
 
         if (size < 1)
             return_error(gs_error_rangecheck);
@@ -601,15 +632,24 @@ gx_dc_ht_binary_read(
         --size;
         devc.colors.binary.b_index = *pdata++;
     }
+    if ((flag_bits & dc_ht_binary_has_phase_x) != 0) {
+        const byte *pdata_start = pdata;
 
-    if (pgs->dev_ht == NULL)
-        return_error(gs_error_unregistered); /* Must not happen. */
-    /* set the phase as required (select value is arbitrary) */
-    color_set_phase_mod( &devc,
-                         pgs->screen_phase[0].x,
-                         pgs->screen_phase[0].y,
-                         pgs->dev_ht->lcm_width,
-                         pgs->dev_ht->lcm_height );
+        if (size < 1)
+            return_error(gs_error_rangecheck);
+        enc_u_getw(devc.phase.x, pdata);
+        devc.phase.x += x0;
+        size -= pdata - pdata_start;
+    }
+    if ((flag_bits & dc_ht_binary_has_phase_y) != 0) {
+        const byte *pdata_start = pdata;
+
+        if (size < 1)
+            return_error(gs_error_rangecheck);
+        enc_u_getw(devc.phase.y, pdata);
+        devc.phase.y += y0;
+        size -= pdata - pdata_start;
+    }
 
     /* everything looks good */
     *pdevc = devc;

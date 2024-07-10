@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -196,7 +196,7 @@ s_DCTE_put_params(gs_param_list * plist, stream_DCT_state * pdct)
      * Required parameters for DCTEncode.
      * (DCTDecode gets the equivalent info from the SOF marker.)
      */
-    code = gs_param_read_items(plist, &params, s_DCTE_param_items);
+    code = gs_param_read_items(plist, &params, s_DCTE_param_items, NULL);
     if (code < 0)
         return code;
     if (params.Columns <= 0 || params.Columns > 0xffff ||
@@ -238,14 +238,12 @@ s_DCTE_put_params(gs_param_list * plist, stream_DCT_state * pdct)
             return code;
         case 1:
             /* No QuantTables, but maybe a QFactor to apply to default. */
-            if (pdct->QFactor != 1.0) {
-                code = gs_jpeg_set_linear_quality(pdct,
-                                             (int)(min(pdct->QFactor, 100.0)
-                                                   * 100.0 + 0.5),
-                                                  TRUE);
-                if (code < 0)
-                    return code;
-            }
+            code = gs_jpeg_set_linear_quality(pdct,
+                                         (int)(min(pdct->QFactor, 100.0)
+                                               * 100.0 + 0.5),
+                                              TRUE);
+            if (code < 0)
+                return code;
     }
     /* Change IJG colorspace defaults as needed;
      * set ColorTransform to what will go in the Adobe marker.
@@ -277,6 +275,8 @@ s_DCTE_put_params(gs_param_list * plist, stream_DCT_state * pdct)
             break;
     }
     /* Optional encoding-only parameters */
+    /* FIXME: This relies on the 'Markers' value in the param list
+     * being persistent enough. */
     pdct->Markers.data = params.Markers.data;
     pdct->Markers.size = params.Markers.size;
     pdct->NoMarker = params.NoMarker;

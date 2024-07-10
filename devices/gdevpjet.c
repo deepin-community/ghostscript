@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -30,29 +30,38 @@ static dev_proc_print_page(paintjet_print_page);
 static dev_proc_print_page(pjetxl_print_page);
 static int pj_common_print_page(gx_device_printer *, gp_file *, int, const char *);
 /* Since the print_page doesn't alter the device, this device can print in the background */
-static gx_device_procs paintjet_procs =
-  prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-    gdev_pcl_3bit_map_rgb_color, gdev_pcl_3bit_map_color_rgb);
+static void
+paintjet_initialize_device_procs(gx_device *dev)
+{
+    gdev_prn_initialize_device_procs_bg(dev);
+
+    set_dev_proc(dev, map_rgb_color, gdev_pcl_3bit_map_rgb_color);
+    set_dev_proc(dev, map_color_rgb, gdev_pcl_3bit_map_color_rgb);
+
+    /* The prn macros used in previous versions of the code leave
+     * encode_color and decode_color set to NULL (which are then rewritten
+     * by the system to the default. For compatibility we do the same. */
+    set_dev_proc(dev, encode_color, gdev_pcl_3bit_map_rgb_color);
+    set_dev_proc(dev, decode_color, gdev_pcl_3bit_map_color_rgb);
+}
+
 const gx_device_printer far_data gs_lj250_device =
-  prn_device(paintjet_procs, "lj250",
+  prn_device(paintjet_initialize_device_procs, "lj250",
         85,				/* width_10ths, 8.5" */
         110,				/* height_10ths, 11" */
         X_DPI, Y_DPI,
         0.25, 0, 0.25, 0,		/* margins */
         3, lj250_print_page);
 const gx_device_printer far_data gs_paintjet_device =
-  prn_device(paintjet_procs, "paintjet",
+  prn_device(paintjet_initialize_device_procs, "paintjet",
         85,				/* width_10ths, 8.5" */
         110,				/* height_10ths, 11" */
         X_DPI, Y_DPI,
         0.25, 0, 0.25, 0,		/* margins */
         3, paintjet_print_page);
-/* Since the print_page doesn't alter the device, this device can print in the background */
-static gx_device_procs pjetxl_procs =
-  prn_color_procs(gdev_prn_open, gdev_prn_bg_output_page, gdev_prn_close,
-    gdev_pcl_3bit_map_rgb_color, gdev_pcl_3bit_map_color_rgb);
+
 const gx_device_printer far_data gs_pjetxl_device =
-  prn_device(pjetxl_procs, "pjetxl",
+  prn_device(paintjet_initialize_device_procs, "pjetxl",
         85,				/* width_10ths, 8.5" */
         110,				/* height_10ths, 11" */
         X_DPI, Y_DPI,

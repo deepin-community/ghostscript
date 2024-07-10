@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -19,6 +19,7 @@
 #include "memory_.h"
 #include "strimpl.h"
 #include "spdiffx.h"
+#include "gserrors.h"
 
 /* ------ PixelDifferenceEncode/Decode ------ */
 
@@ -64,6 +65,9 @@ s_PDiffE_init(stream_state * st)
         0, 0, 0, 0, 0, 0, 0, cBits16
     };
 
+    if (ss->Colors > s_PDiff_max_Colors)
+        return_error(gs_error_rangecheck);
+
     ss->row_count = (bits_per_row + 7) >> 3;
     ss->end_mask = (1 << (-bits_per_row & 7)) - 1;
     ss->case_index =
@@ -76,11 +80,12 @@ s_PDiffE_init(stream_state * st)
 static int
 s_PDiffD_init(stream_state * st)
 {
+    int code = 0;
     stream_PDiff_state *const ss = (stream_PDiff_state *) st;
 
-    s_PDiffE_init(st);
+    code = s_PDiffE_init(st);
     ss->case_index += cDecode - cEncode;
-    return 0;
+    return code;
 }
 
 /* Process a buffer.  Note that this handles both Encode and Decode. */

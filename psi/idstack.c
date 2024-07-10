@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -24,14 +24,17 @@
 #include "ipacked.h"
 #include "iutil.h"
 #include "ivmspace.h"
+#include "idebug.h"		/* for debug_print_name */
+
 /*
 #include "idicttpl.h" - Do not remove this comment.
                         "idicttpl.h" is included below.
 */
 
 /* Debugging statistics */
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
-#include "idebug.h"
+/* #define COLLECT_STATS_IDSTACK */
+
+#ifdef COLLECT_STATS_IDSTACK
 #define MAX_STATS_DEPTH 6
 struct stats_dstack_s {
     long lookups;		/* total lookups */
@@ -43,7 +46,7 @@ struct stats_dstack_s {
 # define INCR(v) DO_NOTHING
 #endif
 
-#if defined(DEBUG) && !defined(GS_THREADSAFE)
+#ifdef COLLECT_STATS_IDSTACK
 /* Wrapper for dstack_find_name_by_index */
 ref *real_dstack_find_name_by_index(dict_stack_t * pds, uint nidx);
 ref *
@@ -237,10 +240,15 @@ dstack_gc_cleanup(dict_stack_t * pds)
     for (dsi = pds->min_size; dsi > 0; --dsi) {
         const dict *pdict =
         ref_stack_index(&pds->stack, count - dsi)->value.pdict;
-        uint size = nslots(pdict);
-        ref *pvalue = pdict->values.value.refs;
+        uint size = 0;
+        ref *pvalue = NULL;
         uint i;
 
+        if (pdict == NULL)
+            continue;
+
+        size = nslots(pdict);
+        pvalue = pdict->values.value.refs;
         for (i = 0; i < size; ++i, ++pvalue) {
             ref key;
             ref *old_pvalue;

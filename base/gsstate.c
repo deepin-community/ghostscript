@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -76,7 +76,7 @@ static void clip_stack_rc_adjust(gx_clip_stack_t *cs, int delta, client_name_t c
  *
  *   (3a) Objects that are logically connected to individual gstates.
  *      We use reference counting to manage these.  Currently these are:
- *              halftone, dev_ht, cie_render, black_generation,
+ *              halftone, dev_ht(4), cie_render, black_generation,
  *              undercolor_removal, set_transfer.*, cie_joint_caches,
  *              clip_stack, {opacity,shape}.mask
  *      effective_transfer.* may point to some of the same objects as
@@ -277,7 +277,7 @@ gs_gstate_client_data(const gs_gstate * pgs)
 }
 
 /* Free the chain of gstates.*/
-int
+void
 gs_gstate_free_chain(gs_gstate * pgs)
 {
    gs_gstate *saved = pgs, *tmp;
@@ -287,16 +287,16 @@ gs_gstate_free_chain(gs_gstate * pgs)
        gs_gstate_free(saved);
        saved = tmp;
    }
-   return 0;
 }
 
 /* Free a graphics state. */
-int
+void
 gs_gstate_free(gs_gstate * pgs)
 {
+    if (pgs == NULL)
+        return;
     gstate_free_contents(pgs);
     gs_free_object(pgs->memory, pgs, "gs_gstate_free");
-    return 0;
 }
 
 /* Save the graphics state. */
@@ -571,7 +571,7 @@ gs_gstate_swap_memory(gs_gstate * pgs, gs_memory_t * mem)
 /*
  * Push an overprint compositor onto the current device. Note that if
  * the current device already is an overprint compositor, the
- * create_compositor will update its parameters but not create a new
+ * composite will update its parameters but not create a new
  * compositor device.
  */
 int
@@ -584,7 +584,7 @@ gs_gstate_update_overprint(gs_gstate * pgs, const gs_overprint_params_t * pparam
 
     code = gs_create_overprint(&pct, pparams, pgs->memory);
     if (code >= 0) {
-        code = dev_proc(dev, create_compositor)( dev,
+        code = dev_proc(dev, composite)( dev,
                                                    &ovptdev,
                                                    pct,
                                                    pgs,
@@ -1290,12 +1290,12 @@ gstate_alloc(gs_memory_t * mem, client_name_t cname, const gs_gstate * pfrom)
     gs_gstate *pgs =
         gs_alloc_struct(mem, gs_gstate, &st_gs_gstate, cname);
 
-    if (pgs == 0)
-        return 0;
+    if (pgs == NULL)
+        return NULL;
     memset(pgs, 0x00, sizeof(gs_gstate));
     if (gstate_alloc_parts(pgs, pfrom, mem, cname) < 0) {
         gs_free_object(mem, pgs, cname);
-        return 0;
+        return NULL;
     }
     pgs->memory = mem;
     return pgs;
@@ -1317,11 +1317,11 @@ typedef struct {
 
 static gs_gstate *
 gstate_clone_core(const gs_gstate               *pfrom,
+                        gs_memory_t             *mem,
                         client_name_t            cname,
                         gs_gstate_clone_data    *clone_data,
                         gs_gstate_copy_reason_t  reason)
 {
-    gs_memory_t *mem = pfrom->memory;
     gs_gstate *pgs = gstate_alloc(mem, cname, pfrom);
     void *pdata = NULL;
 
@@ -1333,7 +1333,7 @@ gstate_clone_core(const gs_gstate               *pfrom,
         if (pdata == NULL ||
             gstate_copy_client_data(pfrom, pdata, pfrom->client_data,
                                     reason) < 0)
-            goto fail;
+            goto failEarly;
     }
     /* Copy the dash and dash pattern if necessary. */
     clone_data->dash = gs_currentlineparams_inline(pfrom)->dash;
@@ -1368,9 +1368,10 @@ gstate_clone_core(const gs_gstate               *pfrom,
     return pgs;
 
   fail:
+    gs_free_object(mem, clone_data->dash.pattern, cname);
     if (pdata != NULL)
         (*pfrom->client_procs.free) (pdata, mem, pgs);
-    gs_free_object(mem, clone_data->dash.pattern, cname);
+  failEarly:
     gstate_free_parts(pgs, mem, cname);
     gs_free_object(mem, pgs, cname);
 
@@ -1386,8 +1387,8 @@ gstate_clone_for_gsave(gs_gstate     *pfrom,
                        client_name_t  cname)
 {
     gs_gstate_clone_data clone_data;
-    gs_gstate *pgs = gstate_clone_core(pfrom, cname, &clone_data,
-                                       copy_for_gsave);
+    gs_gstate *pgs = gstate_clone_core(pfrom, pfrom->memory, cname,
+                                       &clone_data, copy_for_gsave);
 
     if (pgs == NULL)
         return NULL;
@@ -1407,7 +1408,7 @@ gstate_clone_for_gstate(const gs_gstate     *pfrom,
                               client_name_t  cname)
 {
     gs_gstate_clone_data clone_data;
-    gs_gstate *pgs = gstate_clone_core(pfrom, cname, &clone_data,
+    gs_gstate *pgs = gstate_clone_core(pfrom, mem, cname, &clone_data,
                                        copy_for_gstate);
 
     if (pgs == NULL)
@@ -1468,10 +1469,8 @@ gstate_free_contents(gs_gstate * pgs)
     if (pgs->client_data != 0)
         (*pgs->client_procs.free) (pgs->client_data, mem, pgs);
     pgs->client_data = 0;
-    gs_swapcolors_quick(pgs);
     cs_adjust_counts_icc(pgs, -1);
-    gs_swapcolors_quick(pgs);
-    cs_adjust_counts_icc(pgs, -1);
+    cs_adjust_swappedcounts_icc(pgs, -1);
     pgs->color[0].color_space = 0;
     pgs->color[1].color_space = 0;
     gs_free_object(mem, pgs->line_params.dash.pattern, cname);
@@ -1503,9 +1502,7 @@ gstate_copy(gs_gstate * pto, const gs_gstate * pfrom,
      * Handle references from contents.
      */
     cs_adjust_counts_icc(pto, -1);
-    gs_swapcolors_quick(pto);
-    cs_adjust_counts_icc(pto, -1);
-    gs_swapcolors_quick(pto);
+    cs_adjust_swappedcounts_icc(pto, -1);
     gx_path_assign_preserve(pto->path, pfrom->path);
     gx_cpath_assign_preserve(pto->clip_path, pfrom->clip_path);
     /*
@@ -1556,9 +1553,7 @@ gstate_copy(gs_gstate * pto, const gs_gstate * pfrom,
     }
     GSTATE_ASSIGN_PARTS(pto, &parts);
     cs_adjust_counts_icc(pto, 1);
-    gs_swapcolors_quick(pto);
-    cs_adjust_counts_icc(pto, 1);
-    gs_swapcolors_quick(pto);
+    cs_adjust_swappedcounts_icc(pto, 1);
     pto->show_gstate =
         (pfrom->show_gstate == pfrom ? pto : 0);
     return 0;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -101,35 +101,43 @@ static dev_proc_print_page(ibmpro_print_page);
 
 /* Standard Epson device */
 const gx_device_printer far_data gs_epson_device =
-  prn_device(prn_bg_procs, "epson",	/* The print_page proc is compatible with allowing bg printing */
-        DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
-        X_DPI, Y_DPI,
-        0.25, 0.02, 0.25, 0.4,			/* margins */
-        1, epson_print_page);
+  /* The print_page proc is compatible with allowing bg printing */
+  prn_device(gdev_prn_initialize_device_procs_mono_bg,
+             "epson",
+             DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
+             X_DPI, Y_DPI,
+             0.25, 0.02, 0.25, 0.4, /* margins */
+             1, epson_print_page);
 
 /* Mid-res (interleaved, 1 pass per line) 9-pin device */
 const gx_device_printer far_data gs_eps9mid_device =
-  prn_device(prn_bg_procs, "eps9mid",	/* The print_page proc is compatible with allowing bg printing */
-        DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
-        X_DPI, 3*Y_BASERES,
-        0.2, 0.0, 0, 0.0,			/* margins */
-        1, eps9mid_print_page);
+  /* The print_page proc is compatible with allowing bg printing */
+  prn_device(gdev_prn_initialize_device_procs_mono_bg,
+             "eps9mid",
+             DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
+             X_DPI, 3*Y_BASERES,
+             0.2, 0.0, 0, 0.0, /* margins */
+             1, eps9mid_print_page);
 
 /* High-res (interleaved) 9-pin device */
 const gx_device_printer far_data gs_eps9high_device =
-  prn_device(prn_bg_procs, "eps9high",	/* The print_page proc is compatible with allowing bg printing */
-        DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
-        X_DPI, 3*Y_BASERES,
-        0.2, 0.0, 0.0, 0.0,			/* margins */
-        1, eps9high_print_page);
+  /* The print_page proc is compatible with allowing bg printing */
+  prn_device(gdev_prn_initialize_device_procs_mono_bg,
+             "eps9high",
+             DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
+             X_DPI, 3*Y_BASERES,
+             0.2, 0.0, 0.0, 0.0, /* margins */
+             1, eps9high_print_page);
 
 /* IBM ProPrinter device */
 const gx_device_printer far_data gs_ibmpro_device =
-  prn_device(prn_bg_procs, "ibmpro",	/* The print_page proc is compatible with allowing bg printing */
-        DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
-        X_DPI, Y_DPI,
-        0.2, 0.0, 0.0, 0.0,			/* margins */
-        1, ibmpro_print_page);
+  /* The print_page proc is compatible with allowing bg printing */
+  prn_device(gdev_prn_initialize_device_procs_mono_bg,
+             "ibmpro",
+             DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
+             X_DPI, Y_DPI,
+             0.2, 0.0, 0.0, 0.0, /* margins */
+             1, ibmpro_print_page);
 
 /* ------ Driver procedures ------ */
 

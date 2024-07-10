@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -182,6 +182,21 @@ dda_state_struct(_a, fixed, uint) gx_dda_state_fixed;
     dda_init_state((dda).state, init, N);\
     dda_init_step((dda).step, D, N);\
   } while (0)
+
+static inline
+int dda_will_overflow(gx_dda_fixed dda)
+{
+    /* Every step, R decrements by dR. If it becomes negative, we add 1 to Q, and add N to R. */
+    /* So on average we add (N-dR)/N to Q each step. So in N steps we add (N-dR) to Q. */
+    uint N = dda.step.N;
+    fixed delta = dda.step.dQ * N + N - dda.step.dR;
+
+    if (delta > 0 && delta + dda.state.Q < dda.state.Q)
+            return 1;
+    if (delta < 0 && delta + dda.state.Q > dda.state.Q)
+            return 1;
+    return 0;
+}
 
 /*
  * Initialise a DDA, and do a half step.

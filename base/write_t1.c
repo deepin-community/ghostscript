@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /*
@@ -659,7 +659,7 @@ write_main_dictionary(gs_fapi_font * a_fapi_font, WRF_output * a_output, int Wri
 
             entries++;
 
-        gs_sprintf(Buffer, "/FontInfo %d dict dup begin\n", entries);
+        gs_snprintf(Buffer, sizeof(Buffer), "/FontInfo %d dict dup begin\n", entries);
         WRF_wstring(a_fapi_font->memory, a_output, Buffer);
         code = a_fapi_font->get_word(a_fapi_font,
                                   gs_fapi_font_feature_BlendAxisTypes_count,
@@ -704,7 +704,7 @@ write_main_dictionary(gs_fapi_font * a_fapi_font, WRF_output * a_output, int Wri
                     if (code < 0)
                         return code;
 
-                    gs_sprintf(Buffer, "%f ", x1);
+                    gs_snprintf(Buffer, sizeof(Buffer), "%f ", x1);
                     WRF_wstring(a_fapi_font->memory, a_output, Buffer);
                 }
                 WRF_wstring(a_fapi_font->memory, a_output, "]");
@@ -734,14 +734,14 @@ write_main_dictionary(gs_fapi_font * a_fapi_font, WRF_output * a_output, int Wri
                     if (code < 0)
                         return code;
 
-                    gs_sprintf(Buffer, "%f ", x1);
+                    gs_snprintf(Buffer, sizeof(Buffer), "%f ", x1);
                     WRF_wstring(a_fapi_font->memory, a_output, Buffer);
                     code = a_fapi_font->get_float(a_fapi_font,
                                                 gs_fapi_font_feature_BlendDesignPositionsArrayValue,
                                                 i * 64 + j * 64 + 1, &x1);
                     if (code < 0)
                         return code;
-                    gs_sprintf(Buffer, "%f ", x1);
+                    gs_snprintf(Buffer, sizeof(Buffer), "%f ", x1);
                     WRF_wstring(a_fapi_font->memory, a_output, Buffer);
                     WRF_wstring(a_fapi_font->memory, a_output, "]");
                 }
@@ -772,7 +772,7 @@ write_main_dictionary(gs_fapi_font * a_fapi_font, WRF_output * a_output, int Wri
             len = a_fapi_font->get_proc(a_fapi_font,
                                       gs_fapi_font_feature_DollarBlend, 0,
                                       (char *)a_output->m_pos);
-            if (a_output->m_pos)
+            if (a_output->m_pos && len > 0)
                 a_output->m_pos += len;
             WRF_wstring(a_fapi_font->memory, a_output, "} def\n");
         } else {
@@ -791,7 +791,7 @@ write_main_dictionary(gs_fapi_font * a_fapi_font, WRF_output * a_output, int Wri
             if (code < 0)
                 return code;
 
-            gs_sprintf(Buffer, "%f ", x1);
+            gs_snprintf(Buffer, sizeof(Buffer), "%f ", x1);
             WRF_wstring(a_fapi_font->memory, a_output, Buffer);
         }
         WRF_wstring(a_fapi_font->memory, a_output, "] def\n");
@@ -821,6 +821,7 @@ write_main_dictionary(gs_fapi_font * a_fapi_font, WRF_output * a_output, int Wri
         WRF_wstring(a_fapi_font->memory, a_output, " } def\n");
         WRF_wstring(a_fapi_font->memory, a_output, "/Private 14 dict def\n");
         WRF_wstring(a_fapi_font->memory, a_output, "end def\n");
+#undef TEMP_BUF_LEN
     }
     WRF_wstring(a_fapi_font->memory, a_output, "currentdict end\ncurrentfile eexec\n");
 

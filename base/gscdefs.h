@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,13 +9,22 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 #ifndef gscdefs_INCLUDED
 #  define gscdefs_INCLUDED
 
+
+/* If we are cluster testing, then we want to nobble stuff
+ * that might change between versions. */
+#ifdef CLUSTER
+#undef     GS_PRODUCTFAMILY
+#define    GS_PRODUCTFAMILY "GPL Ghostscript"
+#undef     GS_PRODUCT
+#define    GS_PRODUCT GS_PRODUCTFAMILY
+#endif
 
 #define GS_STRINGIZE2(s) #s
 #define GS_STRINGIZE(s) GS_STRINGIZE2(s)
@@ -27,7 +36,7 @@
 
 #ifndef GS_COPYRIGHT
 #  define GS_COPYRIGHT\
-        "Copyright (C) 2021 Artifex Software, Inc.  All rights reserved."
+        "Copyright (C) 2024 Artifex Software, Inc.  All rights reserved."
 #endif
 
 #ifndef GS_PRODUCTFAMILY

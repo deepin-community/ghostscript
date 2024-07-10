@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -116,7 +116,7 @@
 /* ---------------- Auxiliary types and structures ---------------- */
 
 /* We need an abstract type for the pattern instance, */
-/* for pattern_manage. */
+/* for pattern management. */
 typedef struct gs_pattern1_instance_s gs_pattern1_instance_t;
 
 /* Define the type for colors passed to the higher-level procedures. */
@@ -241,10 +241,10 @@ typedef enum {
  *
  */
 typedef enum {
-    GX_CINFO_OPMODE_UNKNOWN = -1,
-    GX_CINFO_OPMODE_NOT = 0,
-    GX_CINFO_OPMODE = 1
-} gx_cm_opmode_t;
+    GX_CINFO_OPMSUPPORTED_UNKNOWN = -1,
+    GX_CINFO_OPMSUPPORTED_NOT = 0,
+    GX_CINFO_OPMSUPPORTED = 1
+} gx_cm_opmsupported_t;
 
 /* component index value used to indicate no color component.  */
 #define GX_CINFO_COMP_NO_INDEX 0xff
@@ -420,15 +420,12 @@ typedef struct gx_device_color_info_s {
      * Most such color spaces will have the name DeviceCMYK, but it is
      * also possible for DeviceN color models this behavior.
      *
-     * If opmode has the value GX_CINFO_OPMODE, the process_comps will
+     * If opmsupported has the value GX_CINFO_OPMSUPPORTED, the process_comps will
      * be a bit mask, with the (1 << i) bit set if i'th component is the
      * cyan, magenta, yellow, or black component and black_component will
      * be set to the index of a black component.
-     *
-     * A new mode GX_CINFO_OPMODE_RGB was added so that an RGB device could
-     * simulate CMYK overprinting.
      */
-    gx_cm_opmode_t opmode;
+    gx_cm_opmsupported_t opmsupported;
     gx_color_index process_comps;
     uint black_component;
     bool use_antidropout_downscaler;
@@ -459,7 +456,7 @@ static inline int colors_are_separable_and_linear(gx_device_color_info *info)
      { 0 } /* component bits */, \
      { 0 } /* component mask */, \
      cn /* process color name */, \
-     GX_CINFO_OPMODE_UNKNOWN /* opmode */, \
+     GX_CINFO_OPMSUPPORTED_UNKNOWN /* opmsupported */, \
      0  /* process_cmps */ }
 
 /*
@@ -643,21 +640,15 @@ typedef struct gx_stroked_gradient_recognizer_s {
 /* ---------------- Device structure ---------------- */
 
 /*
- * Define the generic device structure.  The device procedures can
- * have two different configurations:
+ * Define the generic device structure.
  *
- *      - Statically initialized devices predating release 2.8.1
- *      set the static_procs pointer to point to a separate procedure record,
- *      and do not initialize procs.
+ * All devices start off with no device procs. The initialize_device_procs
+ * function is called as soon as the device is copied from its prototype,
+ * and that fills in the procs table with the device procedure pointers.
+ * This can never fail.
  *
- *      - Statically initialized devices starting with release 2.8.1,
- *      and all dynamically created device instances,
- *      set the static_procs pointer to 0, and initialize procs.
- *
- * The gx_device_set_procs procedure converts the first of these to
- * the second, which is what all client code starting in 2.8.1 expects
- * (using the procs record, not the static_procs pointer, to call the
- * driver procedures).
+ * Next, the 'initialize_device' proc (if there is one) is called to do
+ * the minimal initialization required for a device.
  *
  * The choice of the name Margins (rather than, say, HWOffset), and the
  * specification in terms of a default device resolution rather than
@@ -714,14 +705,18 @@ typedef struct gdev_nupcontrol_s {
 typedef struct gdev_pagelist_s {
         rc_header rc;
         char *Pages;
-        int PagesSize;
 } gdev_pagelist;
+
+#define dev_t_proc_initialize_device_procs(proc, dev_t)\
+  void proc(dev_t *dev)
+#define dev_proc_initialize_device_procs(proc)\
+  dev_t_proc_initialize_device_procs((proc), gx_device)
 
 #define gx_device_common\
         int params_size;		/* OBSOLETE if stype != 0: */\
                                         /* size of this structure */\
-        const gx_device_procs *static_procs;	/* OBSOLETE */\
-                                        /* pointer to procs */\
+        dev_proc_initialize_device_procs(*initialize_device_procs);\
+                                        /* initialize_device_procs */\
         const char *dname;		/* the device name */\
         gs_memory_t *memory;		/* (0 iff static prototype) */\
         gs_memory_type_ptr_t stype;	/* memory manager structure type, */\
@@ -747,7 +742,7 @@ typedef struct gdev_pagelist_s {
         int height;			/* height in pixels */\
         int pad;                        /* pad to use for buffers; 0 for default */\
         int log2_align_mod;             /* align to use for buffers; 0 for default */\
-        int is_planar;                  /* 1 planar, 0 for chunky */\
+        int num_planar_planes;          /* 1 planar, 0 for chunky */\
         int LeadingEdge;                /* see below */\
         float MediaSize[2];		/* media dimensions in points */\
         float ImagingBBox[4];		/* imageable region in points */\
@@ -785,6 +780,7 @@ typedef struct gdev_pagelist_s {
         gs_graphics_type_tag_t   graphics_type_tag;   /* e.g. vector, image or text */\
         int interpolate_control;      /* default 1 (use image /Interpolate value), 0 is NOINTERPOLATE. */\
                                       /* > 1 limits interpolation, < 0 forces interpolation */\
+        int non_strict_bounds;        /* If set, callers cannot rely on clipping fills etc to declared device bounds. */\
         gx_page_device_procs page_procs;       /* must be last */\
                 /* end of std_device_body */\
         gx_device_procs procs	/* object procedures */
@@ -864,6 +860,11 @@ typedef enum FILTER_FLAGS {
 
 /* Define macros for declaring device procedures. */
 
+#define dev_t_proc_initialize_device(proc, dev_t)\
+  int proc(dev_t *dev)
+#define dev_proc_initialize_device(proc)\
+  dev_t_proc_initialize_device(proc, gx_device)
+
 #define dev_t_proc_open_device(proc, dev_t)\
   int proc(dev_t *dev)
 #define dev_proc_open_device(proc)\
@@ -906,14 +907,6 @@ typedef enum FILTER_FLAGS {
 #define dev_proc_fill_rectangle(proc)\
   dev_t_proc_fill_rectangle(proc, gx_device)
 
-#define dev_t_proc_tile_rectangle(proc, dev_t)\
-  int proc(dev_t *dev,\
-    const gx_tile_bitmap *tile, int x, int y, int width, int height,\
-    gx_color_index color0, gx_color_index color1,\
-    int phase_x, int phase_y)
-#define dev_proc_tile_rectangle(proc)\
-  dev_t_proc_tile_rectangle(proc, gx_device)
-
 #define dev_t_proc_copy_mono(proc, dev_t)\
   int proc(dev_t *dev,\
     const byte *data, int data_x, int raster, gx_bitmap_id id,\
@@ -928,22 +921,6 @@ typedef enum FILTER_FLAGS {
     int x, int y, int width, int height)
 #define dev_proc_copy_color(proc)\
   dev_t_proc_copy_color(proc, gx_device)
-
-                /* OBSOLETED in release 3.66 */
-
-#define dev_t_proc_draw_line(proc, dev_t)\
-  int proc(dev_t *dev,\
-    int x0, int y0, int x1, int y1, gx_color_index color)
-#define dev_proc_draw_line(proc)\
-  dev_t_proc_draw_line(proc, gx_device)
-
-                /* Added in release 2.4 */
-
-#define dev_t_proc_get_bits(proc, dev_t)\
-  int proc(dev_t *dev,\
-    int y, byte *data, byte **actual_data)
-#define dev_proc_get_bits(proc)\
-  dev_t_proc_get_bits(proc, gx_device)
 
                 /* Added in release 2.4, changed in 2.8, */
                 /* renamed in 2.9.6 */
@@ -965,27 +942,6 @@ typedef enum FILTER_FLAGS {
 #define dev_proc_map_cmyk_color(proc)\
   dev_t_proc_map_cmyk_color(proc, gx_device)
 
-#define dev_t_proc_get_xfont_procs(proc, dev_t)\
-  const gx_xfont_procs *proc(dev_t *dev)
-#define dev_proc_get_xfont_procs(proc)\
-  dev_t_proc_get_xfont_procs(proc, gx_device)
-
-                /* Added in release 2.6.1 */
-
-#define dev_t_proc_get_xfont_device(proc, dev_t)\
-  gx_device *proc(dev_t *dev)
-#define dev_proc_get_xfont_device(proc)\
-  dev_t_proc_get_xfont_device(proc, gx_device)
-
-                /* Added in release 2.7.1 */
-
-#define dev_t_proc_map_rgb_alpha_color(proc, dev_t)\
-  gx_color_index proc(dev_t *dev,\
-    gx_color_value red, gx_color_value green, gx_color_value blue,\
-    gx_color_value alpha)
-#define dev_proc_map_rgb_alpha_color(proc)\
-  dev_t_proc_map_rgb_alpha_color(proc, gx_device)
-
                 /* Added in release 2.8.1 */
 
 #define dev_t_proc_get_page_device(proc, dev_t)\
@@ -994,6 +950,7 @@ typedef enum FILTER_FLAGS {
   dev_t_proc_get_page_device(proc, gx_device)
 
                 /* Added in release 3.20, OBSOLETED in 5.65 */
+                /* 'Unobsoleted' in 9.55. */
 
 #define dev_t_proc_get_alpha_bits(proc, dev_t)\
   int proc(dev_t *dev, graphics_object_type type)
@@ -1008,25 +965,6 @@ typedef enum FILTER_FLAGS {
     gx_color_index color, int depth)
 #define dev_proc_copy_alpha(proc)\
   dev_t_proc_copy_alpha(proc, gx_device)
-
-                /* Added in release 3.38 */
-
-#define dev_t_proc_get_band(proc, dev_t)\
-  int proc(dev_t *dev, int y, int *band_start)
-#define dev_proc_get_band(proc)\
-  dev_t_proc_get_band(proc, gx_device)
-
-                /* Added in release 3.44 */
-
-#define dev_t_proc_copy_rop(proc, dev_t)\
-  int proc(dev_t *dev,\
-    const byte *sdata, int sourcex, uint sraster, gx_bitmap_id id,\
-    const gx_color_index *scolors,\
-    const gx_tile_bitmap *texture, const gx_color_index *tcolors,\
-    int x, int y, int width, int height,\
-    int phase_x, int phase_y, gs_logical_operation_t lop)
-#define dev_proc_copy_rop(proc)\
-  dev_t_proc_copy_rop(proc, gx_device)
 
                 /* Added in release 3.60, changed in 3.68. */
 
@@ -1058,6 +996,16 @@ typedef enum FILTER_FLAGS {
     const gx_clip_path *pcpath)
 #define dev_proc_fill_stroke_path(proc)\
   dev_t_proc_fill_stroke_path(proc, gx_device)
+
+                /* Added in release 9.57 */
+
+#define dev_t_proc_lock_pattern(proc, dev_t)\
+  int proc(dev_t *dev,\
+           gs_gstate *pgs,\
+           gs_id pattern_id,\
+           int lock)
+#define dev_proc_lock_pattern(proc)\
+  dev_t_proc_lock_pattern(proc, gx_device)
 
                 /* Added in release 3.60 */
 
@@ -1107,37 +1055,6 @@ typedef enum FILTER_FLAGS {
 #define dev_proc_draw_thin_line(proc)\
   dev_t_proc_draw_thin_line(proc, gx_device)
 
-                /* Added in release 3.66 (as stubs); */
-                /* changed in 3.68; */
-                /* begin_image and image_data changed in 4.30, */
-                /* begin_image changed in 5.23. */
-
-#define dev_t_proc_begin_image(proc, dev_t)\
-  int proc(dev_t *dev,\
-    const gs_gstate *pgs, const gs_image_t *pim,\
-    gs_image_format_t format, const gs_int_rect *prect,\
-    const gx_drawing_color *pdcolor, const gx_clip_path *pcpath,\
-    gs_memory_t *memory, gx_image_enum_common_t **pinfo)
-#define dev_proc_begin_image(proc)\
-  dev_t_proc_begin_image(proc, gx_device)
-
-                /* OBSOLETED in release 5.23 */
-
-#define dev_t_proc_image_data(proc, dev_t)\
-  int proc(dev_t *dev,\
-    gx_image_enum_common_t *info, const byte **planes, int data_x,\
-    uint raster, int height)
-#define dev_proc_image_data(proc)\
-  dev_t_proc_image_data(proc, gx_device)
-
-                /* OBSOLETED in release 5.23 */
-
-#define dev_t_proc_end_image(proc, dev_t)\
-  int proc(dev_t *dev,\
-    gx_image_enum_common_t *info, bool draw_last)
-#define dev_proc_end_image(proc)\
-  dev_t_proc_end_image(proc, gx_device)
-
                 /* Added in release 3.68 */
 
 #define dev_t_proc_strip_tile_rectangle(proc, dev_t)\
@@ -1147,16 +1064,6 @@ typedef enum FILTER_FLAGS {
     int phase_x, int phase_y)
 #define dev_proc_strip_tile_rectangle(proc)\
   dev_t_proc_strip_tile_rectangle(proc, gx_device)
-
-#define dev_t_proc_strip_copy_rop(proc, dev_t)\
-  int proc(dev_t *dev,\
-    const byte *sdata, int sourcex, uint sraster, gx_bitmap_id id,\
-    const gx_color_index *scolors,\
-    const gx_strip_bitmap *textures, const gx_color_index *tcolors,\
-    int x, int y, int width, int height,\
-    int phase_x, int phase_y, gs_logical_operation_t lop)
-#define dev_proc_strip_copy_rop(proc)\
-  dev_t_proc_strip_copy_rop(proc, gx_device)
 
                 /* Added in release 4.20 */
 
@@ -1180,22 +1087,16 @@ typedef enum FILTER_FLAGS {
 
 #define dev_t_proc_get_bits_rectangle(proc, dev_t)\
   int proc(dev_t *dev, const gs_int_rect *prect,\
-    gs_get_bits_params_t *params, gs_int_rect **unread)
+    gs_get_bits_params_t *params)
 #define dev_proc_get_bits_rectangle(proc)\
   dev_t_proc_get_bits_rectangle(proc, gx_device)
 
-#define dev_t_proc_map_color_rgb_alpha(proc, dev_t)\
-  int proc(dev_t *dev,\
-    gx_color_index color, gx_color_value rgba[4])
-#define dev_proc_map_color_rgb_alpha(proc)\
-  dev_t_proc_map_color_rgb_alpha(proc, gx_device)
-
-#define dev_t_proc_create_compositor(proc, dev_t)\
+#define dev_t_proc_composite(proc, dev_t)\
   int proc(dev_t *dev,\
     gx_device **pcdev, const gs_composite_t *pcte,\
     gs_gstate *pgs, gs_memory_t *memory, gx_device *cdev)
-#define dev_proc_create_compositor(proc)\
-  dev_t_proc_create_compositor(proc, gx_device)\
+#define dev_proc_composite(proc)\
+  dev_t_proc_composite(proc, gx_device)\
 
                 /* Added in release 5.23 */
 
@@ -1207,13 +1108,6 @@ typedef enum FILTER_FLAGS {
                 /* Added in release 5.24 */
 
      /* ... text_begin ... see gstext.h for definition */
-
-                /* Added in release 6.23 */
-
-#define dev_t_proc_finish_copydevice(proc, dev_t)\
-  int proc(dev_t *dev, const gx_device *from_dev)
-#define dev_proc_finish_copydevice(proc)\
-  dev_t_proc_finish_copydevice(proc, gx_device)
 
                 /* Added in release 6.61 (raph) */
 
@@ -1304,38 +1198,6 @@ typedef enum FILTER_FLAGS {
  * dev_proc_decode_color
  */
      /* (end of DeviceN color support) */
-
-/*
-  Pattern management for high level devices.
-  Now we need it for PatternType 1 only.
-  Return codes :
-  1 - the device handles high level patterns.
-  0 - the device needs low level pattern tiles.
-  <0 - error.
-
-  THIS IS NOW DEPRECATED, AND UNUSED. DO NOT USE THIS. USE THIS NOT. THIS
-  IS NOT TO BE USED.
-
-  Pattern Management is now done using the dev_spec_op calls.
-*/
-
-/* High level device support. */
-typedef enum {
-    pattern_manage__can_accum,
-    pattern_manage__start_accum,
-    pattern_manage__finish_accum,
-    pattern_manage__load,
-    pattern_manage__shading_area,
-    pattern_manage__is_cpath_accum,
-    pattern_manage__shfill_doesnt_need_path,
-    pattern_manage__handles_clip_path
-} pattern_manage_t;
-
-#define dev_t_proc_pattern_manage(proc, dev_t)\
-  int proc(gx_device *pdev, gx_bitmap_id id,\
-                gs_pattern1_instance_t *pinst, pattern_manage_t function)
-#define dev_proc_pattern_manage(proc)\
-  dev_t_proc_pattern_manage(proc, gx_device)
 
 /*
   Fill rectangle with a high level color.
@@ -1443,7 +1305,7 @@ typedef struct gs_fill_attributes_s {
  * start of src/gsequivc.c.
  */
 #define dev_t_proc_update_spot_equivalent_colors(proc, dev_t)\
-  int proc(dev_t *dev, const gs_gstate * pgs)
+  int proc(dev_t *dev, const gs_gstate * pgs, const gs_color_space *pcs)
 #define dev_proc_update_spot_equivalent_colors(proc)\
   dev_t_proc_update_spot_equivalent_colors(proc, gx_device)
 
@@ -1457,6 +1319,8 @@ typedef struct gs_devn_params_s gs_devn_params;
   gs_devn_params * proc(dev_t *dev)
 #define dev_proc_ret_devn_params(proc)\
   dev_t_proc_ret_devn_params(proc, gx_device)
+#define dev_proc_ret_devn_params_const(proc)\
+  const dev_t_proc_ret_devn_params(proc, const gx_device)
 
 /*
  * Erase page.
@@ -1499,7 +1363,7 @@ typedef struct gs_devn_params_s gs_devn_params;
   dev_t_proc_copy_planes(proc, gx_device)
 
 #define dev_t_proc_get_profile(proc, dev_t)\
-  int proc(dev_t *dev, cmm_dev_profile_t **dev_profile)
+  int proc(const dev_t *dev, cmm_dev_profile_t **dev_profile)
 #define dev_proc_get_profile(proc)\
   dev_t_proc_get_profile(proc, gx_device)
 
@@ -1592,7 +1456,9 @@ typedef struct {
 /* Define the device procedure vector template proper. */
 
 #define gx_device_proc_struct(dev_t)\
-{	dev_t_proc_open_device((*open_device), dev_t);\
+{\
+        dev_t_proc_initialize_device((*initialize_device), dev_t);\
+        dev_t_proc_open_device((*open_device), dev_t);\
         dev_t_proc_get_initial_matrix((*get_initial_matrix), dev_t);\
         dev_t_proc_sync_output((*sync_output), dev_t);\
         dev_t_proc_output_page((*output_page), dev_t);\
@@ -1600,22 +1466,14 @@ typedef struct {
         dev_t_proc_map_rgb_color((*map_rgb_color), dev_t);\
         dev_t_proc_map_color_rgb((*map_color_rgb), dev_t);\
         dev_t_proc_fill_rectangle((*fill_rectangle), dev_t);\
-        dev_t_proc_tile_rectangle((*tile_rectangle), dev_t);\
         dev_t_proc_copy_mono((*copy_mono), dev_t);\
         dev_t_proc_copy_color((*copy_color), dev_t);\
-        dev_t_proc_draw_line((*obsolete_draw_line), dev_t);\
-        dev_t_proc_get_bits((*get_bits), dev_t);\
         dev_t_proc_get_params((*get_params), dev_t);\
         dev_t_proc_put_params((*put_params), dev_t);\
         dev_t_proc_map_cmyk_color((*map_cmyk_color), dev_t);\
-        dev_t_proc_get_xfont_procs((*get_xfont_procs), dev_t);\
-        dev_t_proc_get_xfont_device((*get_xfont_device), dev_t);\
-        dev_t_proc_map_rgb_alpha_color((*map_rgb_alpha_color), dev_t);\
         dev_t_proc_get_page_device((*get_page_device), dev_t);\
         dev_t_proc_get_alpha_bits((*get_alpha_bits), dev_t);\
         dev_t_proc_copy_alpha((*copy_alpha), dev_t);\
-        dev_t_proc_get_band((*get_band), dev_t);\
-        dev_t_proc_copy_rop((*copy_rop), dev_t);\
         dev_t_proc_fill_path((*fill_path), dev_t);\
         dev_t_proc_stroke_path((*stroke_path), dev_t);\
         dev_t_proc_fill_mask((*fill_mask), dev_t);\
@@ -1623,19 +1481,13 @@ typedef struct {
         dev_t_proc_fill_parallelogram((*fill_parallelogram), dev_t);\
         dev_t_proc_fill_triangle((*fill_triangle), dev_t);\
         dev_t_proc_draw_thin_line((*draw_thin_line), dev_t);\
-        dev_t_proc_begin_image((*begin_image), dev_t);\
-        dev_t_proc_image_data((*image_data), dev_t);\
-        dev_t_proc_end_image((*end_image), dev_t);\
         dev_t_proc_strip_tile_rectangle((*strip_tile_rectangle), dev_t);\
-        dev_t_proc_strip_copy_rop((*strip_copy_rop), dev_t);\
         dev_t_proc_get_clipping_box((*get_clipping_box), dev_t);\
         dev_t_proc_begin_typed_image((*begin_typed_image), dev_t);\
         dev_t_proc_get_bits_rectangle((*get_bits_rectangle), dev_t);\
-        dev_t_proc_map_color_rgb_alpha((*map_color_rgb_alpha), dev_t);\
-        dev_t_proc_create_compositor((*create_compositor), dev_t);\
+        dev_t_proc_composite((*composite), dev_t);\
         dev_t_proc_get_hardware_params((*get_hardware_params), dev_t);\
         dev_t_proc_text_begin((*text_begin), dev_t);\
-        dev_t_proc_finish_copydevice((*finish_copydevice), dev_t);\
         dev_t_proc_begin_transparency_group((*begin_transparency_group), dev_t);\
         dev_t_proc_end_transparency_group((*end_transparency_group), dev_t);\
         dev_t_proc_begin_transparency_mask((*begin_transparency_mask), dev_t);\
@@ -1645,7 +1497,6 @@ typedef struct {
         dev_t_proc_get_color_comp_index((*get_color_comp_index), dev_t); \
         dev_t_proc_encode_color((*encode_color), dev_t); \
         dev_t_proc_decode_color((*decode_color), dev_t); \
-        dev_t_proc_pattern_manage((*pattern_manage), dev_t); \
         dev_t_proc_fill_rectangle_hl_color((*fill_rectangle_hl_color), dev_t); \
         dev_t_proc_include_color_space((*include_color_space), dev_t); \
         dev_t_proc_fill_linear_color_scanline((*fill_linear_color_scanline), dev_t); \
@@ -1667,6 +1518,7 @@ typedef struct {
         dev_t_proc_process_page((*process_page), dev_t);\
         dev_t_proc_transform_pixel_region((*transform_pixel_region), dev_t);\
         dev_t_proc_fill_stroke_path((*fill_stroke_path), dev_t);\
+        dev_t_proc_lock_pattern((*lock_pattern), dev_t);\
 }
 
 /*
@@ -1682,9 +1534,6 @@ typedef struct gx_image_plane_s {
     uint raster;
 } gx_image_plane_t;
 
-#define gx_device_begin_image(dev, pgs, pim, format, prect, pdcolor, pcpath, memory, pinfo)\
-  ((*dev_proc(dev, begin_image))\
-   (dev, pgs, pim, format, prect, pdcolor, pcpath, memory, pinfo))
 #define gx_device_begin_typed_image(dev, pgs, pmat, pim, prect, pdcolor, pcpath, memory, pinfo)\
   ((*dev_proc(dev, begin_typed_image))\
    (dev, pgs, pmat, pim, prect, pdcolor, pcpath, memory, pinfo))
@@ -1703,13 +1552,6 @@ int gx_image_plane_data_rows(gx_image_enum_common_t *info,
 int gx_image_flush(gx_image_enum_common_t *info);
 bool gx_image_planes_wanted(const gx_image_enum_common_t *info, byte *wanted);
 int gx_image_end(gx_image_enum_common_t *info, bool draw_last);
-
-/*
- * Get the anti-aliasing parameters for a device.  This replaces the
- * obsolete get_alpha_bits device procedure.
- */
-#define gx_device_get_alpha_bits(dev, type)\
-  gx_default_get_alpha_bits(dev, type)
 
 /* A generic device procedure record. */
 struct gx_device_procs_s gx_device_proc_struct(gx_device);
@@ -1778,70 +1620,6 @@ extern_st(st_device_forward);
     device_forward_reloc_ptrs, gx_device_finalize)
 #define st_device_forward_max_ptrs (st_device_max_ptrs + 1)
 
-/* The color mapping procs were used in a way which defeats a 'pipeline'
- * approach to devices. Certain graphics library routines (eg images)
- * called the color mapping procs *directly* from the device procs of the
- * current (ie terminal) device. This prevented any pipeline approach from
- * working as earlier devices in the chain wouldn't see the call. In particular
- * this prevented the use of such a device to do 'monochrome mode' in PCL
- * (see pcpalet.c, pcl_update_mono). This macro walks back up the pipeline
- * and retrieves the uppermost device color_mapping procs.
- */
-typedef struct {
-    gx_cm_color_map_procs *procs;
-    gx_device *dev;
-} subclass_color_mappings;
-
-static inline gx_device *
-subclass_parentmost_device(gx_device *dev)
-{
-    while (dev->parent)
-        dev = dev->parent;
-    return dev;
-}
-
-extern const gx_cm_color_map_procs *default_subclass_get_color_mapping_procs(const gx_device *dev);
-
-static inline
-subclass_color_mappings get_color_mapping_procs_subclass(gx_device *dev)
-{
-    subclass_color_mappings sc;
-    gx_device *d;
-    sc.dev = NULL;
-
-    d = subclass_parentmost_device(dev);
-    while (d->procs.get_color_mapping_procs == default_subclass_get_color_mapping_procs) {
-        if (d->child)
-            d = d->child;
-        else {
-            break;
-        }
-    }
-    sc.dev = d;
-
-    sc.procs = (gx_cm_color_map_procs *)(dev_proc(sc.dev, get_color_mapping_procs) == NULL ?
-                                         NULL : dev_proc(sc.dev, get_color_mapping_procs)(sc.dev));
-    return sc;
-}
-
-static inline
-void map_rgb_subclass(const subclass_color_mappings scm, const gs_gstate *pgs, frac r, frac g, frac b, frac out[])
-{
-    scm.procs->map_rgb(scm.dev, pgs, r, g, b, out);
-}
-
-static inline
-void map_gray_subclass(const subclass_color_mappings scm, frac gray, frac out[])
-{
-    scm.procs->map_gray(scm.dev, gray, out);
-}
-
-static inline
-void map_cmyk_subclass(const subclass_color_mappings scm, frac c, frac m, frac y, frac k, frac out[])
-{
-    scm.procs->map_cmyk(scm.dev, c, m, y, k, out);
-}
-
 /* Test to see if the device wants to use tags */
 static inline bool device_encodes_tags(const gx_device *dev)
 {
@@ -1885,13 +1663,16 @@ extern_st(st_device_null);
  * about what this means.  Normally, devices created for temporary use have
  * internal = true (retained = false).
  */
-void gx_device_init(gx_device * dev, const gx_device * proto,
-                    gs_memory_t * mem, bool internal);
+int gx_device_init(gx_device * dev, const gx_device * proto,
+                   gs_memory_t * mem, bool internal);
 
 /*
  * Identical to gx_device_init, except that the reference counting is set
  * up so that it doesn't attempt to free the device structure when the last
  * instance is removed, and the device is always internal (never retained).
+ *
+ * If the device uses an initialize proc (and it should!) it can never
+ * fail.
  */
 void gx_device_init_on_stack(gx_device * dev, const gx_device * proto,
                              gs_memory_t * mem);
@@ -1983,5 +1764,26 @@ bool gx_color_info_equal(const gx_device_color_info *p1, const gx_device_color_i
 
 /* Perform a callout to registered handlers from the device. */
 int gx_callout(gx_device *dev, int id, int size, void *data);
+
+static inline
+gx_cm_opmsupported_t gx_get_opmsupported(gx_device *dev)
+{
+    if (dev->color_info.opmsupported != GX_CINFO_OPMSUPPORTED_UNKNOWN)
+        return dev->color_info.opmsupported;
+
+    (void)check_cmyk_color_model_comps(dev);
+
+    return dev->color_info.opmsupported;
+}
+
+static inline
+gx_color_index gx_get_process_comps(gx_device *dev)
+{
+    if (dev->color_info.opmsupported != GX_CINFO_OPMSUPPORTED_UNKNOWN)
+        return dev->color_info.process_comps;
+
+    return check_cmyk_color_model_comps(dev);
+}
+
 
 #endif /* gxdevcli_INCLUDED */

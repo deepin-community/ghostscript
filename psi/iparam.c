@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -65,7 +65,7 @@ ref_to_key(const ref * pref, gs_param_key_t * key, iparam_list *plist)
         int len;
         byte *buf;
 
-        gs_sprintf(istr, "%"PRIpsint, pref->value.intval);
+        gs_snprintf(istr, sizeof(istr), "%"PRIpsint, pref->value.intval);
         len = strlen(istr);
         /* GC will take care of freeing this: */
         buf = gs_alloc_string(plist->memory, len, "ref_to_key");
@@ -381,10 +381,15 @@ stack_param_write(iparam_list * plist, const ref * pkey, const ref * pvalue)
 
     if (pstack->top - p < 2) {
         int code = ref_stack_push(pstack, 2);
+        ref *o;
 
         if (code < 0)
             return code;
-        *ref_stack_index(pstack, 1) = *pkey;
+        o = ref_stack_index(pstack, 1);
+        if (o == NULL)
+            return_error(gs_error_stackunderflow);
+        else
+            *o = *pkey;
         p = pstack->p;
     } else {
         pstack->p = p += 2;
@@ -406,11 +411,14 @@ stack_param_enumerate(iparam_list * plist, gs_param_enumerator_t * penum,
     ref *stack_element;
 
     do {
+        if (index >= splist->count*2)
+            return 1;
         stack_element =
             ref_stack_index(splist->pstack, index + 1 + splist->skip);
         if (!stack_element)
             return 1;
-    } while (index += 2, !r_has_type(stack_element, t_name));
+        index += 2;
+    } while (!r_has_type(stack_element, t_name));
     *type = r_type(stack_element);
     code = ref_to_key(stack_element, key, plist);
     penum->intval = index;
@@ -454,7 +462,7 @@ dict_param_enumerate(iparam_list * plist, gs_param_enumerator_t * penum,
     index = dict_next(&pdlist->dict, index, elt);
     if (index < 0)
         return 1;
-    *type = r_type(&elt[1]);
+    *type = r_type(&elt[0]);
     code = ref_to_key(&elt[0], key, plist);
     penum->intval = index;
     return code;
@@ -526,7 +534,8 @@ static const gs_param_list_procs ref_read_procs =
     NULL,			/* requested */
     ref_param_read_get_policy,
     ref_param_read_signal_error,
-    ref_param_read_commit
+    ref_param_read_commit,
+    NULL
 };
 static int ref_param_read(iparam_list *, gs_param_name,
                            iparam_loc *, int);
@@ -1082,6 +1091,9 @@ stack_param_read(iparam_list * plist, const ref * pkey, iparam_loc * ploc)
 
     for (; count; count--, index += 2) {
         const ref *p = ref_stack_index(pstack, index);
+
+        if (p == NULL)
+            continue;
 
         if (r_has_type(p, t_name) && name_eq(p, pkey)) {
             ploc->pvalue = ref_stack_index(pstack, index - 1);

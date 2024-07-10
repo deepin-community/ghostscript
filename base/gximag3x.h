@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2024 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -73,6 +73,6 @@ int gx_begin_image3x_generic(gx_device * dev,
                              const gx_clip_path *pcpath, gs_memory_t *mem,
                              IMAGE3X_MAKE_MID_PROC((*make_mid)),
                              IMAGE3X_MAKE_MCDE_PROC((*make_mcde)),
-                             gx_image_enum_common_t **pinfo);
+                             gx_image_enum_common_t **pinfo, int64_t OC);
 
 #endif /* gximag3x_INCLUDED */

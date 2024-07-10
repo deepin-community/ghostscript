@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -59,6 +59,7 @@ zbuildcolorrendering1(i_ctx_t *i_ctx_p)
     gs_cie_render *pcrd;
     ref_cie_render_procs procs;
 
+    check_op(1);
     check_read_type(*op, t_dictionary);
     check_dict_read(*op);
     code = gs_cie_render1_build(&pcrd, mem, ".buildcolorrendering1");
@@ -87,6 +88,7 @@ zbuilddevicecolorrendering1(i_ctx_t *i_ctx_p)
     gs_cie_render *pcrd = 0;
     int code;
 
+    check_op(1);
     check_type(*op, t_dictionary);
     code = dict_param_list_read(&list, op, NULL, false, iimemory);
     if (code < 0)
@@ -119,6 +121,7 @@ zsetcolorrendering1(i_ctx_t *i_ctx_p)
     ref_cie_render_procs procs;
     int code;
 
+    check_op(2);
     check_type(op[-1], t_dictionary);
     check_stype(*op, st_cie_render1);
     code = zcrd1_proc_params(imemory, op - 1, &procs);
@@ -145,6 +148,7 @@ zsetdevicecolorrendering1(i_ctx_t *i_ctx_p)
     int code;
     ref_cie_render_procs procs;
 
+    check_op(2);
     check_type(op[-1], t_dictionary);
     check_stype(*op, st_cie_render1);
     code = gs_setcolorrendering(igs, r_ptr(op, gs_cie_render));
@@ -287,7 +291,11 @@ cie_cache_joint(i_ctx_t *i_ctx_p, const ref_cie_render_procs * pcrprocs,
         return gs_cie_cs_complete(pgs, true);
     }
     gs_cie_compute_points_sd(pjc, pcie, pcrd);
-    code = ialloc_ref_array(&pqr_procs, a_readonly, 3 * (1 + 4 + 4 * 6),
+    /* We use global memory for this array because it's going to be pushed onto
+       the exec stack, if it triggers an error and a restore happens, we don't want
+       a dangling stack reference to a restored away object.
+     */
+    code = gs_alloc_ref_array(iimemory_global, &pqr_procs, a_readonly, 3 * (1 + 4 + 4 * 6),
                             "cie_cache_common");
     if (code < 0)
         return code;
@@ -391,6 +399,7 @@ ztpqr_scale_wb_common(i_ctx_t *i_ctx_p, int idx)
     int code;
     int i;
 
+    check_op(4);
     code = real_param(op, &Ps);
     if (code < 0) return code;
 

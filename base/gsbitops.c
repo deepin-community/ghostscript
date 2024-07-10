@@ -1,4 +1,4 @@
-/* Copyright (C) 2001-2021 Artifex Software, Inc.
+/* Copyright (C) 2001-2023 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
@@ -9,8 +9,8 @@
    of the license contained in the file LICENSE in this distribution.
 
    Refer to licensing information at http://www.artifex.com or contact
-   Artifex Software, Inc.,  1305 Grant Avenue - Suite 200, Novato,
-   CA 94945, U.S.A., +1(415)492-9861, for further information.
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 
@@ -723,5 +723,34 @@ bytes_copy_rectangle_zero_padding(byte * dest, uint dest_raster,
             src += src_raster;
             dest += dest_raster;
         }
+    }
+}
+
+/* Copy a rectangle of bytes zeroing any padding bytes, copying
+ * the last row with no padding. */
+void
+bytes_copy_rectangle_zero_padding_last_short(byte * dest, uint dest_raster,
+             const byte * src, uint src_raster, int width_bytes, int height)
+{
+    int padlen = dest_raster;
+    if (padlen < 0)
+        padlen = -padlen;
+    padlen -= width_bytes;
+    if (padlen == 0)
+    {
+        while (height-- > 0) {
+            memcpy(dest, src, width_bytes);
+            src += src_raster;
+            dest += dest_raster;
+        }
+    } else {
+        while (--height > 0) {
+            memcpy(dest, src, width_bytes);
+            memset(dest+width_bytes, 0, padlen);
+            src += src_raster;
+            dest += dest_raster;
+        }
+        if (height >= 0)
+            memcpy(dest, src, width_bytes);
     }
 }
