@@ -1,3 +1,9 @@
+ghostscript (10.04.0~dfsg-2deepin1) unstable; urgency=medium
+
+  * Add libgs9-common transitional package for smooth upgrading
+
+ -- Tianyu Chen <sweetyfish@deepin.org>  Tue, 14 Jan 2025 10:22:37 +0800
+
 ghostscript (10.04.0~dfsg-2) unstable; urgency=medium
 
   [ Brian Clinkenbeard ]
