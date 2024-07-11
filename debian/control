@@ -168,3 +168,14 @@ Description: interpreter for the PostScript language and for PDF - Development F
  for the GPL Ghostscript library
  which makes the facilities of GPL Ghostscript available
  to applications.
+
+Package: libgs9-common
+Section: oldlibs
+Architecture: all
+Depends:
+ ${misc:Depends},
+ libgs-common
+Multi-Arch: foreign
+Description: transitional package for libgs-common
+ This is a transitional package and can safely be removed.
+
