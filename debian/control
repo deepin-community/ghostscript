@@ -32,10 +32,10 @@ Build-Depends:
  rename,
  zlib1g-dev:native,
 Build-Depends-Indep:
- python3-sphinx,
- python3-sphinx-rtd-theme,
- python3-sphinx-copybutton,
- rst2pdf,
+ python3-sphinx <!nodoc>,
+ python3-sphinx-rtd-theme <!nodoc>,
+ python3-sphinx-copybutton <!nodoc>,
+ rst2pdf <!nodoc>,
 Standards-Version: 4.6.2
 Homepage: https://www.ghostscript.com/
 Vcs-Git: https://salsa.debian.org/debian/ghostscript.git
@@ -75,6 +75,7 @@ Package: ghostscript-doc
 Section: doc
 Architecture: all
 Multi-Arch: foreign
+Build-Profiles: <!nodoc>
 Depends:
  ${misc:Depends},
  ${sphinxdoc:Depends},
@@ -168,14 +169,3 @@ Description: interpreter for the PostScript language and for PDF - Development F
  for the GPL Ghostscript library
  which makes the facilities of GPL Ghostscript available
  to applications.
-
-Package: libgs9-common
-Section: oldlibs
-Architecture: all
-Depends:
- ${misc:Depends},
- libgs-common
-Multi-Arch: foreign
-Description: transitional package for libgs-common
- This is a transitional package and can safely be removed.
-

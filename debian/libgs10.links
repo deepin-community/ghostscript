@@ -1,0 +1,3 @@
+# Example files
+/usr/share/ghostscript/${env:GS_DOT_VERSION}/lib/PDFA_def.ps  /usr/share/doc/libgs10/examples/PDFA_def.ps
+/usr/share/ghostscript/${env:GS_DOT_VERSION}/lib/PDFX_def.ps  /usr/share/doc/libgs10/examples/PDFX_def.ps
