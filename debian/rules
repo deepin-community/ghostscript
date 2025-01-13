@@ -60,14 +60,18 @@ override_dh_auto_build:
 	dh_auto_build -- so $(gs_opts)
 
 execute_after_dh_auto_build-indep:
+ifeq (,$(filter nodoc,$(DEB_BUILD_PROFILES) $(DEB_BUILD_OPTIONS)))
 	sphinx-build -bhtml doc/src doc/build/html
+endif
 
 # check that tracked issues are solved
 override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_PROFILES) $(DEB_BUILD_OPTIONS)))
 	GS="LD_LIBRARY_PATH=sobin GS_LIB=Resource/Init sobin/gsc" \
 		$(MAKE) --file debian/tests/smoke.mk
 	GS="LD_LIBRARY_PATH=sobin GS_LIB=Resource/Init sobin/gsc" \
 		$(MAKE) --file debian/tests/issues/bug_700317/check.mk
+endif
 
 override_dh_auto_install:
 	$(MAKE) soinstall DESTDIR=debian/tmp
@@ -106,7 +110,9 @@ ifneq ($(filter $(pkg-data),$(binaries)),)
 endif
 
 execute_after_dh_installdocs-indep:
+ifeq (,$(filter nodoc,$(DEB_BUILD_PROFILES) $(DEB_BUILD_OPTIONS)))
 	dh_sphinxdoc
+endif
 
 override_dh_compress:
 	dh_compress -X.pdf

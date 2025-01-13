@@ -743,6 +743,7 @@ PCL_SONAME
 GS_SONAME_MAJOR_MINOR
 GS_SONAME_MAJOR
 GS_SONAME
+OCR_DEVS0
 PNG_DEVS
 IJS_DEVS
 JBIG2_DEVS
@@ -792,7 +793,6 @@ SO_PDFEXPORT_LIB
 GPDL_SO_TOP_OBJ
 ENABLESO
 SURFX_H
-URF_DEV
 URF_INCLUDE
 GPDL_URF_TOP_OBJ
 ENABLEURF
@@ -877,7 +877,6 @@ TESS_AVX2
 TESS_AVX
 OCR_SHARED
 OCR_VERSION
-OCR_DEVS
 TESSERACTDIR
 LEPTONICADIR
 TESSERACTINCLUDE
@@ -1754,6 +1753,7 @@ Optional Packages:
                           PNG      = Output to PNG
                           PS       = Output to PostScript/PDF
                           TIFF     = Output to TIFF
+                          URF      = Output to URF
                           You can mix both variants, e.g.
                           --with-drivers=HP,stcolor would build HP drivers and
                           the Epson stcolor driver.
@@ -7695,7 +7695,36 @@ printf %s "checking for local Tesseract library source... " >&6; }
   if test -d $srcdir/tesseract && test -d $srcdir/leptonica; then
     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 printf "%s\n" "yes" >&6; }
-    ac_ext=cpp
+
+    if test x$with_tesseract != xno; then
+
+      case $host in
+        *-aix*)
+          if test x"$GXX" = x"no" ; then
+            with_tesseract=no
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: OCR devices disabled due to incompatibility with IBM AIX" >&5
+printf "%s\n" "$as_me: WARNING: OCR devices disabled due to incompatibility with IBM AIX" >&2;}
+            OCR_DEVS_WARNING_LINE1="OCR devices disabled due to incompatibility with IBM AIX"
+          else
+            CXXFLAGS="$CXXFLAGS -pthread"
+            LDFLAGS="$LDFLAGS -pthread"
+          fi
+          ;;
+        *-sun*|*-solaris*)
+          if test x"$GXX" = x"no" ; then
+            with_tesseract=no
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: OCR devices disabled due to incompatibility with Oracle/Sun Solaris" >&5
+printf "%s\n" "$as_me: WARNING: OCR devices disabled due to incompatibility with Oracle/Sun Solaris" >&2;}
+            OCR_DEVS_WARNING_LINE1="OCR devices disabled due to incompatibility with Oracle/Sun Solaris"
+          else
+            # For some reason, the gnu std lib on Solaris (SPARC) doesn't include (all?) the atomic data
+            # types, so disable their use.
+            CXXFLAGS="$CXXFLAGS -D__STDC_NO_ATOMICS__=1"
+          fi
+          ;;
+      esac
+
+      ac_ext=cpp
 ac_cpp='$CXXCPP $CPPFLAGS'
 ac_compile='$CXX -c $CXXFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CXX -o conftest$ac_exeext $CXXFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
@@ -7981,11 +8010,11 @@ if test x$ac_prog_cxx_stdcxx = xno
 then :
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $CXX option to enable C++11 features" >&5
 printf %s "checking for $CXX option to enable C++11 features... " >&6; }
-if test ${ac_cv_prog_cxx_11+y}
+if test ${ac_cv_prog_cxx_cxx11+y}
 then :
   printf %s "(cached) " >&6
 else $as_nop
-  ac_cv_prog_cxx_11=no
+  ac_cv_prog_cxx_cxx11=no
 ac_save_CXX=$CXX
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
@@ -8027,11 +8056,11 @@ if test x$ac_prog_cxx_stdcxx = xno
 then :
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $CXX option to enable C++98 features" >&5
 printf %s "checking for $CXX option to enable C++98 features... " >&6; }
-if test ${ac_cv_prog_cxx_98+y}
+if test ${ac_cv_prog_cxx_cxx98+y}
 then :
   printf %s "(cached) " >&6
 else $as_nop
-  ac_cv_prog_cxx_98=no
+  ac_cv_prog_cxx_cxx98=no
 ac_save_CXX=$CXX
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
@@ -8095,23 +8124,24 @@ else $as_nop
   HAVE_CXX_COMPILER=no
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
-    if test x$HAVE_CXX_COMPILER != xyes; then
-      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: Disabling tesseract as no working C++ compiler" >&5
+      if test x$HAVE_CXX_COMPILER != xyes; then
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: Disabling tesseract as no working C++ compiler" >&5
 printf "%s\n" "$as_me: WARNING: Disabling tesseract as no working C++ compiler" >&2;}
-    elif test x$SYNC = xnosync ; then
-      as_fn_error $? "Threading disabled or not available. Tesseract OCR relies on threading. Rerun configure with \"--without-tesseract\" to exclude OCR from the build" "$LINENO" 5
-    else
+      elif test x$SYNC = xnosync ; then
+        as_fn_error $? "Threading disabled or not available. Tesseract OCR relies on threading. Rerun configure with \"--without-tesseract\" to exclude OCR from the build" "$LINENO" 5
+      else
 
-      save_cxxflags="$CXXFLAGS"
-      cxxflags_to_try="-std=c++17 -stdlib=libstdc++"
-      CXXFLAGS_TO_USE=""
+        save_cxxflags="$CXXFLAGS"
+        save_ldflags="$LDFLAGS"
+        cxxflags_to_try="-std=c++17 -stdlib=libstdc++"
+        CXXFLAGS_TO_USE=""
 
-      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking supported C++ compiler flags" >&5
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking supported C++ compiler flags" >&5
 printf %s "checking supported C++ compiler flags... " >&6; }
-      for flag in $cxxflags_to_try ; do
-        CXXFLAGS="$CXXFLAGS $flag"
+        for flag in $cxxflags_to_try ; do
+          CXXFLAGS="$CXXFLAGS $flag"
 
-        cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+          cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <cstdlib>
 int
@@ -8125,41 +8155,41 @@ _ACEOF
 if ac_fn_cxx_try_compile "$LINENO"
 then :
 
-                echo "   $flag"; CXXFLAGS_TO_USE="$CXXFLAGS_TO_USE $flag"
+                  echo "   $flag"; CXXFLAGS_TO_USE="$CXXFLAGS_TO_USE $flag"
 
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
 
-        CXXFLAGS="$old_cflags"
-      done
+          CXXFLAGS="$old_cflags"
+        done
 
-      if test x"$GXX" = x"no" || echo $CXXFLAGS_TO_USE | grep "std=c++17" ; then
-        if test x"$GXX" = x"no" ; then
-          OCR_DEVS_WARNING_LINE1="C++ compiler does not appear to be gcc or compatible, attempting to continue anyway"
-          OCR_DEVS_WARNING_LINE2="NOTE: that tesseract requires a C++17 compatible C++ compiler"
-        fi
+        if test x"$GXX" = x"no" || echo $CXXFLAGS_TO_USE | grep "std=c++17" ; then
+          if test x"$GXX" = x"no" ; then
+            OCR_DEVS_WARNING_LINE1="C++ compiler does not appear to be gcc or compatible, attempting to continue anyway"
+            OCR_DEVS_WARNING_LINE2="NOTE: that tesseract requires a C++17 compatible C++ compiler"
+          fi
 
-        CXXFLAGS="$save_cxxflags $CXXFLAGS_TO_USE"
+          CXXFLAGS="$save_cxxflags $CXXFLAGS_TO_USE"
 
-                                { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking sse4.1 support" >&5
+                                        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking sse4.1 support" >&5
 printf %s "checking sse4.1 support... " >&6; }
-        save_cxxflags=$CXXFLAGS
-        TESS_CXXFLAGS="$CXXFLAGS"
-        CXXFLAGS="$CXXFLAGS -msse4.1"
+          save_cxxflags=$CXXFLAGS
+          TESS_CXXFLAGS="$CXXFLAGS"
+          CXXFLAGS="$CXXFLAGS -msse4.1"
 
-        TESS_SSE4_1=""
-        cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+          TESS_SSE4_1=""
+          cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <emmintrin.h>
-                            #include <smmintrin.h>
+                              #include <smmintrin.h>
 int
 main (void)
 {
 __m128i input1;
-                            unsigned char buf1[128];
-                            input1 = _mm_loadu_si128((const __m128i *)buf1);
-                            input1 = _mm_hadd_epi32(input1, input1);
-                            return(0);
+                              unsigned char buf1[128];
+                              input1 = _mm_loadu_si128((const __m128i *)buf1);
+                              input1 = _mm_hadd_epi32(input1, input1);
+                              return(0);
 
   ;
   return 0;
@@ -8174,29 +8204,29 @@ fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam \
     conftest$ac_exeext conftest.$ac_ext
 
-        if test "x$TESS_SSE4_1" != x; then
-          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+          if test "x$TESS_SSE4_1" != x; then
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 printf "%s\n" "yes" >&6; }
-          TESS_CXXFLAGS="$TESS_CXXFLAGS -DHAVE_SSE4_1"
-        else
-          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+            TESS_CXXFLAGS="$TESS_CXXFLAGS -DHAVE_SSE4_1"
+          else
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
-        fi
+          fi
 
-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking avx support" >&5
+          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking avx support" >&5
 printf %s "checking avx support... " >&6; }
-        CXXFLAGS="$save_cxxflags -mavx"
+          CXXFLAGS="$save_cxxflags -mavx"
 
-        TESS_AVX=""
-        cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+          TESS_AVX=""
+          cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <immintrin.h>
 int
 main (void)
 {
 __m256d input1 = _mm256_setzero_pd();
-                            input1 = _mm256_hadd_pd(input1, input1);
-                            return(0);
+                              input1 = _mm256_hadd_pd(input1, input1);
+                              return(0);
   ;
   return 0;
 }
@@ -8210,31 +8240,31 @@ fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam \
     conftest$ac_exeext conftest.$ac_ext
 
-        if test "x$TESS_AVX" != x; then
-          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+          if test "x$TESS_AVX" != x; then
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 printf "%s\n" "yes" >&6; }
-          TESS_CXXFLAGS="$TESS_CXXFLAGS -DHAVE_AVX"
-        else
-          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+            TESS_CXXFLAGS="$TESS_CXXFLAGS -DHAVE_AVX"
+          else
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
-        fi
+          fi
 
-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking avx2 support" >&5
+          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking avx2 support" >&5
 printf %s "checking avx2 support... " >&6; }
-        CXXFLAGS="$save_cxxflags -mavx2"
+          CXXFLAGS="$save_cxxflags -mavx2"
 
-        TESS_AVX2=""
-        cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+          TESS_AVX2=""
+          cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <immintrin.h>
 int
 main (void)
 {
 __m256i input1;
-                            unsigned char buf1[256];
-                            input1 = _mm256_loadu_si256((const __m256i *)buf1);
-                            input1 = _mm256_adds_epu8(input1, input1);
-                            return(0);
+                              unsigned char buf1[256];
+                              input1 = _mm256_loadu_si256((const __m256i *)buf1);
+                              input1 = _mm256_adds_epu8(input1, input1);
+                              return(0);
   ;
   return 0;
 }
@@ -8248,29 +8278,29 @@ fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam \
     conftest$ac_exeext conftest.$ac_ext
 
-        if test "x$TESS_AVX2" != x; then
-          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+          if test "x$TESS_AVX2" != x; then
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 printf "%s\n" "yes" >&6; }
-          TESS_CXXFLAGS="$TESS_CXXFLAGS -DHAVE_AVX2"
-        else
-          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+            TESS_CXXFLAGS="$TESS_CXXFLAGS -DHAVE_AVX2"
+          else
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
-        fi
+          fi
 
-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking fma support" >&5
+          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking fma support" >&5
 printf %s "checking fma support... " >&6; }
-        CXXFLAGS="$save_cxxflags -mfma"
+          CXXFLAGS="$save_cxxflags -mfma"
 
-        TESS_FMA=""
-        cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+          TESS_FMA=""
+          cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <immintrin.h>
 int
 main (void)
 {
 __m256d input1 = _mm256_setzero_pd();
-                            input1 = _mm256_fmadd_pd(input1, input1, input1);
-                            return(0);
+                              input1 = _mm256_fmadd_pd(input1, input1, input1);
+                              return(0);
   ;
   return 0;
 }
@@ -8284,69 +8314,73 @@ fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam \
     conftest$ac_exeext conftest.$ac_ext
 
-        if test "x$TESS_FMA" != x; then
-          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+          if test "x$TESS_FMA" != x; then
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 printf "%s\n" "yes" >&6; }
-          TESS_CXXFLAGS="$TESS_CXXFLAGS -DHAVE_FMA"
-        else
-          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+            TESS_CXXFLAGS="$TESS_CXXFLAGS -DHAVE_FMA"
+          else
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
-        fi
+          fi
 
-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking neon support" >&5
+          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking neon support" >&5
 printf %s "checking neon support... " >&6; }
-        CXXFLAGS="$save_cxxflags -mfpu=neon -mcpu=cortex-a53"
+          CXXFLAGS="$save_cxxflags"
+          LDFLAGS="$save_ldflags -mfpu=neon -mcpu=cortex-a53"
 
-        TESS_NEON=""
-        cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+          TESS_NEON=""
+          cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include "arm_neon.h"
 int
 main (void)
 {
 int32x4_t round = vdupq_n_s32(10);
-                           return(0);
+                             return(0);
   ;
   return 0;
 }
 _ACEOF
 if ac_fn_cxx_try_link "$LINENO"
 then :
-  TESS_NEON="-mfpu=neon -mcpu=cortex-a53 -D__ARM_NEON__"
+  TESS_NEON="-D__ARM_NEON__"
 else $as_nop
   TESS_NEON=""
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam \
     conftest$ac_exeext conftest.$ac_ext
 
-        if test "x$TESS_NEON" != x && test "x$enable_neon" != xno; then
-          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+          if test "x$TESS_NEON" != x && test "x$enable_neon" != xno; then
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 printf "%s\n" "yes" >&6; }
-          TESS_CXXFLAGS="$TESS_CXXFLAGS -DHAVE_NEON"
-        else
-          { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+            TESS_CXXFLAGS="$TESS_CXXFLAGS -DHAVE_NEON"
+            LDFLAGS="$save_ldflags -mfpu=neon -mcpu=cortex-a53"
+          else
+            { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
-          TESS_NEON=""
+            TESS_NEON=""
+            LDFLAGS="$save_ldflags"
+          fi
+
+          CXXFLAGS="$save_cxxflags"
+
+          OCR_VERSION=1
+          OCR_SHARED=0
+          OCR_DEVS="\$(DD)ocr.dev \$(DD)hocr.dev \$(DD)pdfocr8.dev \$(DD)pdfocr24.dev \$(DD)pdfocr32.dev"
+          LEPTONICAINCLUDE="include \$(GLSRCDIR)/leptonica.mak"
+          TESSERACTINCLUDE="include \$(GLSRCDIR)/tesseract.mak"
+          TESSERACT_LIBS="-lstdc++"
+        else
+          OCR_DEVS_WARNING_LINE1="OCR devices disabled due to incompatible compiler: tesseract requires a C++17 compatible compiler"
         fi
-
-        CXXFLAGS="$save_cxxflags"
-
-        OCR_VERSION=1
-        OCR_SHARED=0
-        OCR_DEVS="\$(DD)ocr.dev \$(DD)hocr.dev \$(DD)pdfocr8.dev \$(DD)pdfocr24.dev \$(DD)pdfocr32.dev"
-        LEPTONICAINCLUDE="include \$(GLSRCDIR)/leptonica.mak"
-        TESSERACTINCLUDE="include \$(GLSRCDIR)/tesseract.mak"
-        TESSERACT_LIBS="-lstdc++"
-      else
-        OCR_DEVS_WARNING_LINE1="OCR devices disabled due to incompatible compiler: tesseract requires a C++17 compatible compiler"
       fi
-    fi
-    ac_ext=c
+      ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
+    fi
   else
     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
@@ -8633,11 +8667,11 @@ if test x$ac_prog_cxx_stdcxx = xno
 then :
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $CXX option to enable C++11 features" >&5
 printf %s "checking for $CXX option to enable C++11 features... " >&6; }
-if test ${ac_cv_prog_cxx_11+y}
+if test ${ac_cv_prog_cxx_cxx11+y}
 then :
   printf %s "(cached) " >&6
 else $as_nop
-  ac_cv_prog_cxx_11=no
+  ac_cv_prog_cxx_cxx11=no
 ac_save_CXX=$CXX
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
@@ -8679,11 +8713,11 @@ if test x$ac_prog_cxx_stdcxx = xno
 then :
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $CXX option to enable C++98 features" >&5
 printf %s "checking for $CXX option to enable C++98 features... " >&6; }
-if test ${ac_cv_prog_cxx_98+y}
+if test ${ac_cv_prog_cxx_cxx98+y}
 then :
   printf %s "(cached) " >&6
 else $as_nop
-  ac_cv_prog_cxx_98=no
+  ac_cv_prog_cxx_cxx98=no
 ac_save_CXX=$CXX
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
@@ -8815,7 +8849,6 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
   fi
 fi
-
 
 
 
@@ -11470,9 +11503,7 @@ fi
 
 
 ENABLEURF=
-URF_DEVS=''
 URF_INCLUDE=
-URF_DEV=
 SURFX_H=
 
 # Check whether --with-urf was given.
@@ -11489,14 +11520,14 @@ printf %s "checking for URF support... " >&6; }
     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 printf "%s\n" "yes" >&6; }
     ENABLEURF="\$(D_)URF_INCLUDED\$(_D)"
-    URF_DEVS='urfgray urfrgb urfcmyk'
     GPDL_URF_TOP_OBJ="\$(GPDLOBJ)/\$(GPDL_URF_TOP_OBJ_FILE)"
     URF_INCLUDE="\$(I_)\$(URFSRCDIR)\$(_I)"
-    URF_DEV="\$(GLD)urfd.dev"
     SURFX_H="\$(URFSRCDIR)\$(D)surfx.h"
+  else
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+  fi
 fi
-fi
-
 
 
 
@@ -11538,6 +11569,9 @@ printf "%s\n" "yes" >&6; }
             SO_PDFEXPORT_LIB="\$(SOSRCDIR)/lib/macos/x64/smart-office-lib.a"
         ;;
     esac
+  else
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
   fi
 fi
 
@@ -11552,6 +11586,14 @@ then :
   withval=$with_cal;
 fi
 
+
+if test x"$WHICHLCMS" != x"lcms2mt"; then
+  with_cal=no
+  if test -d $srcdir/cal; then
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: CAL dependency lcms2mt missing..... disabling CAL" >&5
+printf "%s\n" "$as_me: WARNING: CAL dependency lcms2mt missing..... disabling CAL" >&2;}
+  fi
+fi
 
 CALSRCDIR=$srcdir/cal
 if test x$with_cal != xno; then
@@ -12887,12 +12929,13 @@ OPVP_DEVS='opvp oprp'
 ETS_HALFTONING_DEVS='rinkj'
 
 BMP_DEVS='bmpmono bmpgray bmpsep1 bmpsep8 bmp16 bmp256 bmp16m bmp32b'
+URF_DEVS='urfgray urfrgb urfcmyk'
 
 JPEG_DEVS='jpeg jpeggray jpegcmyk'
 # PNG_DEVS='png16 png16m png256 pngalpha pnggray pngmono'
 
 PCX_DEVS='pcxmono pcxgray pcx16 pcx256 pcx24b pcxcmyk'
-PBM_DEVS='pbm pbmraw pgm pgmraw pgnm pgnmraw pnm pnmraw ppm ppmraw pkm pkmraw pksm pksmraw pam pamcmyk4 pamcmyk32 plan plang planm planc plank'
+PBM_DEVS='pbm pbmraw pgm pgmraw pgnm pgnmraw pnm pnmraw ppm ppmraw pkm pkmraw pksm pksmraw pam pamcmyk4 pamcmyk32 plan plang planm planc plank pppm'
 PS_DEVS='psdf psdcmyk psdrgb psdcmyk16 psdrgb16 psdcmyktags psdrgbtags psdcmyktags16 pdfwrite ps2write eps2write bbox txtwrite inkcov ink_cov psdcmykog fpng pdfimage8 pdfimage24 pdfimage32 PCLm PCLm8'
 
 # Handle --with-extract-dir=EXTRACT_DIR - build extract library and docxwrite
@@ -12952,13 +12995,13 @@ while test -n "$drivers"; do
         ALL)
                 # ALL = PRINTERS + FILES...
                 if test -z "$drivers"; then
-                        drivers="PRINTERS,FILES,X11"
+                        drivers="PRINTERS,FILES,X11,OCR"
                 else
-                        drivers="$drivers,PRINTERS,FILES,X11"
+                        drivers="$drivers,PRINTERS,FILES,X11,OCR"
                 fi
                 ;;
         PRINTERS)
-                P_DEVS0="$P_DEVS0 $CANON_DEVS $EPSON_DEVS $HP_DEVS $LEXMARK_DEVS $BROTHER_DEVS $APPLE_DEVS $IBM_DEVS $OKI_DEVS $JAPAN_DEVS $MISC_PDEVS $ETS_HALFTONING_DEVS $URF_DEVS"
+                P_DEVS0="$P_DEVS0 $CANON_DEVS $EPSON_DEVS $HP_DEVS $LEXMARK_DEVS $BROTHER_DEVS $APPLE_DEVS $IBM_DEVS $OKI_DEVS $JAPAN_DEVS $MISC_PDEVS $ETS_HALFTONING_DEVS"
                 IJS_DEVS0="$IJSDEVS"
                 if test x$ac_cv_lib_dl_dlopen != xno -a x$found_iconv != xno; then
                         P_DEVS0="$P_DEVS0 $OPVP_DEVS"
@@ -12968,7 +13011,7 @@ printf "%s\n" "$as_me: WARNING: Unable to include opvp/oprp driver due to missin
                 fi
                 ;;
         FILES)
-                F_DEVS0="$F_DEVS0 $BMP_DEVS $FAX_DEVS $JPEG_DEVS $TIFFDEVS $PCX_DEVS $PBM_DEVS $PS_DEVS $MISC_FDEVS $XPSDEV"
+                F_DEVS0="$F_DEVS0 $BMP_DEVS $FAX_DEVS $JPEG_DEVS $TIFFDEVS $PCX_DEVS $PBM_DEVS $PS_DEVS $MISC_FDEVS $XPSDEV $URF_DEVS"
                 CUPS_DEVS0="$CUPSDEV"
                 JBIG2_DEVS="$JBIG2FILEDEVS"
                 PNG_DEVS0="$PNGDEVS"
@@ -13070,6 +13113,14 @@ printf "%s\n" "$as_me: WARNING: Unable to include opvp/oprp driver due to missin
                 # X11 display devices
                 X11_DEVS0="$X_DEVS"
                 ;;
+        URF)
+                # URF file format
+                F_DEVS0="$F_DEVS0 $URF_DEVS"
+                ;;
+        OCR)
+                # OCR specific devices
+                OCR_DEVS0="$OCR_DEVS"
+                ;;
         opvp)
                 # Open Vector Printing driver...
                 if test x$ac_cv_lib_dl_dlopen != xno -a x$found_iconv != xno; then
@@ -13132,6 +13183,7 @@ if test x"$APPLE_DEVICES_REQUESTED" = x"yes" ; then
     as_fn_error $? "Requested Apple device(s) not available (iwhi, iwlo, and/or iwlq)" "$LINENO" 5
   fi
 fi
+
 
 
 
@@ -13281,13 +13333,14 @@ case $host in
     ;;
     *-darwin*)
       DYNAMIC_CFLAGS="-fPIC $DYNAMIC_CFLAGS"
-      GS_DYNAMIC_LDFLAGS="-dynamiclib -install_name $DARWIN_LDFLAGS_SO_PREFIX\$(GS_SONAME_MAJOR_MINOR)"
-      PCL_DYNAMIC_LDFLAGS="-dynamiclib -install_name $DARWIN_LDFLAGS_SO_PREFIX\$(PCL_SONAME_MAJOR_MINOR)"
-      XPS_DYNAMIC_LDFLAGS="-dynamiclib -install_name $DARWIN_LDFLAGS_SO_PREFIX\$(XPS_SONAME_MAJOR_MINOR)"
-      PDL_DYNAMIC_LDFLAGS="-dynamiclib -install_name $DARWIN_LDFLAGS_SO_PREFIX\$(GPDL_SONAME_MAJOR_MINOR)"
-      PDF_DYNAMIC_LDFLAGS="-dynamiclib -install_name $DARWIN_LDFLAGS_SO_PREFIX\$(PDF_SONAME_MAJOR_MINOR)"
+      GS_DYNAMIC_LDFLAGS="-dynamiclib -install_name $DARWIN_LDFLAGS_SO_PREFIX\$(GS_SONAME_MAJOR)"
+      PCL_DYNAMIC_LDFLAGS="-dynamiclib -install_name $DARWIN_LDFLAGS_SO_PREFIX\$(PCL_SONAME_MAJOR)"
+      XPS_DYNAMIC_LDFLAGS="-dynamiclib -install_name $DARWIN_LDFLAGS_SO_PREFIX\$(XPS_SONAME_MAJOR)"
+      PDL_DYNAMIC_LDFLAGS="-dynamiclib -install_name $DARWIN_LDFLAGS_SO_PREFIX\$(GPDL_SONAME_MAJOR)"
+      PDF_DYNAMIC_LDFLAGS="-dynamiclib -install_name $DARWIN_LDFLAGS_SO_PREFIX\$(PDF_SONAME_MAJOR)"
       DYNAMIC_LIBS=""
-      SO_LIB_EXT=".dylib"
+      SO_LIB_EXT=""
+      DLL_EXT=".dylib"
     ;;
     *-sun*|*-solaris*)
       if test x"$GCC" = x"yes"; then
