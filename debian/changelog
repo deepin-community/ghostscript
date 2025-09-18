@@ -1,8 +1,35 @@
-ghostscript (10.04.0~dfsg-2deepin1) unstable; urgency=medium
+ghostscript (10.05.1~dfsg-3) unstable; urgency=medium
 
-  * Add libgs9-common transitional package for smooth upgrading
+  [ Steve Robbins ]
+  * [fb1ee5b] Fixes for C23.
+  * [4a94390] Additional fixes for C23.  Closes: #1096702
 
- -- Tianyu Chen <sweetyfish@deepin.org>  Tue, 14 Jan 2025 10:22:37 +0800
+ -- Steve M. Robbins <smr@debian.org>  Sat, 06 Sep 2025 21:25:01 -0500
+
+ghostscript (10.05.1~dfsg-2) unstable; urgency=medium
+
+  [ Steve Robbins ]
+  * [a7443cd] Upstream fix for CVE-2025-7462.  Closes: #1109270.
+  * [510df70] Apply upstream patch that closes: #1101348.
+
+ -- Steve M. Robbins <smr@debian.org>  Sun, 24 Aug 2025 14:57:41 -0500
+
+ghostscript (10.05.1~dfsg-1) unstable; urgency=medium
+
+  [ Steve Robbins ]
+  * [592d479] New upstream version 10.05.1~dfsg
+
+ -- Steve M. Robbins <smr@debian.org>  Sun, 04 May 2025 21:32:27 -0500
+
+ghostscript (10.05.0~dfsg-1) unstable; urgency=medium
+
+  [ Steve Robbins ]
+  * [825db8d] New upstream version 10.05.0~dfsg.
+    - Doc fixes; closes: #1092118, #1090082, #1089859, #1076834.
+    - Fix armel generation; closes: #1085120.
+    - Fix xml attachment; closes: #1091182.
+
+ -- Steve M. Robbins <smr@debian.org>  Sun, 16 Mar 2025 15:03:16 -0500
 
 ghostscript (10.04.0~dfsg-2) unstable; urgency=medium
 
