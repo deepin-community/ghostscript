@@ -1,3 +1,6 @@
+0001_CVE-2025-7462.patch
+0002_fix-coverity.patch
+0003_c23.patch
 1004_enable_spot_devices.patch
 1005_simplify_ps2ascii.patch
 2001_docdir_fix_for_debian.patch
@@ -9,3 +12,5 @@
 2007_suggest_install_ghostscript-doc_in_code.patch
 2008_mention_ghostscript-x_in_docs.patch
 2010_add_build_timestamp_setting.patch
+2011_disable_google_analytics.patch
+2012_additional_gcc_15_fixes.patch

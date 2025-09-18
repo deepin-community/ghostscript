@@ -1,0 +1,15 @@
+Most of the GCC-15 fixes are present in upstream patch 0003_c23.patch.
+This file contains additional changes.
+
+
+--- ghostscript.orig/psi/zfaes.c
++++ ghostscript/psi/zfaes.c
+@@ -38,7 +38,7 @@
+     os_ptr op = osp;		/* i_ctx_p->op_stack.stack.p defined in osstack.h */
+     ref *sop = NULL;
+     stream_aes_state state;
+-    int use_padding;
++    bool use_padding;
+ 
+     check_op(2);
+     /* extract the key from the parameter dictionary */

@@ -45,8 +45,14 @@ Files-Excluded:
  zlib/*
 
 Files:
+ .readthedocs.yaml
+ DroidSansFallback.NOTICE
+ autogen.sh
  arch/*
  base/*
+ contrib/autogen.sh
+ contrib/contrib.mak
+ contrib/gdevmd2k.c
  devices/*
  doc/*
  examples/*
@@ -209,6 +215,18 @@ Files:
 Copyright:
   1990-2015  Adobe Systems Incorporated
 License: BSD-3-Clause~Adobe
+
+Files:
+ contrib/lxm3200-tweaked/*
+Copyright:
+ Daniel Gordini (dgordin@tin.it)
+License: GPL-2
+
+Files:
+ contrib/chp2200/*
+Copyright:
+ Siow-Kiat Tan <siow-kiat_tan@hp.com>
+License: GPL-2
 
 Files:
  contrib/pcl3/*
@@ -564,6 +582,7 @@ Comment:
 
 Files:
  contrib/gdevcd8.c
+ contrib/gdevcd8.h
 Copyright:
   1999       Aladdin Enterprises, Menlo Park, CA
   2000       Hewlett-Packard Company

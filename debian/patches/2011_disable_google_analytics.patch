@@ -1,0 +1,18 @@
+Description: Disable google analytics in HTML docs
+Author: Steve Robbins <srm@debian.org>
+Forwarded: not-needed
+Last-Update: 2025-03-16
+
+
+diff --git a/doc/src/conf.py b/doc/src/conf.py
+index d1709126..98c61aea 100644
+--- a/doc/src/conf.py
++++ b/doc/src/conf.py
+@@ -30,7 +30,6 @@ extensions = [
+     'rst2pdf.pdfbuilder',
+     'sphinx.ext.autosectionlabel',
+     'sphinx_copybutton',
+-    'sphinxcontrib.googleanalytics'
+ ]
+ # Add any paths that contain templates here, relative to this directory.
+ templates_path = ["_templates"]
