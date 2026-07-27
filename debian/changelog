@@ -1,3 +1,9 @@
+ghostscript (10.05.1~dfsg-3deepin3) unstable; urgency=medium
+
+  * fix(cve): CVE-2017-9619
+
+ -- deepin-ci-robot <packages@deepin.org>  Tue, 28 Jul 2026 00:28:47 +0800
+
 ghostscript (10.05.1~dfsg-3deepin2) unstable; urgency=medium
 
   * fix(cve): CVE-2010-1628

@@ -15,3 +15,4 @@
 2011_disable_google_analytics.patch
 2012_additional_gcc_15_fixes.patch
 CVE-2010-1628.patch
+CVE-2017-9619.patch
