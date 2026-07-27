@@ -1,3 +1,9 @@
+ghostscript (10.05.1~dfsg-3deepin2) unstable; urgency=medium
+
+  * fix(cve): CVE-2010-1628
+
+ -- deepin-ci-robot <packages@deepin.org>  Mon, 27 Jul 2026 22:08:22 +0800
+
 ghostscript (10.05.1~dfsg-3deepin1) unstable; urgency=medium
 
   * Add libgs9-common transitional package for smooth upgrading
