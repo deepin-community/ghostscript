@@ -14,3 +14,4 @@
 2010_add_build_timestamp_setting.patch
 2011_disable_google_analytics.patch
 2012_additional_gcc_15_fixes.patch
+CVE-2025-59798.patch
