@@ -1,3 +1,10 @@
+ghostscript (10.05.1~dfsg-3deepin2) unstable; urgency=medium
+
+  * fix(cve): CVE-2025-59801 - XPS 解释器在解析恶意 TIFF 文件时存在栈缓冲区溢出漏洞
+  * fix(cve): CVE-2025-59800 - PDF OCR 8 bit device - avoid overflow. 整数溢出漏洞，可能导致堆溢出
+
+ -- hudeng <hudeng@deepin.org>  Mon, 18 Aug 2025 13:55:00 +0800
+
 ghostscript (10.05.1~dfsg-3deepin1) unstable; urgency=medium
 
   * Add libgs9-common transitional package for smooth upgrading
