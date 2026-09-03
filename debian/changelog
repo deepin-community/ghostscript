@@ -1,21 +1,15 @@
-ghostscript (10.05.1~dfsg-3deepin4) unstable; urgency=medium
-
-  * fix(cve): CVE-2025-59801
-
- -- deepin-ci-robot <packages@deepin.org>  Thu, 13 Aug 2026 14:58:28 +0800
-
 ghostscript (10.05.1~dfsg-3deepin3) unstable; urgency=medium
-
-  * fix(cve): CVE-2025-59800
-
- -- deepin-ci-robot <packages@deepin.org>  Fri, 07 Aug 2026 13:08:23 +0800
-
-ghostscript (10.05.1~dfsg-3deepin2) unstable; urgency=medium
 
   * fix(cve): CVE-2025-59798
 
  -- deepin-ci-robot <packages@deepin.org>  Fri, 07 Aug 2026 12:49:20 +0800
 
+ghostscript (10.05.1~dfsg-3deepin2) unstable; urgency=medium
+
+  * fix(cve): CVE-2025-59801 - XPS 解释器在解析恶意 TIFF 文件时存在栈缓冲区溢出漏洞
+  * fix(cve): CVE-2025-59800 - PDF OCR 8 bit device - avoid overflow. 整数溢出漏洞，可能导致堆溢出
+
+ -- hudeng <hudeng@deepin.org>  Mon, 18 Aug 2025 13:55:00 +0800
 
 ghostscript (10.05.1~dfsg-3deepin1) unstable; urgency=medium
 
