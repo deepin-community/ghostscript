@@ -1,3 +1,12 @@
+ghostscript (10.05.1~dfsg-3deepin4) unstable; urgency=medium
+
+  * fix(cve): CVE-2025-59799 (medium) - [PATCH] pdfwrite - bounds check
+    some strings   Upstream:
+    https://github.com/ArtifexSoftware/ghostpdl/commit/6dab38fb211f15226
+    c242ab7a83fa53e4b0ff781
+
+ -- deepin-ci-robot <packages@deepin.org>  Fri, 04 Sep 2026 01:44:28 +0800
+
 ghostscript (10.05.1~dfsg-3deepin3) unstable; urgency=medium
 
   * fix(cve): CVE-2025-59798
