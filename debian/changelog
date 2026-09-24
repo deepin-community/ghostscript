@@ -1,8 +1,15 @@
 ghostscript (10.05.1~dfsg-3deepin4) unstable; urgency=medium
 
-  * Rebuild with LTO enabled (dpkg vendor feature optimize/lto).
+  * fix(cve): CVE-2025-59799 (medium) - [PATCH] pdfwrite - bounds check
+    some strings   Upstream:
+    https://github.com/ArtifexSoftware/ghostpdl/commit/6dab38fb211f15226
+    c242ab7a83fa53e4b0ff781
+  * fix(cve): CVE-2026-39919 (critical) - OpenJPEG - Fix overreading
+    bytes in some conditions.   Upstream:
+    https://github.com/ArtifexSoftware/ghostpdl/commit/0a8bf88e39db07b07
+    51a58d6ec1cf992073e4dc1
 
- -- tunaichao <tunaichao@uniontech.com>  Fri, 11 Sep 2026 14:57:34 +0800
+ -- deepin-ci-robot <packages@deepin.org>  Fri, 04 Sep 2026 01:44:28 +0800
 
 ghostscript (10.05.1~dfsg-3deepin3) unstable; urgency=medium
 
