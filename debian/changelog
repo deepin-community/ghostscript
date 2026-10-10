@@ -1,3 +1,12 @@
+ghostscript (10.05.1~dfsg-3deepin5) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-101258 (unknown) - PostScript interpreter - don't
+    permit local inside global storage   Upstream:
+    9d8b70ad1301c9993155dcf53401df3eac14fa4f,3d8a1db60895493d73aeef89903
+    d34da9837bc0a
+
+ -- deepin-ci-robot <packages@deepin.org>  Sat, 10 Oct 2026 13:54:37 +0800
+
 ghostscript (10.05.1~dfsg-3deepin4) unstable; urgency=medium
 
   * fix(cve): CVE-2025-59799 (medium) - [PATCH] pdfwrite - bounds check
