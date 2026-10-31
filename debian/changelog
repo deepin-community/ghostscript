@@ -4,6 +4,10 @@ ghostscript (10.05.1~dfsg-3deepin6) unstable; urgency=medium
     TTF bytecode interpreter   Upstream:
     https://github.com/ArtifexSoftware/ghostpdl/commit/0e623dbd83b93bbbe
     70ebfe93431b5968e006789.patch
+  * fix(cve): CVE-2026-112922 (unknown) - graphcis library - add bounds
+    check   Upstream:
+    https://github.com/ArtifexSoftware/ghostpdl/commit/4f878064736b09811
+    694dace00102bd89639874e.patch
 
  -- deepin-ci-robot <packages@deepin.org>  Sun, 01 Nov 2026 06:01:24 +0800
 
