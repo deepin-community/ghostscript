@@ -8,6 +8,10 @@ ghostscript (10.05.1~dfsg-3deepin6) unstable; urgency=medium
     check   Upstream:
     https://github.com/ArtifexSoftware/ghostpdl/commit/4f878064736b09811
     694dace00102bd89639874e.patch
+  * fix(cve): CVE-2026-125396 (unknown) - PS interpreter - validate
+    operands to .putgstringcopy   Upstream:
+    https://github.com/ArtifexSoftware/ghostpdl/commit/1484854e0c8ddfda1
+    baa4ad4cd965b8a9790aa81
 
  -- deepin-ci-robot <packages@deepin.org>  Sun, 01 Nov 2026 06:01:24 +0800
 
